@@ -1,0 +1,392 @@
+{
+ "frames": [
+  {
+   "filename": "eris_sword_slash 0.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 260
+  },
+  {
+   "filename": "eris_sword_slash 1.aseprite",
+   "frame": {
+    "x": 112,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 260
+  },
+  {
+   "filename": "eris_sword_slash 2.aseprite",
+   "frame": {
+    "x": 224,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 110
+  },
+  {
+   "filename": "eris_sword_slash 3.aseprite",
+   "frame": {
+    "x": 336,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 170
+  },
+  {
+   "filename": "eris_sword_slash 4.aseprite",
+   "frame": {
+    "x": 448,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 60
+  },
+  {
+   "filename": "eris_sword_slash 5.aseprite",
+   "frame": {
+    "x": 560,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 80
+  },
+  {
+   "filename": "eris_sword_slash 6.aseprite",
+   "frame": {
+    "x": 672,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 150
+  },
+  {
+   "filename": "eris_sword_slash 7.aseprite",
+   "frame": {
+    "x": 784,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 50
+  },
+  {
+   "filename": "eris_sword_slash 8.aseprite",
+   "frame": {
+    "x": 896,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 70
+  },
+  {
+   "filename": "eris_sword_slash 9.aseprite",
+   "frame": {
+    "x": 1008,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 150
+  },
+  {
+   "filename": "eris_sword_slash 10.aseprite",
+   "frame": {
+    "x": 1120,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 110
+  },
+  {
+   "filename": "eris_sword_slash 11.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 140
+  },
+  {
+   "filename": "eris_sword_slash 12.aseprite",
+   "frame": {
+    "x": 1344,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 420
+  },
+  {
+   "filename": "eris_sword_slash 13.aseprite",
+   "frame": {
+    "x": 1456,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 110
+  },
+  {
+   "filename": "eris_sword_slash 14.aseprite",
+   "frame": {
+    "x": 1568,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 200
+  },
+  {
+   "filename": "eris_sword_slash 15.aseprite",
+   "frame": {
+    "x": 1680,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 112,
+    "h": 80
+   },
+   "sourceSize": {
+    "w": 112,
+    "h": 80
+   },
+   "duration": 140
+  }
+ ],
+ "meta": {
+  "app": "generated",
+  "image": "eris_sword_slash_sheet.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 1792,
+   "h": 80
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "Idle",
+    "from": 0,
+    "to": 1,
+    "direction": "forward"
+   },
+   {
+    "name": "Draw Slash",
+    "from": 2,
+    "to": 5,
+    "direction": "forward"
+   },
+   {
+    "name": "Heavy Slash",
+    "from": 6,
+    "to": 9,
+    "direction": "forward"
+   },
+   {
+    "name": "Shoulder Pose + Sheathe",
+    "from": 10,
+    "to": 15,
+    "direction": "forward"
+   }
+  ]
+ }
+}
