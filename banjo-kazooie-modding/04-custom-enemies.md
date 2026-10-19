@@ -9,7 +9,7 @@ level.
 
 **Checklist** (details below):
 
-1. Pick a free **actor ID** (≥ `0x3CC`) and **marker ID** (`0x29F`–`0x2A8`) and
+1. Pick a free **actor ID** (`0x3CC`–`0x3D4`) and **marker ID** (`0x29F`–`0x2A8`) and
    add them to `include/enums.h`.
 2. Write the actor: an `ActorAnimationInfo[]`, an `ActorInfo`, and an update
    function.
@@ -180,8 +180,14 @@ From scanning every `ActorInfo` in the decomp:
 
 | ID kind | Highest vanilla | Safe range for mods | Hard limits |
 |---|---|---|---|
-| Actor (`actor_e`) | `0x3CA` (enum lists `0x3CB`) | `0x3CC`+ | `u16` in setup nodes, `s16` in `ActorInfo` |
+| Actor (`actor_e`) | `0x3CA` (enum lists `0x3CB`) | **`0x3CC`–`0x3D4`** (9 slots) | The model cache in `src/core2/code_A5BC0.c` is indexed by actor ID and has `AssetCacheSize` (`0x3D5`) entries. `u16` in setup nodes, `s16` in `ActorInfo` |
 | Marker (`marker_e`) | `0x29E` | **`0x29F`–`0x2A8`** (10 slots) | `ActorMarker.id` is 10 bits (`≤ 0x3FF`). The hit-table index array `D_80383F10` in `src/core2/code_B62B0.c` has `0x2A9` entries. |
+
+An actor ID of `0x3D5` or higher spawns fine but crashes the first time the
+actor is drawn: `marker_loadModelBin()` reads and writes past the end of
+`modelCache`. To use more actor IDs, raise `AssetCacheSize` in
+`src/core2/code_A5BC0.c`. A recomp mod can't change it, so recomp mods are
+limited to these nine.
 
 To use more than 10 new marker IDs, enlarge `D_80383F10[0x2A9]` and the `0x2A9`
 loop bound in `func_8033D2F4()` in the same file. Without that, a marker ID ≥
@@ -575,6 +581,7 @@ Per-placement parameters you can set on a node:
 | Appears as a Bigbutt | Anti-tamper still on (see [1.4](01-setup-and-building.md#14-building-a-mod-turn-off-anti-tamper)) |
 | Can't be hurt / player passes through | No hit-table row, or `marker->collidable` is off |
 | Crash on contact | Marker ID ≥ `0x2A9` (see 4.5); NULL animation table with `subaddie_set_state` |
+| Crash the first time it's drawn (in `marker_loadModelBin`) | Actor ID ≥ `0x3D5`, past the end of the model cache (see 4.5) |
 | Crash when changing levels | Overlay `ActorInfo` registered in core2's global list (see 4.7) |
 | T-pose / garbled animation | Animation's skeleton doesn't match the model |
 | Works in emulator, crashes on console | Usually a heap overflow or an uninitialized `local` field. Test on ares. |

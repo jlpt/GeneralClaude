@@ -4,15 +4,19 @@
  * Developer shortcuts, compiled only with `make DEV=1` for testing and
  * screenshots. Hold L and press:
  *   D-Pad Down   warp to Mumbo's Mountain
- *   D-Pad Left   grant a test kit (gold, levels, spells, gear, fish)
+ *   D-Pad Left   grant a test kit (all moves, gold, levels, spells, gear, fish)
  */
 
 #ifdef FATE_DEV
+
+void ability_setAllLearned(s32 val);
+s32 func_8024E698(s32 controller_index);
 
 static void dev_kit(void) {
     FateItem item;
     s32 r, i;
 
+    ability_setAllLearned(-1); /* a fresh file that skipped Bottles' tutorial knows no moves */
     fate_gain_xp((s32)(fate_xp_for_level(8) - gFate.xp), FALSE);
     gFate.gold += 5000;
     gFate.fame += 600;
@@ -37,8 +41,6 @@ static void dev_kit(void) {
     fate_heal_full();
     fate_message("[dev] Test kit granted.", MSG_COLOR_FAME);
 }
-
-s32 func_8024E698(s32 controller_index);
 
 /* Let Start skip the new-game intro even when no other save exists. */
 RECOMP_PATCH bool cutscene_skipIntroCutsceneCheck(void) {

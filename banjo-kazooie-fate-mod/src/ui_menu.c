@@ -10,15 +10,37 @@
  *   Grove      the shops (only in Spiral Mountain)
  * Gruntilda's bargain (Fate's death choice) uses the same context.
  *
- * Buttons carry an action code and argument in their callback userdata.
- * Callbacks only change state and request a rebuild; the rebuild itself
- * happens next frame in fate_menu_frame.
+ * RmlUi updates and lays out every document on the render thread without
+ * taking the context lock, so creating or destroying elements while any
+ * context is on screen can crash the game. The menu therefore creates a
+ * fixed pool of elements once, while nothing is on screen, and afterwards
+ * only changes text (recompui queues that for the render thread) and
+ * overwrites properties that were all set when the pool was created.
+ *
+ * Each page fills up to three columns of lines. A line is a label and up to
+ * two buttons. The build functions describe the page with put_text,
+ * put_button and friends, then apply_page pushes only what changed to the
+ * pool. Button callbacks look their action up in the page description.
  */
+
+#define MENU_COLS     3
+#define COL_LINES     44
+#define LINE_BUTTONS  2
+#define LINE_TEXT     160
+#define BUTTON_TEXT   80
+
+/* Click ids for the buttons outside the columns. Column buttons use their pool index. */
+#define CLICK_CLOSE   0xF000
+#define CLICK_TAB     0xF100
+
+#define BTN_BG        0x3A2C1EFF
+#define BTN_EDGE      0x8A6A35FF
+#define BTN_BG_ON     0x7A5418FF
+#define BTN_EDGE_ON   0xF2C744FF
+#define GRUNTY_GREEN  0x8EE66BFF
 
 enum menu_action {
     ACT_NONE,
-    ACT_TAB,
-    ACT_CLOSE,
     ACT_RAISE_STAT,
     ACT_RAISE_SKILL,
     ACT_SELECT,
@@ -58,7 +80,6 @@ enum menu_action {
     ACT_RETIRE_ITEM,
     ACT_NIGHTMARE,
     ACT_BARGAIN,
-    ACT_PAGE,
 };
 
 enum sel_kind {
@@ -93,10 +114,90 @@ static const char *sGroveNames[GROVE_COUNT] = {
 
 static const char *sTabNames[TAB_COUNT] = { "Character", "Inventory", "Pet", "Spells", "Quests", "Grove" };
 
+/* Short slot labels, so item names fit on one line in the equipment list. */
+static const char *sSlotShort[SLOT_COUNT] = { "Paws", "Beak", "Helm", "Armor", "Pack", "Boots", "Amulet", "Ring", "Ring" };
+
+enum line_style { LS_NORMAL, LS_SMALL, LS_HEADER, LS_COUNT };
+
+static const f32 sStyleSize[LS_COUNT] = { 18.0f, 16.0f, 23.0f };
+static const u32 sStyleWeight[LS_COUNT] = { 400, 400, 700 };
+
+/* ------------------------------------------------------------------ */
+/* Page description                                                    */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    char text[BUTTON_TEXT];
+    u32 color;
+    s16 action;
+    s16 arg;
+    u8 primary;
+    u8 wide;
+} ButtonSpec;
+
+typedef struct {
+    char text[LINE_TEXT];
+    u32 color;
+    u8 style;
+    u8 gap;     /* extra space above the line */
+    u8 closed;  /* no more buttons may join this line */
+    u8 buttons;
+    ButtonSpec btn[LINE_BUTTONS];
+} LineSpec;
+
+static LineSpec sSpec[MENU_COLS][COL_LINES];
+static s32 sSpecCount[MENU_COLS];
+static f32 sSpecWidth[MENU_COLS];   /* <0 hidden, 0 fills the remaining width, >0 fixed width */
+static bool sSpecOverflow[MENU_COLS];
+static s32 sCol;
+static bool sPendingGap;
+static char sTitle[96];
+static u32 sTitleColor;
+
+/* ------------------------------------------------------------------ */
+/* Element pool                                                        */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    RecompuiResource el;
+    RecompuiResource label;
+    u32 hash;
+    u32 color;
+    u8 shown;
+    u8 primary;
+    u8 wide;
+} PoolButton;
+
+typedef struct {
+    RecompuiResource row;
+    RecompuiResource label;
+    u32 hash;
+    u32 color;
+    u8 style;
+    u8 gap;
+    u8 shown;
+    u8 labelShown;
+    PoolButton btn[LINE_BUTTONS];
+} PoolLine;
+
+typedef struct {
+    RecompuiResource box;
+    f32 width;
+    PoolLine lines[COL_LINES];
+} PoolColumn;
+
 static RecompuiContext sCtx = RECOMPUI_NULL_CONTEXT;
-static RecompuiResource sRoot;
-static RecompuiResource sPanel;
-static RecompuiResource sBody;
+static bool sPoolBuilt;
+static PoolColumn sCols[MENU_COLS];
+static RecompuiResource sTitleLabel;
+static RecompuiResource sTabRow;
+static RecompuiResource sNoticeLabel;
+static PoolButton sCloseBtn;
+static PoolButton sTabBtn[TAB_COUNT];
+static u32 sTitleHash, sTitleShownColor, sNoticeHash;
+static u8 sTabRowShown, sNoticeShown;
+
+/* Menu state */
 static bool sShown;
 static bool sRebuild;
 static bool sRetireMode;
@@ -104,84 +205,170 @@ static s32 sTab;
 static s32 sGrove;
 static s32 sSelKind;
 static s32 sSelIndex;
-static s32 sPage;
 static s32 sWorldWasEnabled;
 static char sNotice[128];
 
-/* ------------------------------------------------------------------ */
-/* Widgets                                                             */
-/* ------------------------------------------------------------------ */
-
 static void on_click(RecompuiResource resource, const RecompuiEventData *event, void *userdata);
 
-static RecompuiResource button(RecompuiResource parent, const char *text, s32 action, s32 arg, bool primary) {
-    RecompuiResource b = recompui_create_button(sCtx, parent, text, primary ? BUTTONSTYLE_PRIMARY : BUTTONSTYLE_SECONDARY);
-    recompui_set_font_size(b, 18.0f, UNIT_DP);
-    recompui_set_padding(b, 6.0f, UNIT_DP);
-    recompui_register_callback(b, on_click, (void *)(u32)(((action & 0xFFFF) << 16) | (arg & 0xFFFF)));
-    return b;
-}
+/* ------------------------------------------------------------------ */
+/* Text helpers                                                        */
+/* ------------------------------------------------------------------ */
 
-static RecompuiResource col(RecompuiResource parent, f32 width) {
-    RecompuiResource c = ui_box(sCtx, parent, FALSE);
-    recompui_set_gap(c, 6.0f, UNIT_DP);
-    if (width > 0.0f) {
-        recompui_set_width(c, width, UNIT_DP);
-    } else {
-        recompui_set_flex_grow(c, 1.0f);
+static void copy_text(char *dst, const char *src, s32 len, s32 cap) {
+    s32 i;
+    if (len > cap - 1) {
+        len = cap - 1;
     }
-    return c;
+    for (i = 0; i < len && src[i]; i++) {
+        dst[i] = src[i];
+    }
+    dst[i] = '\0';
 }
 
-static RecompuiResource row(RecompuiResource parent) {
-    RecompuiResource r = ui_box(sCtx, parent, TRUE);
-    recompui_set_gap(r, 8.0f, UNIT_DP);
-    recompui_set_align_items(r, ALIGN_ITEMS_CENTER);
-    return r;
-}
-
-static RecompuiResource inset(RecompuiResource parent, f32 width) {
-    RecompuiResource c = col(parent, width);
-    ui_set_bg(c, UI_INSET_BG);
-    ui_set_border(c, 0x6B5530FF, 1.0f, 8.0f);
-    recompui_set_padding(c, 10.0f, UNIT_DP);
-    return c;
-}
-
-static RecompuiResource scroller(RecompuiResource parent, f32 width, f32 height) {
-    RecompuiResource c = inset(parent, width);
-    recompui_set_max_height(c, height, UNIT_DP);
-    recompui_set_overflow_y(c, OVERFLOW_AUTO);
-    return c;
-}
-
-static RecompuiResource text(RecompuiResource parent, const char *t, f32 size, u32 color) {
-    return ui_label(sCtx, parent, t, size, color);
-}
-
-static RecompuiResource header(RecompuiResource parent, const char *t) {
-    RecompuiResource h = text(parent, t, 24.0f, UI_HEADER);
-    recompui_set_font_weight(h, 700);
-    return h;
+/* Never 0, so every pool element gets its first text. */
+static u32 text_hash(const char *s) {
+    u32 h = 2166136261u;
+    while (*s) {
+        h = (h ^ (u8)*s++) * 16777619u;
+    }
+    return h | 1;
 }
 
 static void notice(const char *msg) {
-    s32 i = 0;
-    while (msg[i] && i < 127) {
-        sNotice[i] = msg[i];
-        i++;
-    }
-    sNotice[i] = '\0';
+    copy_text(sNotice, msg, 127, sizeof(sNotice));
 }
 
-static void stat_line(RecompuiResource parent, const char *label, s32 value, const char *suffix) {
+/* ------------------------------------------------------------------ */
+/* Describing a page                                                   */
+/* ------------------------------------------------------------------ */
+
+static void page_begin(void) {
+    s32 c;
+    for (c = 0; c < MENU_COLS; c++) {
+        sSpecCount[c] = 0;
+        sSpecWidth[c] = -1.0f;
+        sSpecOverflow[c] = FALSE;
+    }
+    sCol = 0;
+    sPendingGap = FALSE;
+}
+
+static void use_col(s32 c, f32 width) {
+    sCol = c;
+    sSpecWidth[c] = width;
+    sPendingGap = FALSE;
+}
+
+static LineSpec *new_line(void) {
+    s32 n = sSpecCount[sCol];
+    LineSpec *l;
+    if (n >= COL_LINES) {
+        sSpecOverflow[sCol] = TRUE;
+        return NULL;
+    }
+    l = &sSpec[sCol][n];
+    sSpecCount[sCol] = n + 1;
+    l->text[0] = '\0';
+    l->color = UI_TEXT;
+    l->style = LS_NORMAL;
+    l->gap = sPendingGap && n > 0;
+    l->closed = FALSE;
+    l->buttons = 0;
+    sPendingGap = FALSE;
+    return l;
+}
+
+static LineSpec *last_line(void) {
+    s32 n = sSpecCount[sCol];
+    return n > 0 ? &sSpec[sCol][n - 1] : NULL;
+}
+
+static void end_line(void) {
+    LineSpec *l = last_line();
+    if (l != NULL) {
+        l->closed = TRUE;
+    }
+}
+
+static void put_gap(void) {
+    end_line();
+    sPendingGap = TRUE;
+}
+
+/* One line per '\n'-separated part. The last line stays open for buttons. */
+static void put_text(const char *text, u32 color, s32 style) {
+    while (TRUE) {
+        s32 n = 0;
+        LineSpec *l;
+        while (text[n] != '\0' && text[n] != '\n') {
+            n++;
+        }
+        l = new_line();
+        if (l != NULL) {
+            copy_text(l->text, text, n, LINE_TEXT);
+            l->color = color;
+            l->style = style;
+        }
+        if (text[n] == '\0') {
+            break;
+        }
+        end_line();
+        text += n + 1;
+    }
+}
+
+static void header(const char *text) {
+    put_gap();
+    put_text(text, UI_HEADER, LS_HEADER);
+    end_line();
+}
+
+static void put_line(const char *text, u32 color, s32 style) {
+    put_text(text, color, style);
+    end_line();
+}
+
+static ButtonSpec *add_button(const char *text, s32 action, s32 arg, bool primary, bool ownLine) {
+    LineSpec *l = last_line();
+    ButtonSpec *b;
+    if (ownLine || l == NULL || l->closed || l->buttons >= LINE_BUTTONS) {
+        l = new_line();
+        if (l == NULL) {
+            return NULL;
+        }
+    }
+    b = &l->btn[l->buttons++];
+    copy_text(b->text, text, BUTTON_TEXT, BUTTON_TEXT);
+    b->color = UI_TEXT;
+    b->action = action;
+    b->arg = arg;
+    b->primary = primary;
+    b->wide = FALSE;
+    return b;
+}
+
+/* Joins the current line (next to its text or a previous button) when there is room. */
+static void put_button(const char *text, s32 action, s32 arg, bool primary) {
+    add_button(text, action, arg, primary, FALSE);
+}
+
+/* A full-width, left-aligned button on its own line. One more put_button may join it. */
+static void put_wide(const char *text, u32 color, s32 action, s32 arg, bool primary) {
+    ButtonSpec *b = add_button(text, action, arg, primary, TRUE);
+    if (b != NULL) {
+        b->color = color;
+        b->wide = TRUE;
+    }
+}
+
+static void put_stat(const char *label, s32 value, const char *suffix) {
     char buf[96];
     buf[0] = '\0';
     fate_strcat(buf, label);
     fate_strcat(buf, ": ");
     fate_strcat_int(buf, value);
     fate_strcat(buf, suffix);
-    text(parent, buf, 18.0f, UI_TEXT);
+    put_line(buf, UI_TEXT, LS_NORMAL);
 }
 
 static FateItem *selected_item(void) {
@@ -195,54 +382,58 @@ static FateItem *selected_item(void) {
     }
 }
 
-static void item_button(RecompuiResource parent, const FateItem *item, s32 selKind, s32 index, const char *prefix) {
+static void put_item(const FateItem *item, s32 selKind, s32 index, const char *prefix) {
     char name[96];
-    char line[128];
-    RecompuiResource b;
+    char line[BUTTON_TEXT];
     fate_item_name(item, name, sizeof(name));
     line[0] = '\0';
     if (prefix) {
         fate_strcat(line, prefix);
     }
-    fate_strcat(line, name);
-    b = button(parent, line, ACT_SELECT, (selKind << 8) | index, sSelKind == selKind && sSelIndex == index);
-    ui_set_text_color(b, fate_rarity_color(item->rarity));
+    copy_text(line + fate_strlen(line), name, BUTTON_TEXT, BUTTON_TEXT - fate_strlen(line));
+    put_wide(line, fate_rarity_color(item->rarity), ACT_SELECT, (selKind << 8) | index, sSelKind == selKind && sSelIndex == index);
 }
 
-static void item_details(RecompuiResource parent, const FateItem *item) {
+static void put_item_details(const FateItem *item) {
     char name[96];
     static char desc[768];
-    RecompuiResource n;
     if (item == NULL || fate_item_empty(item)) {
-        text(parent, "Select an item to see its details.", 18.0f, UI_TEXT_DIM);
+        put_line("Select an item to see its details.", UI_TEXT_DIM, LS_SMALL);
         return;
     }
     fate_item_name(item, name, sizeof(name));
-    n = text(parent, name, 22.0f, fate_rarity_color(item->rarity));
-    recompui_set_font_weight(n, 700);
+    put_line(name, fate_rarity_color(item->rarity), LS_HEADER);
     fate_item_describe(item, desc, sizeof(desc));
-    text(parent, desc, 17.0f, UI_TEXT);
+    put_line(desc, UI_TEXT, LS_SMALL);
+}
+
+static void put_price(const char *label, s32 price, s32 action, s32 arg) {
+    char buf[32];
+    buf[0] = '\0';
+    fate_strcat(buf, "Buy (");
+    fate_strcat_int(buf, price);
+    fate_strcat(buf, "g)");
+    put_text(label, UI_TEXT, LS_NORMAL);
+    put_button(buf, action, arg, gFate.gold >= (u32)price);
+    end_line();
 }
 
 /* ------------------------------------------------------------------ */
 /* Character tab                                                       */
 /* ------------------------------------------------------------------ */
 
-static void build_character(RecompuiResource body) {
-    RecompuiResource c1 = inset(body, 430.0f);
-    RecompuiResource c2 = inset(body, 430.0f);
-    RecompuiResource c3 = inset(body, 0.0f);
+static void build_character(void) {
     char buf[128];
     s32 i;
     u32 nextFame;
 
-    header(c1, "Attributes");
+    use_col(0, 440.0f);
+    header("Attributes");
     buf[0] = '\0';
     fate_strcat(buf, "Unspent points: ");
     fate_strcat_int(buf, gFate.statPoints);
-    text(c1, buf, 18.0f, gFate.statPoints ? MSG_COLOR_XP : UI_TEXT_DIM);
+    put_line(buf, gFate.statPoints ? MSG_COLOR_XP : UI_TEXT_DIM, LS_NORMAL);
     for (i = 0; i < STAT_COUNT; i++) {
-        RecompuiResource r = row(c1);
         buf[0] = '\0';
         fate_strcat(buf, gStatNames[i]);
         fate_strcat(buf, "  ");
@@ -252,15 +443,16 @@ static void build_character(RecompuiResource body) {
             fate_strcat_int(buf, gFate.stats[i]);
             fate_strcat(buf, ")");
         }
-        text(r, buf, 19.0f, UI_TEXT);
+        put_text(buf, UI_TEXT, LS_NORMAL);
         if (gFate.statPoints > 0) {
-            button(r, "+", ACT_RAISE_STAT, i, TRUE);
+            put_button("+", ACT_RAISE_STAT, i, TRUE);
         }
+        end_line();
     }
-    header(c1, "Combat");
-    stat_line(c1, "Health", gDerived.maxHp, "");
-    stat_line(c1, "Mana", gDerived.maxMana, "");
-    stat_line(c1, "Armor", gDerived.armor, "");
+    header("Combat");
+    put_stat("Health", gDerived.maxHp, "");
+    put_stat("Mana", gDerived.maxMana, "");
+    put_stat("Armor", gDerived.armor, "");
     buf[0] = '\0';
     fate_strcat(buf, "Paw damage: ");
     fate_strcat_int(buf, gDerived.pawMin + gDerived.stat[STAT_STR] / 4);
@@ -270,32 +462,34 @@ static void build_character(RecompuiResource body) {
     fate_strcat_int(buf, gDerived.beakMin);
     fate_strcat(buf, "-");
     fate_strcat_int(buf, gDerived.beakMax);
-    text(c1, buf, 18.0f, UI_TEXT);
-    stat_line(c1, "Critical chance", gDerived.critChance / 100, "%");
-    stat_line(c1, "Block", gDerived.block, "%");
-    stat_line(c1, "Dodge", gDerived.dodge, "%");
-    if (gDerived.goldFind) stat_line(c1, "Gold find", gDerived.goldFind, "%");
-    if (gDerived.magicFind) stat_line(c1, "Magic find", gDerived.magicFind, "%");
-    if (gDerived.lifeSteal) stat_line(c1, "Life steal", gDerived.lifeSteal, "%");
+    put_line(buf, UI_TEXT, LS_NORMAL);
+    put_stat("Critical chance", gDerived.critChance / 100, "%");
+    put_stat("Block", gDerived.block, "%");
+    put_stat("Dodge", gDerived.dodge, "%");
+    if (gDerived.goldFind) put_stat("Gold find", gDerived.goldFind, "%");
+    if (gDerived.magicFind) put_stat("Magic find", gDerived.magicFind, "%");
+    if (gDerived.lifeSteal) put_stat("Life steal", gDerived.lifeSteal, "%");
 
-    header(c2, "Skills");
+    use_col(1, 440.0f);
+    header("Skills");
     buf[0] = '\0';
     fate_strcat(buf, "Unspent points: ");
     fate_strcat_int(buf, gFate.skillPoints);
-    text(c2, buf, 18.0f, gFate.skillPoints ? MSG_COLOR_XP : UI_TEXT_DIM);
+    put_line(buf, gFate.skillPoints ? MSG_COLOR_XP : UI_TEXT_DIM, LS_NORMAL);
     for (i = 0; i < SKILL_COUNT; i++) {
-        RecompuiResource r = row(c2);
         buf[0] = '\0';
         fate_strcat(buf, gSkillNames[i]);
         fate_strcat(buf, "  ");
         fate_strcat_int(buf, gFate.skills[i]);
-        text(r, buf, 18.0f, gFate.skills[i] ? UI_TEXT : UI_TEXT_DIM);
+        put_text(buf, gFate.skills[i] ? UI_TEXT : UI_TEXT_DIM, LS_NORMAL);
         if (gFate.skillPoints > 0 && gFate.skills[i] < FATE_SKILL_MAX) {
-            button(r, "+", ACT_RAISE_SKILL, i, TRUE);
+            put_button("+", ACT_RAISE_SKILL, i, TRUE);
         }
+        end_line();
     }
 
-    header(c3, "Banjo and Kazooie");
+    use_col(2, 0.0f);
+    header("Banjo and Kazooie");
     buf[0] = '\0';
     fate_strcat(buf, "Level ");
     fate_strcat_int(buf, gFate.level);
@@ -303,56 +497,59 @@ static void build_character(RecompuiResource body) {
     fate_strcat_int(buf, (s32)gFate.xp);
     fate_strcat(buf, " / ");
     fate_strcat_int(buf, (s32)fate_xp_for_level(gFate.level + 1));
-    text(c3, buf, 18.0f, UI_TEXT);
+    put_line(buf, UI_TEXT, LS_NORMAL);
     buf[0] = '\0';
     fate_strcat(buf, "Fame: ");
     fate_strcat(buf, fate_fame_title());
     fate_strcat(buf, " (level ");
     fate_strcat_int(buf, fate_fame_level());
     fate_strcat(buf, ")");
-    text(c3, buf, 19.0f, MSG_COLOR_FAME);
+    put_line(buf, MSG_COLOR_FAME, LS_NORMAL);
     nextFame = fate_fame_for_level(fate_fame_level() + 1);
     buf[0] = '\0';
     fate_strcat_int(buf, (s32)gFate.fame);
     fate_strcat(buf, " / ");
     fate_strcat_int(buf, (s32)nextFame);
     fate_strcat(buf, " fame to the next title (+4 skill points)");
-    text(c3, buf, 16.0f, UI_TEXT_DIM);
-    stat_line(c3, "Gold", (s32)gFate.gold, "");
-    stat_line(c3, "Monsters slain", (s32)gFate.kills, "");
-    stat_line(c3, "Champions slain", (s32)gFate.championKills, "");
-    stat_line(c3, "Quests completed", gFate.questsCompleted, "");
-    stat_line(c3, "Deaths", gFate.deaths, "");
+    put_line(buf, UI_TEXT_DIM, LS_SMALL);
+    put_stat("Gold", (s32)gFate.gold, "");
+    put_stat("Monsters slain", (s32)gFate.kills, "");
+    put_stat("Champions slain", (s32)gFate.championKills, "");
+    put_stat("Quests completed", gFate.questsCompleted, "");
+    put_stat("Deaths", gFate.deaths, "");
     if (gFate.generation > 0) {
         buf[0] = '\0';
         fate_strcat(buf, "Generation ");
         fate_strcat_int(buf, gFate.generation + 1);
         fate_strcat(buf, " of your line");
-        text(c3, buf, 18.0f, MSG_COLOR_GOLD);
+        put_line(buf, MSG_COLOR_GOLD, LS_NORMAL);
     }
     if (gFate.nightmare > 0) {
-        stat_line(c3, "Nightmare tier", gFate.nightmare, " (+10 depth each)");
+        put_stat("Nightmare tier", gFate.nightmare, " (+10 depth each)");
     }
 
     if (fileProgressFlag_get(FILEPROG_FC_DEFEAT_GRUNTY)) {
-        header(c3, "Gruntilda is defeated!");
+        header("Gruntilda is defeated!");
         if (fate_can_retire()) {
-            text(c3, "Retire this hero and pass one equipped item to your heir.\nThe heirloom grows 25% stronger each generation.", 16.0f, UI_TEXT_DIM);
-            button(c3, sRetireMode ? "Choose the heirloom below..." : "Retire", ACT_RETIRE_MODE, 0, TRUE);
+            put_line("Retire this hero and pass one equipped item to your heir.\nThe heirloom grows 25% stronger each generation.", UI_TEXT_DIM, LS_SMALL);
+            put_wide(sRetireMode ? "Choose the heirloom below..." : "Retire", UI_TEXT, ACT_RETIRE_MODE, 0, TRUE);
+            end_line();
             if (sRetireMode) {
                 for (i = 0; i < SLOT_COUNT; i++) {
                     if (!fate_item_empty(&gFate.equip[i])) {
                         char name[96];
                         fate_item_name(&gFate.equip[i], name, sizeof(name));
-                        button(c3, name, ACT_RETIRE_ITEM, i, FALSE);
+                        put_wide(name, fate_rarity_color(gFate.equip[i].rarity), ACT_RETIRE_ITEM, i, FALSE);
+                        end_line();
                     }
                 }
             }
         } else if (gFate.retired) {
-            text(c3, "This hero has retired. Start a new game file to play as the heir.", 16.0f, UI_TEXT_DIM);
+            put_line("This hero has retired. Start a new game file to play as the heir.", UI_TEXT_DIM, LS_SMALL);
         }
         if (gFate.nightmare < 5) {
-            button(c3, "Descend into Nightmare (every world +10 depth)", ACT_NIGHTMARE, 0, FALSE);
+            put_wide("Descend into Nightmare (every world +10 depth)", UI_TEXT, ACT_NIGHTMARE, 0, FALSE);
+            end_line();
         }
     }
 }
@@ -361,101 +558,107 @@ static void build_character(RecompuiResource body) {
 /* Inventory tab                                                       */
 /* ------------------------------------------------------------------ */
 
-static void build_inventory(RecompuiResource body) {
-    RecompuiResource cEquip = inset(body, 470.0f);
-    RecompuiResource cPack = scroller(body, 470.0f, 700.0f);
-    RecompuiResource cInfo = inset(body, 0.0f);
+static void build_inventory(void) {
     FateItem *sel;
     char buf[128];
     s32 i;
 
-    header(cEquip, "Equipped");
+    use_col(0, 500.0f);
+    header("Equipped");
     for (i = 0; i < SLOT_COUNT; i++) {
         char prefix[40];
         prefix[0] = '\0';
-        fate_strcat(prefix, gSlotNames[i]);
+        fate_strcat(prefix, sSlotShort[i]);
         fate_strcat(prefix, ": ");
         if (fate_item_empty(&gFate.equip[i])) {
             fate_strcat(prefix, "-");
-            text(cEquip, prefix, 17.0f, UI_TEXT_DIM);
+            put_line(prefix, UI_TEXT_DIM, LS_SMALL);
         } else {
-            item_button(cEquip, &gFate.equip[i], SEL_EQUIP, i, prefix);
+            put_item(&gFate.equip[i], SEL_EQUIP, i, prefix);
+            end_line();
         }
     }
-    header(cEquip, "Belt");
+    header("Belt");
     for (i = 0; i < CONS_COUNT; i++) {
         buf[0] = '\0';
         fate_strcat(buf, gConsumableNames[i]);
         fate_strcat(buf, " x");
         fate_strcat_int(buf, gFate.consumables[i]);
-        text(cEquip, buf, 17.0f, gFate.consumables[i] ? UI_TEXT : UI_TEXT_DIM);
+        put_line(buf, gFate.consumables[i] ? UI_TEXT : UI_TEXT_DIM, LS_SMALL);
     }
     if (gFate.consumables[CONS_TOWN_PORTAL] > 0 && !fate_in_town()) {
-        button(cEquip, "Read a Scroll of Return (go to Grove)", ACT_USE_RETURN, 0, TRUE);
+        put_wide("Read a Scroll of Return (go to Grove)", UI_TEXT, ACT_USE_RETURN, 0, TRUE);
+        end_line();
     }
     {
         bool anyGem = FALSE;
         for (i = 1; i < gGemCount && i < 16; i++) {
             if (gFate.gems[i]) {
                 if (!anyGem) {
-                    header(cEquip, "Gems");
+                    header("Gems");
                     anyGem = TRUE;
                 }
                 buf[0] = '\0';
                 fate_strcat(buf, gGems[i].name);
                 fate_strcat(buf, " x");
                 fate_strcat_int(buf, gFate.gems[i]);
-                text(cEquip, buf, 17.0f, 0x7FFFD4FF);
+                put_line(buf, 0x7FFFD4FF, LS_SMALL);
             }
         }
     }
 
+    use_col(1, 450.0f);
     buf[0] = '\0';
     fate_strcat(buf, "Pack (");
     fate_strcat_int(buf, INV_SIZE - fate_inventory_free_slots());
     fate_strcat(buf, "/");
     fate_strcat_int(buf, INV_SIZE);
     fate_strcat(buf, ")");
-    header(cPack, buf);
+    header(buf);
     for (i = 0; i < INV_SIZE; i++) {
         if (!fate_item_empty(&gFate.inv[i])) {
-            item_button(cPack, &gFate.inv[i], SEL_INV, i, NULL);
+            put_item(&gFate.inv[i], SEL_INV, i, NULL);
+            end_line();
         }
     }
     if (fate_inventory_free_slots() == INV_SIZE) {
-        text(cPack, "Your pack is empty. Slay monsters to find loot!", 17.0f, UI_TEXT_DIM);
+        put_line("Your pack is empty. Slay monsters to find loot!", UI_TEXT_DIM, LS_SMALL);
     }
 
-    header(cInfo, "Details");
+    use_col(2, 0.0f);
+    header("Details");
     sel = selected_item();
     if (sSelKind != SEL_INV && sSelKind != SEL_EQUIP) {
         sel = NULL;
     }
-    item_details(cInfo, sel);
+    put_item_details(sel);
     if (sel != NULL && !fate_item_empty(sel)) {
-        RecompuiResource actions = row(cInfo);
         s32 kind = fate_item_base(sel)->kind;
+        put_gap();
         if (sSelKind == SEL_INV) {
             if (kind != KIND_ARTIFACT) {
-                button(actions, "Equip", ACT_EQUIP, sSelIndex, TRUE);
+                put_button("Equip", ACT_EQUIP, sSelIndex, TRUE);
             }
             if (kind == KIND_AMULET || kind == KIND_RING) {
-                button(actions, "Put on pet", ACT_PET_EQUIP, sSelIndex, FALSE);
+                put_button("Put on pet", ACT_PET_EQUIP, sSelIndex, FALSE);
             }
-            button(actions, "Give to pet", ACT_GIVE_PET, sSelIndex, FALSE);
+            put_button("Give to pet", ACT_GIVE_PET, sSelIndex, FALSE);
             if (fate_in_town()) {
                 buf[0] = '\0';
                 fate_strcat(buf, "Sell (");
                 fate_strcat_int(buf, fate_item_sell_price(sel));
                 fate_strcat(buf, "g)");
-                button(actions, buf, ACT_SELL, sSelIndex, FALSE);
+                put_button(buf, ACT_SELL, sSelIndex, FALSE);
             }
-            button(actions, "Drop", ACT_DROP, sSelIndex, FALSE);
+            put_button("Drop", ACT_DROP, sSelIndex, FALSE);
+            end_line();
             if (!fate_item_identified(sel) && gFate.consumables[CONS_IDENTIFY] > 0) {
-                button(cInfo, "Read a Scroll of Identify", ACT_IDENTIFY_SCROLL, sSelIndex, TRUE);
+                put_button("Read a Scroll of Identify", ACT_IDENTIFY_SCROLL, sSelIndex, TRUE);
+                end_line();
             }
         } else {
-            button(actions, "Unequip", ACT_UNEQUIP, sSelIndex, TRUE);
+            put_button("Unequip", ACT_UNEQUIP, sSelIndex, TRUE);
+            end_line();
         }
         if (fate_item_sockets(sel) > 0) {
             for (i = 1; i < gGemCount && i < 16; i++) {
@@ -463,9 +666,10 @@ static void build_inventory(RecompuiResource body) {
                     buf[0] = '\0';
                     fate_strcat(buf, "Socket ");
                     fate_strcat(buf, gGems[i].name);
-                    button(cInfo, buf, ACT_SOCKET_GEM, i, FALSE);
+                    put_button(buf, ACT_SOCKET_GEM, i, FALSE);
                 }
             }
+            end_line();
         }
     }
 }
@@ -474,32 +678,31 @@ static void build_inventory(RecompuiResource body) {
 /* Pet tab                                                             */
 /* ------------------------------------------------------------------ */
 
-static void build_pet(RecompuiResource body) {
-    RecompuiResource c1 = inset(body, 480.0f);
-    RecompuiResource c2 = scroller(body, 480.0f, 700.0f);
-    RecompuiResource c3 = inset(body, 0.0f);
+static void build_pet(void) {
     char buf[128];
     s32 i, t, sz;
     bool anyFish = FALSE;
     s32 bagCount = 0;
+    FateItem *sel;
 
+    use_col(0, 480.0f);
     if (gFate.petSpecies == PET_SPECIES_NONE) {
-        header(c1, "No pet");
-        text(c1, "Your pet is disabled in the mod settings.", 18.0f, UI_TEXT_DIM);
+        header("No pet");
+        put_line("Your pet is disabled in the mod settings.", UI_TEXT_DIM, LS_NORMAL);
         return;
     }
-    header(c1, fate_pet_name());
-    stat_line(c1, "Level", gFate.petLevel, "");
+    header(fate_pet_name());
+    put_stat("Level", gFate.petLevel, "");
     buf[0] = '\0';
     fate_strcat(buf, "Health: ");
     fate_strcat_int(buf, gFate.petHp);
     fate_strcat(buf, " / ");
     fate_strcat_int(buf, fate_pet_max_hp());
-    text(c1, buf, 18.0f, UI_TEXT);
-    stat_line(c1, "Damage per bite", fate_pet_damage(), "");
-    text(c1, fate_pet_status(), 18.0f, MSG_COLOR_PET);
+    put_line(buf, UI_TEXT, LS_NORMAL);
+    put_stat("Damage per bite", fate_pet_damage(), "");
+    put_line(fate_pet_status(), MSG_COLOR_PET, LS_NORMAL);
     if (gFate.petFormSeconds > 0) {
-        stat_line(c1, "Transformation lasts", gFate.petFormSeconds, " more seconds");
+        put_stat("Transformation lasts", gFate.petFormSeconds, " more seconds");
     }
     for (i = 0; i < PET_BAG_SIZE; i++) {
         if (!fate_item_empty(&gFate.petBag[i])) {
@@ -507,31 +710,35 @@ static void build_pet(RecompuiResource body) {
         }
     }
     if (fate_pet_town_seconds() <= 0.0f) {
+        put_gap();
         buf[0] = '\0';
         fate_strcat(buf, "Send to Grove to sell loot (");
         fate_strcat_int(buf, bagCount);
         fate_strcat(buf, " items)");
-        button(c1, buf, ACT_PET_SEND, 0, TRUE);
+        put_wide(buf, UI_TEXT, ACT_PET_SEND, 0, TRUE);
+        end_line();
         if (gFate.consumables[CONS_HP_POTION] > 0 && gFate.petHp < fate_pet_max_hp()) {
-            button(c1, "Give the pet a Health Potion", ACT_PET_POTION, 0, FALSE);
+            put_wide("Give the pet a Health Potion", UI_TEXT, ACT_PET_POTION, 0, FALSE);
+            end_line();
         }
     }
-    header(c1, "Pet jewelry");
+    header("Pet jewelry");
     for (i = 0; i < PET_EQUIP_COUNT; i++) {
         if (fate_item_empty(&gFate.petEquip[i])) {
-            text(c1, i == 0 ? "Collar: -" : "Charm: -", 17.0f, UI_TEXT_DIM);
+            put_line(i == 0 ? "Collar: -" : "Charm: -", UI_TEXT_DIM, LS_SMALL);
         } else {
-            item_button(c1, &gFate.petEquip[i], SEL_PETEQUIP, i, i == 0 ? "Collar: " : "Charm: ");
+            put_item(&gFate.petEquip[i], SEL_PETEQUIP, i, i == 0 ? "Collar: " : "Charm: ");
+            end_line();
         }
     }
-    text(c1, "Put amulets and rings on your pet from the Inventory tab.", 15.0f, UI_TEXT_DIM);
+    put_line("Put amulets and rings on your pet from the Inventory tab.", UI_TEXT_DIM, LS_SMALL);
 
-    header(c2, "Fish (feed to transform)");
+    use_col(1, 480.0f);
+    header("Fish (feed to transform)");
     for (t = 0; t < FISH_COUNT; t++) {
         for (sz = 0; sz < FISH_SIZE_COUNT; sz++) {
             s32 n = gFate.fish[t * FISH_SIZE_COUNT + sz];
             if (n > 0) {
-                RecompuiResource r = row(c2);
                 char name[48];
                 anyFish = TRUE;
                 fate_fish_name(t, sz, name, sizeof(name));
@@ -545,29 +752,37 @@ static void build_pet(RecompuiResource body) {
                 } else if (gFishDefs[t].petForm == PET_FORM_REVERT) {
                     fate_strcat(buf, " -> true form");
                 }
-                text(r, buf, 17.0f, sz == FISH_SIZE_FLAWLESS ? MSG_COLOR_GOLD : UI_TEXT);
+                put_text(buf, sz == FISH_SIZE_FLAWLESS ? MSG_COLOR_GOLD : UI_TEXT, LS_SMALL);
                 if (gFishDefs[t].petForm != PET_FORM_NONE) {
-                    button(r, "Feed", ACT_FEED_FISH, (t << 4) | sz, FALSE);
+                    put_button("Feed", ACT_FEED_FISH, (t << 4) | sz, FALSE);
                 }
+                end_line();
             }
         }
     }
     if (!anyFish) {
-        text(c2, "No fish. Buy a pole from Captain Blubber in Grove, wade into\nwater and press L. Small fish last 2 minutes, Flawless forever.", 16.0f, UI_TEXT_DIM);
+        put_line("No fish yet. Buy a pole from Captain Blubber in Grove, wade into water and press L.", UI_TEXT_DIM, LS_SMALL);
+        put_line("Small fish change your pet for 2 minutes. Flawless fish change it for good.", UI_TEXT_DIM, LS_SMALL);
     }
 
-    header(c3, "Pet's bag");
+    use_col(2, 0.0f);
+    header("Pet's bag");
     for (i = 0; i < PET_BAG_SIZE; i++) {
         if (!fate_item_empty(&gFate.petBag[i])) {
-            item_button(c3, &gFate.petBag[i], SEL_PETBAG, i, NULL);
+            put_item(&gFate.petBag[i], SEL_PETBAG, i, NULL);
+            end_line();
         }
     }
     if (bagCount == 0) {
-        text(c3, "Empty. When your pack is full, loot goes to your pet.", 16.0f, UI_TEXT_DIM);
+        put_line("Empty. When your pack is full, loot goes to your pet.", UI_TEXT_DIM, LS_SMALL);
     }
-    if ((sSelKind == SEL_PETBAG || sSelKind == SEL_PETEQUIP) && selected_item() && !fate_item_empty(selected_item())) {
-        item_details(c3, selected_item());
-        button(c3, sSelKind == SEL_PETBAG ? "Take back" : "Remove from pet", sSelKind == SEL_PETBAG ? ACT_PET_TAKE : ACT_PET_UNEQUIP, sSelIndex, TRUE);
+    sel = selected_item();
+    if ((sSelKind == SEL_PETBAG || sSelKind == SEL_PETEQUIP) && sel != NULL && !fate_item_empty(sel)) {
+        put_gap();
+        put_item_details(sel);
+        put_button(sSelKind == SEL_PETBAG ? "Take back" : "Remove from pet",
+                   sSelKind == SEL_PETBAG ? ACT_PET_TAKE : ACT_PET_UNEQUIP, sSelIndex, TRUE);
+        end_line();
     }
 }
 
@@ -575,16 +790,17 @@ static void build_pet(RecompuiResource body) {
 /* Spells tab                                                          */
 /* ------------------------------------------------------------------ */
 
-static void build_spells(RecompuiResource body) {
-    RecompuiResource c = scroller(body, 0.0f, 720.0f);
+static void build_spells(void) {
     char buf[160];
     s32 i;
 
-    header(c, "Spellbook (D-Pad Right casts, L cycles)");
+    use_col(0, 0.0f);
+    header("Spellbook (D-Pad Right casts, L cycles)");
     for (i = 0; i < SPELL_COUNT; i++) {
         const FateSpellDef *d = &gSpellDefs[i];
-        RecompuiResource r = row(c);
-        RecompuiResource info = col(r, 0.0f);
+        bool known = fate_spell_known(i);
+        bool selected = known && i == gFate.selectedSpell;
+        put_gap();
         buf[0] = '\0';
         fate_strcat(buf, d->name);
         fate_strcat(buf, "  (");
@@ -592,20 +808,21 @@ static void build_spells(RecompuiResource body) {
         fate_strcat(buf, ", needs ");
         fate_strcat_int(buf, d->reqMag);
         fate_strcat(buf, " Magic)");
-        text(info, buf, 19.0f, fate_spell_known(i) ? (i == gFate.selectedSpell ? UI_HEADER : UI_TEXT) : UI_TEXT_DIM);
+        put_text(buf, known ? (selected ? UI_HEADER : UI_TEXT) : UI_TEXT_DIM, LS_NORMAL);
+        if (known) {
+            put_button(selected ? "Selected" : "Select", ACT_SELECT_SPELL, i, selected);
+        }
+        end_line();
         buf[0] = '\0';
         fate_strcat(buf, d->desc);
-        if (fate_spell_known(i)) {
+        if (known) {
             fate_strcat(buf, "  Costs ");
             fate_strcat_int(buf, fate_spell_mana_cost(i));
             fate_strcat(buf, " mana.");
         } else {
             fate_strcat(buf, "  Sold by Cheato in Grove.");
         }
-        text(info, buf, 16.0f, UI_TEXT_DIM);
-        if (fate_spell_known(i)) {
-            button(r, i == gFate.selectedSpell ? "Selected" : "Select", ACT_SELECT_SPELL, i, i == gFate.selectedSpell);
-        }
+        put_line(buf, UI_TEXT_DIM, LS_SMALL);
     }
 }
 
@@ -613,51 +830,55 @@ static void build_spells(RecompuiResource body) {
 /* Quests tab                                                          */
 /* ------------------------------------------------------------------ */
 
-static void quest_card(RecompuiResource parent, const FateQuest *q, s32 index, bool board) {
-    RecompuiResource card = inset(parent, 0.0f);
+static void put_quest(const FateQuest *q, s32 index, bool board) {
     char buf[256];
-    RecompuiResource r;
+    put_gap();
     fate_quest_title(q, buf, sizeof(buf));
-    text(card, buf, 19.0f, q->state == QSTATE_READY ? MSG_COLOR_XP : MSG_COLOR_QUEST);
+    put_line(buf, q->state == QSTATE_READY ? MSG_COLOR_XP : MSG_COLOR_QUEST, LS_NORMAL);
     fate_quest_describe(q, buf, sizeof(buf));
-    text(card, buf, 16.0f, UI_TEXT);
-    r = row(card);
+    put_line(buf, UI_TEXT, LS_SMALL);
     if (board) {
-        button(r, "Accept", ACT_QUEST_ACCEPT, index, TRUE);
+        put_button("Accept", ACT_QUEST_ACCEPT, index, TRUE);
     } else {
         if (q->state == QSTATE_READY && fate_in_town()) {
-            button(r, "Collect reward", ACT_QUEST_TURNIN, index, TRUE);
+            put_button("Collect reward", ACT_QUEST_TURNIN, index, TRUE);
         }
-        button(r, "Abandon", ACT_QUEST_ABANDON, index, FALSE);
+        put_button("Abandon", ACT_QUEST_ABANDON, index, FALSE);
     }
+    end_line();
 }
 
-static void build_quests(RecompuiResource body) {
-    RecompuiResource c1 = col(body, 0.0f);
-    RecompuiResource c2 = col(body, 0.0f);
+static void build_quests(void) {
     s32 i;
     bool any = FALSE;
 
-    header(c1, "Quest log");
+    use_col(0, 0.0f);
+    header("Quest log");
     for (i = 0; i < MAX_ACTIVE_QUESTS; i++) {
         if (gFate.quests[i].type != QUEST_NONE) {
-            quest_card(c1, &gFate.quests[i], i, FALSE);
+            put_quest(&gFate.quests[i], i, FALSE);
             any = TRUE;
         }
     }
     if (!any) {
-        text(c1, "No quests. The folk of Grove post requests on the quest board.", 17.0f, UI_TEXT_DIM);
+        put_line("No quests. The folk of Grove post requests on the quest board.", UI_TEXT_DIM, LS_SMALL);
     }
 
-    header(c2, "Grove quest board");
+    use_col(1, 0.0f);
+    header("Grove quest board");
     if (!fate_in_town()) {
-        text(c2, "Return to Grove (Spiral Mountain) to take on new quests\nand collect your rewards.", 17.0f, UI_TEXT_DIM);
+        put_line("Return to Grove (Spiral Mountain) to take on new quests and collect your rewards.", UI_TEXT_DIM, LS_SMALL);
         return;
     }
+    any = FALSE;
     for (i = 0; i < QUEST_BOARD_SIZE; i++) {
         if (gFate.board[i].type != QUEST_NONE) {
-            quest_card(c2, &gFate.board[i], i, TRUE);
+            put_quest(&gFate.board[i], i, TRUE);
+            any = TRUE;
         }
+    }
+    if (!any) {
+        put_line("No new requests. Check back after your next adventure.", UI_TEXT_DIM, LS_SMALL);
     }
 }
 
@@ -665,175 +886,181 @@ static void build_quests(RecompuiResource body) {
 /* Grove tab                                                           */
 /* ------------------------------------------------------------------ */
 
-static void price_row(RecompuiResource parent, const char *label, s32 price, s32 action, s32 arg) {
-    RecompuiResource r = row(parent);
-    char buf[96];
-    text(r, label, 18.0f, UI_TEXT);
-    buf[0] = '\0';
-    fate_strcat(buf, "Buy (");
-    fate_strcat_int(buf, price);
-    fate_strcat(buf, "g)");
-    button(r, buf, action, arg, gFate.gold >= (u32)price);
-}
-
-static void build_grove(RecompuiResource body) {
-    RecompuiResource nav = inset(body, 320.0f);
-    RecompuiResource c = scroller(body, 0.0f, 720.0f);
+static void build_grove(void) {
     char buf[160];
     s32 i;
+    FateItem *sel = selected_item();
 
-    header(nav, "Grove");
+    use_col(0, 340.0f);
+    header("Grove");
     for (i = 0; i < GROVE_COUNT; i++) {
-        button(nav, sGroveNames[i], ACT_GROVE_SECTION, i, i == sGrove);
+        put_wide(sGroveNames[i], UI_TEXT, ACT_GROVE_SECTION, i, i == sGrove);
+        end_line();
     }
     if (gFate.portalMap != 0) {
-        button(nav, "Step through the portal", ACT_PORTAL, 0, FALSE);
+        put_gap();
+        put_wide("Step through the portal", 0x9EE6FFFF, ACT_PORTAL, 0, FALSE);
+        end_line();
     }
+    put_gap();
     buf[0] = '\0';
     fate_strcat(buf, "Gold: ");
     fate_strcat_int(buf, (s32)gFate.gold);
-    text(nav, buf, 20.0f, MSG_COLOR_GOLD);
+    put_line(buf, MSG_COLOR_GOLD, LS_HEADER);
 
-    header(c, sGroveNames[sGrove]);
+    use_col(1, 0.0f);
+    header(sGroveNames[sGrove]);
     switch (sGrove) {
-        case GROVE_BOTTLES:
-            text(c, "Bottles: \"Potions, scrolls, and I'll identify your finds, Banjo!\"", 17.0f, UI_TEXT_DIM);
+        case GROVE_BOTTLES: {
+            bool any = FALSE;
+            put_line("Bottles: \"Potions, scrolls, and I'll identify your finds, Banjo!\"", UI_TEXT_DIM, LS_SMALL);
             for (i = 0; i < CONS_COUNT; i++) {
                 buf[0] = '\0';
                 fate_strcat(buf, gConsumableNames[i]);
                 fate_strcat(buf, "  (have ");
                 fate_strcat_int(buf, gFate.consumables[i]);
                 fate_strcat(buf, ")");
-                price_row(c, buf, gConsumablePrices[i], ACT_BUY_CONS, i);
+                put_price(buf, gConsumablePrices[i], ACT_BUY_CONS, i);
             }
-            header(c, "Identify");
-            {
-                bool any = FALSE;
-                for (i = 0; i < INV_SIZE; i++) {
-                    if (!fate_item_empty(&gFate.inv[i]) && !fate_item_identified(&gFate.inv[i])) {
-                        char name[96];
-                        RecompuiResource r = row(c);
-                        any = TRUE;
-                        fate_item_name(&gFate.inv[i], name, sizeof(name));
-                        text(r, name, 17.0f, fate_rarity_color(gFate.inv[i].rarity));
-                        buf[0] = '\0';
-                        fate_strcat(buf, "Identify (");
-                        fate_strcat_int(buf, fate_identify_cost(&gFate.inv[i]));
-                        fate_strcat(buf, "g)");
-                        button(r, buf, ACT_IDENTIFY_PAID, i, FALSE);
-                    }
-                }
-                if (!any) {
-                    text(c, "Nothing to identify.", 16.0f, UI_TEXT_DIM);
-                }
-            }
-            header(c, "Sell");
-            text(c, "Sell single items from the Inventory tab while you're in Grove.", 16.0f, UI_TEXT_DIM);
-            button(c, "Sell all plain (white) items", ACT_SELL_JUNK, 0, FALSE);
-            break;
+            header("Sell");
+            put_line("Sell single items from the Inventory tab while you're in Grove.", UI_TEXT_DIM, LS_SMALL);
+            put_button("Sell all plain (white) items", ACT_SELL_JUNK, 0, FALSE);
+            end_line();
 
-        case GROVE_GOBI: {
-            FateItem *sel = (sSelKind == SEL_SHOP) ? selected_item() : NULL;
-            text(c, "Gobi: \"Lugged it all the way from the desert. New stock every visit.\"", 17.0f, UI_TEXT_DIM);
-            for (i = 0; i < SHOP_STOCK; i++) {
-                if (!fate_item_empty(&gShopStock[i])) {
-                    RecompuiResource r = row(c);
+            use_col(2, 520.0f);
+            header("Identify");
+            for (i = 0; i < INV_SIZE; i++) {
+                if (!fate_item_empty(&gFate.inv[i]) && !fate_item_identified(&gFate.inv[i])) {
                     char name[96];
-                    fate_item_name(&gShopStock[i], name, sizeof(name));
+                    any = TRUE;
+                    fate_item_name(&gFate.inv[i], name, sizeof(name));
+                    put_text(name, fate_rarity_color(gFate.inv[i].rarity), LS_SMALL);
                     buf[0] = '\0';
-                    fate_strcat(buf, name);
-                    fate_strcat(buf, "  - ");
-                    fate_strcat_int(buf, fate_item_buy_price(&gShopStock[i]));
-                    fate_strcat(buf, "g");
-                    {
-                        RecompuiResource b = button(r, buf, ACT_SELECT, (SEL_SHOP << 8) | i, sSelKind == SEL_SHOP && sSelIndex == i);
-                        ui_set_text_color(b, fate_rarity_color(gShopStock[i].rarity));
-                    }
-                    button(r, "Buy", ACT_BUY_ITEM, i, FALSE);
+                    fate_strcat(buf, "Identify (");
+                    fate_strcat_int(buf, fate_identify_cost(&gFate.inv[i]));
+                    fate_strcat(buf, "g)");
+                    put_button(buf, ACT_IDENTIFY_PAID, i, FALSE);
+                    end_line();
                 }
             }
-            if (sel != NULL && !fate_item_empty(sel)) {
-                item_details(c, sel);
+            if (!any) {
+                put_line("Nothing to identify.", UI_TEXT_DIM, LS_SMALL);
             }
             break;
         }
 
-        case GROVE_CHEATO:
-            text(c, "Cheato: \"Squawk! Knowledge isn't free, bear. Neither am I.\"", 17.0f, UI_TEXT_DIM);
-            for (i = 0; i < SPELL_COUNT; i++) {
-                if (!fate_spell_known(i)) {
-                    buf[0] = '\0';
-                    fate_strcat(buf, gSpellDefs[i].name);
-                    fate_strcat(buf, " (needs ");
-                    fate_strcat_int(buf, gSpellDefs[i].reqMag);
-                    fate_strcat(buf, " Magic) - ");
-                    fate_strcat(buf, gSpellDefs[i].desc);
-                    price_row(c, buf, gSpellDefs[i].price, ACT_BUY_SPELL, i);
+        case GROVE_GOBI:
+            put_line("Gobi: \"Lugged it all the way from the desert. New stock every visit.\"", UI_TEXT_DIM, LS_SMALL);
+            for (i = 0; i < SHOP_STOCK; i++) {
+                if (!fate_item_empty(&gShopStock[i])) {
+                    char price[24];
+                    put_item(&gShopStock[i], SEL_SHOP, i, NULL);
+                    price[0] = '\0';
+                    fate_strcat(price, "Buy (");
+                    fate_strcat_int(price, fate_item_buy_price(&gShopStock[i]));
+                    fate_strcat(price, "g)");
+                    put_button(price, ACT_BUY_ITEM, i, gFate.gold >= (u32)fate_item_buy_price(&gShopStock[i]));
+                    end_line();
                 }
             }
+            use_col(2, 520.0f);
+            header("Details");
+            put_item_details(sSelKind == SEL_SHOP ? sel : NULL);
             break;
 
-        case GROVE_MUMBO: {
-            FateItem *sel = selected_item();
-            text(c, "Mumbo: \"Mumbo add magic to item. Sometimes... it go wrong.\"\nEnchanting: 60% new or stronger magic, 25% nothing, 10% all magic lost, 5% curse.", 16.0f, UI_TEXT_DIM);
+        case GROVE_CHEATO: {
+            bool any = FALSE;
+            put_line("Cheato: \"Squawk! Knowledge isn't free, bear. Neither am I.\"", UI_TEXT_DIM, LS_SMALL);
+            for (i = 0; i < SPELL_COUNT; i++) {
+                if (!fate_spell_known(i)) {
+                    any = TRUE;
+                    put_gap();
+                    buf[0] = '\0';
+                    fate_strcat(buf, gSpellDefs[i].name);
+                    fate_strcat(buf, "  (needs ");
+                    fate_strcat_int(buf, gSpellDefs[i].reqMag);
+                    fate_strcat(buf, " Magic)");
+                    put_price(buf, gSpellDefs[i].price, ACT_BUY_SPELL, i);
+                    put_line(gSpellDefs[i].desc, UI_TEXT_DIM, LS_SMALL);
+                }
+            }
+            if (!any) {
+                put_line("You know every spell Cheato sells.", MSG_COLOR_GOLD, LS_NORMAL);
+            }
+            break;
+        }
+
+        case GROVE_MUMBO:
+            put_line("Mumbo: \"Mumbo add magic to item. Sometimes... it go wrong.\"", UI_TEXT_DIM, LS_SMALL);
+            put_line("60% new or stronger magic, 25% nothing, 10% all magic lost, 5% curse.", UI_TEXT_DIM, LS_SMALL);
             for (i = 0; i < SLOT_COUNT; i++) {
                 if (!fate_item_empty(&gFate.equip[i])) {
-                    item_button(c, &gFate.equip[i], SEL_EQUIP, i, "(worn) ");
+                    put_item(&gFate.equip[i], SEL_EQUIP, i, "(worn) ");
+                    end_line();
                 }
             }
             for (i = 0; i < INV_SIZE; i++) {
                 if (!fate_item_empty(&gFate.inv[i])) {
-                    item_button(c, &gFate.inv[i], SEL_INV, i, NULL);
+                    put_item(&gFate.inv[i], SEL_INV, i, NULL);
+                    end_line();
                 }
             }
+            use_col(2, 520.0f);
+            header("Details");
             if ((sSelKind == SEL_INV || sSelKind == SEL_EQUIP) && sel != NULL && !fate_item_empty(sel)) {
-                RecompuiResource r;
-                item_details(c, sel);
-                r = row(c);
+                put_item_details(sel);
+                put_gap();
                 buf[0] = '\0';
                 fate_strcat(buf, "Enchant (");
                 fate_strcat_int(buf, fate_enchant_cost(sel));
                 fate_strcat(buf, "g)");
-                button(r, buf, ACT_ENCHANT, 0, TRUE);
+                put_button(buf, ACT_ENCHANT, 0, TRUE);
                 buf[0] = '\0';
                 fate_strcat(buf, "Add socket (");
                 fate_strcat_int(buf, fate_socket_cost(sel));
                 fate_strcat(buf, "g)");
-                button(r, buf, ACT_SOCKET_ADD, 0, FALSE);
+                put_button(buf, ACT_SOCKET_ADD, 0, FALSE);
+                end_line();
+            } else {
+                put_item_details(NULL);
             }
             break;
-        }
 
         case GROVE_BRENTILDA:
-            text(c, "Brentilda: \"My nasty sister's minions treating you rough, dearie?\nI'll patch you and your little friend up, free of charge.\"", 17.0f, UI_TEXT_DIM);
-            button(c, "Heal Banjo, Kazooie and the pet", ACT_HEAL, 0, TRUE);
+            put_line("Brentilda: \"My nasty sister's minions treating you rough, dearie?", UI_TEXT_DIM, LS_SMALL);
+            put_line("I'll patch you and your little friend up, free of charge.\"", UI_TEXT_DIM, LS_SMALL);
+            put_gap();
+            put_button("Heal Banjo, Kazooie and the pet", ACT_HEAL, 0, TRUE);
+            end_line();
             break;
 
         case GROVE_TOOTY:
-            text(c, "Tooty: \"I'll tell everyone how brave my big brother is!\nFame unlocks Elite and Legendary gear, and every fame title grants 4 skill points.\"", 17.0f, UI_TEXT_DIM);
-            buf[0] = '\0';
-            fate_strcat(buf, "Spread tales of your deeds (+25 fame)");
-            price_row(c, buf, fate_fame_cost(), ACT_BUY_FAME, 0);
+            put_line("Tooty: \"I'll tell everyone how brave my big brother is!\"", UI_TEXT_DIM, LS_SMALL);
+            put_line("Fame unlocks Elite and Legendary gear, and every fame title grants 4 skill points.", UI_TEXT_DIM, LS_SMALL);
+            put_gap();
+            put_price("Spread tales of your deeds (+25 fame)", fate_fame_cost(), ACT_BUY_FAME, 0);
             break;
 
         case GROVE_BLUBBER:
-            text(c, "Captain Blubber: \"Har! Fish the waters where ye wade, and feed yer\nlittle friend the catch. A flawless fish changes it for good!\"", 17.0f, UI_TEXT_DIM);
+            put_line("Captain Blubber: \"Har! Fish the waters where ye wade, and feed yer little friend", UI_TEXT_DIM, LS_SMALL);
+            put_line("the catch. A flawless fish changes it for good!\"", UI_TEXT_DIM, LS_SMALL);
+            put_gap();
             if (gFate.poleTier < 3) {
                 static const char *poles[3] = { "Fishing Pole", "Sturdy Fishing Pole (bigger fish)", "Blubber's Golden Rod (best fish)" };
-                price_row(c, poles[gFate.poleTier], fate_pole_price(), ACT_BUY_POLE, 0);
+                put_price(poles[gFate.poleTier], fate_pole_price(), ACT_BUY_POLE, 0);
             } else {
-                text(c, "You own the Golden Rod.", 17.0f, MSG_COLOR_GOLD);
+                put_line("You own the Golden Rod.", MSG_COLOR_GOLD, LS_NORMAL);
             }
-            header(c, "Live fish (medium)");
+            header("Live fish (medium)");
             for (i = 0; i <= FISH_DOGFISH; i++) {
                 if (i == FISH_BIGBUTT_BASS && fate_depth_for_level(LEVEL_3_CLANKERS_CAVERN) > 0 && gFate.questsCompleted < 3) {
                     continue; /* rare stock unlocks once the town trusts you */
                 }
-                buf[0] = '\0';
-                fate_strcat(buf, gFishDefs[i].name);
-                price_row(c, buf, fate_fish_price(i, FISH_SIZE_MEDIUM) * 3, ACT_BUY_FISH, i);
+                put_price(gFishDefs[i].name, fate_fish_price(i, FISH_SIZE_MEDIUM) * 3, ACT_BUY_FISH, i);
             }
-            button(c, "Sell all your fish", ACT_SELL_FISH, 0, FALSE);
+            put_gap();
+            put_button("Sell all your fish", ACT_SELL_FISH, 0, FALSE);
+            end_line();
             break;
     }
 }
@@ -842,118 +1069,361 @@ static void build_grove(RecompuiResource body) {
 /* Gruntilda's bargain                                                 */
 /* ------------------------------------------------------------------ */
 
-static void build_bargain(RecompuiResource body) {
-    RecompuiResource c = col(body, 0.0f);
-    RecompuiResource h;
+static void build_bargain(void) {
     char buf[160];
-    recompui_set_align_items(c, ALIGN_ITEMS_CENTER);
-    h = text(c, "\"Not so fast, bear!\"", 40.0f, 0x8EE66BFF);
-    recompui_set_font_weight(h, 700);
-    text(c, "Gruntilda appears in a puff of green smoke as you fall.\n\"Perhaps we can come to an... arrangement. Hee hee!\"", 20.0f, UI_TEXT);
-    buf[0] = '\0';
-    fate_strcat(buf, "Rise right here. I'll take some of your experience and fame.");
-    button(c, buf, ACT_BARGAIN, 0, TRUE);
+
+    use_col(0, 0.0f);
+    put_line("Gruntilda appears in a puff of green smoke as you fall.", UI_TEXT, LS_NORMAL);
+    put_line("\"Perhaps we can come to an... arrangement. Hee hee!\"", GRUNTY_GREEN, LS_NORMAL);
+    put_gap();
+    put_wide("Rise right here. I'll take some of your experience and fame.", UI_TEXT, ACT_BARGAIN, 0, TRUE);
+    end_line();
     buf[0] = '\0';
     fate_strcat(buf, "Rise at this area's entrance. I'll take ");
     fate_strcat_int(buf, (s32)(gFate.gold / 10));
     fate_strcat(buf, " of your gold.");
-    button(c, buf, ACT_BARGAIN, 1, FALSE);
+    put_wide(buf, UI_TEXT, ACT_BARGAIN, 1, FALSE);
+    end_line();
     buf[0] = '\0';
     fate_strcat(buf, "Flee to Grove and leave your ");
     fate_strcat_int(buf, (s32)gFate.gold);
     fate_strcat(buf, " gold behind (back within 5 minutes to reclaim it).");
-    button(c, buf, ACT_BARGAIN, 2, FALSE);
-    button(c, "Refuse her. Accept your fate (a normal Banjo-Kazooie death).", ACT_BARGAIN, 3, FALSE);
+    put_wide(buf, UI_TEXT, ACT_BARGAIN, 2, FALSE);
+    end_line();
+    put_wide("Refuse her. Accept your fate (a normal Banjo-Kazooie death).", UI_TEXT, ACT_BARGAIN, 3, FALSE);
+    end_line();
+}
+
+static void build_page(void) {
+    s32 c;
+
+    page_begin();
+    sTitle[0] = '\0';
+    if (gFateBargainOpen) {
+        fate_strcat(sTitle, "\"Not so fast, bear!\"");
+        sTitleColor = GRUNTY_GREEN;
+        build_bargain();
+    } else {
+        fate_strcat(sTitle, "Banjo and Kazooie  -  Level ");
+        fate_strcat_int(sTitle, gFate.level);
+        fate_strcat(sTitle, "  -  ");
+        fate_strcat(sTitle, fate_fame_title());
+        sTitleColor = UI_HEADER;
+        switch (sTab) {
+            case TAB_CHARACTER: build_character(); break;
+            case TAB_INVENTORY: build_inventory(); break;
+            case TAB_PET:       build_pet(); break;
+            case TAB_SPELLS:    build_spells(); break;
+            case TAB_QUESTS:    build_quests(); break;
+            case TAB_GROVE:     build_grove(); break;
+        }
+    }
+
+    for (c = 0; c < MENU_COLS; c++) {
+        if (sSpecOverflow[c]) {
+            LineSpec *l = &sSpec[c][COL_LINES - 1];
+            copy_text(l->text, "... and more", LINE_TEXT, LINE_TEXT);
+            l->color = UI_TEXT_DIM;
+            l->style = LS_SMALL;
+            l->buttons = 0;
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ */
-/* Build / show                                                        */
+/* Pushing a page to the pool                                          */
 /* ------------------------------------------------------------------ */
 
-static void rebuild(void) {
-    RecompuiResource tabs, r;
-    char buf[128];
-    s32 i;
-
-    if (sBody != RECOMPUI_NULL_RESOURCE) {
-        recompui_destroy_element(sPanel, sBody);
+static void set_shown(RecompuiResource el, u8 *state, bool want, RecompuiDisplay display) {
+    if (*state != want) {
+        recompui_set_display(el, want ? display : DISPLAY_NONE);
+        *state = want;
     }
-    sBody = ui_box(sCtx, sPanel, FALSE);
-    recompui_set_gap(sBody, 10.0f, UNIT_DP);
-    recompui_set_flex_grow(sBody, 1.0f);
+}
 
-    if (gFateBargainOpen) {
-        build_bargain(sBody);
+static void button_look(RecompuiResource el, bool primary) {
+    RecompuiColor c;
+    ui_color(&c, primary ? BTN_BG_ON : BTN_BG);
+    recompui_set_background_color(el, &c);
+    ui_color(&c, primary ? BTN_EDGE_ON : BTN_EDGE);
+    recompui_set_border_color(el, &c);
+}
+
+static void apply_button(PoolButton *p, const char *text, u32 color, bool primary, bool wide) {
+    u32 h;
+    set_shown(p->el, &p->shown, text != NULL, DISPLAY_FLEX);
+    if (text == NULL) {
         return;
     }
-
-    r = row(sBody);
-    recompui_set_justify_content(r, JUSTIFY_CONTENT_SPACE_BETWEEN);
-    buf[0] = '\0';
-    fate_strcat(buf, "Banjo and Kazooie  -  Level ");
-    fate_strcat_int(buf, gFate.level);
-    fate_strcat(buf, "  -  ");
-    fate_strcat(buf, fate_fame_title());
-    {
-        RecompuiResource t = text(r, buf, 26.0f, UI_HEADER);
-        recompui_set_font_weight(t, 700);
+    h = text_hash(text);
+    if (h != p->hash) {
+        recompui_set_text(p->label, text);
+        p->hash = h;
     }
-    button(r, "Close", ACT_CLOSE, 0, FALSE);
-
-    tabs = row(sBody);
-    for (i = 0; i < TAB_COUNT; i++) {
-        if (i == TAB_GROVE && !fate_in_town()) {
-            continue;
-        }
-        button(tabs, sTabNames[i], ACT_TAB, i, i == sTab);
+    if (color != p->color) {
+        ui_set_text_color(p->label, color);
+        p->color = color;
     }
-
-    if (sNotice[0]) {
-        text(sBody, sNotice, 18.0f, MSG_COLOR_QUEST);
+    if (primary != p->primary) {
+        button_look(p->el, primary);
+        p->primary = primary;
     }
-
-    r = row(sBody);
-    recompui_set_align_items(r, ALIGN_ITEMS_FLEX_START);
-    recompui_set_flex_grow(r, 1.0f);
-    switch (sTab) {
-        case TAB_CHARACTER: build_character(r); break;
-        case TAB_INVENTORY: build_inventory(r); break;
-        case TAB_PET:       build_pet(r); break;
-        case TAB_SPELLS:    build_spells(r); break;
-        case TAB_QUESTS:    build_quests(r); break;
-        case TAB_GROVE:     build_grove(r); break;
+    if (wide != p->wide) {
+        recompui_set_flex_grow(p->el, wide ? 1.0f : 0.0f);
+        recompui_set_flex_shrink(p->el, wide ? 1.0f : 0.0f);
+        recompui_set_justify_content(p->el, wide ? JUSTIFY_CONTENT_FLEX_START : JUSTIFY_CONTENT_CENTER);
+        p->wide = wide;
     }
 }
 
-void fate_menu_init(void) {
+static void apply_line(PoolLine *p, const LineSpec *s) {
+    bool hasText;
+    s32 b;
+
+    set_shown(p->row, &p->shown, s != NULL, DISPLAY_FLEX);
+    if (s == NULL) {
+        return;
+    }
+    if (s->gap != p->gap) {
+        recompui_set_margin_top(p->row, s->gap ? 10.0f : 0.0f, UNIT_DP);
+        p->gap = s->gap;
+    }
+    hasText = s->text[0] != '\0';
+    set_shown(p->label, &p->labelShown, hasText, DISPLAY_BLOCK);
+    if (hasText) {
+        u32 h = text_hash(s->text);
+        if (h != p->hash) {
+            recompui_set_text(p->label, s->text);
+            p->hash = h;
+        }
+        if (s->color != p->color) {
+            ui_set_text_color(p->label, s->color);
+            p->color = s->color;
+        }
+        if (s->style != p->style) {
+            recompui_set_font_size(p->label, sStyleSize[s->style], UNIT_DP);
+            recompui_set_line_height(p->label, sStyleSize[s->style] * 1.3f, UNIT_DP);
+            recompui_set_font_weight(p->label, sStyleWeight[s->style]);
+            p->style = s->style;
+        }
+    }
+    for (b = 0; b < LINE_BUTTONS; b++) {
+        if (b < s->buttons) {
+            const ButtonSpec *bs = &s->btn[b];
+            apply_button(&p->btn[b], bs->text, bs->color, bs->primary, bs->wide);
+        } else {
+            apply_button(&p->btn[b], NULL, 0, FALSE, FALSE);
+        }
+    }
+}
+
+static void apply_page(void) {
+    s32 c, i;
+    u32 h;
+    bool showNotice = !gFateBargainOpen && sNotice[0] != '\0';
+
+    h = text_hash(sTitle);
+    if (h != sTitleHash) {
+        recompui_set_text(sTitleLabel, sTitle);
+        sTitleHash = h;
+    }
+    if (sTitleColor != sTitleShownColor) {
+        ui_set_text_color(sTitleLabel, sTitleColor);
+        sTitleShownColor = sTitleColor;
+    }
+    set_shown(sTabRow, &sTabRowShown, !gFateBargainOpen, DISPLAY_FLEX);
+    apply_button(&sCloseBtn, gFateBargainOpen ? NULL : "Close", UI_TEXT, FALSE, FALSE);
+    for (i = 0; i < TAB_COUNT; i++) {
+        bool show = i != TAB_GROVE || fate_in_town();
+        apply_button(&sTabBtn[i], show ? sTabNames[i] : NULL, i == sTab ? UI_HEADER : UI_TEXT, i == sTab, FALSE);
+    }
+    set_shown(sNoticeLabel, &sNoticeShown, showNotice, DISPLAY_BLOCK);
+    if (showNotice) {
+        h = text_hash(sNotice);
+        if (h != sNoticeHash) {
+            recompui_set_text(sNoticeLabel, sNotice);
+            sNoticeHash = h;
+        }
+    }
+
+    for (c = 0; c < MENU_COLS; c++) {
+        PoolColumn *col = &sCols[c];
+        f32 w = sSpecWidth[c];
+        if (w != col->width) {
+            if (w < 0.0f) {
+                recompui_set_display(col->box, DISPLAY_NONE);
+            } else {
+                if (col->width < 0.0f) {
+                    recompui_set_display(col->box, DISPLAY_FLEX);
+                }
+                recompui_set_flex_basis(col->box, w, UNIT_DP);
+                recompui_set_flex_grow(col->box, w > 0.0f ? 0.0f : 1.0f);
+                recompui_set_flex_shrink(col->box, w > 0.0f ? 0.0f : 1.0f);
+            }
+            col->width = w;
+        }
+        if (w < 0.0f) {
+            continue;
+        }
+        for (i = 0; i < COL_LINES; i++) {
+            apply_line(&col->lines[i], i < sSpecCount[c] ? &sSpec[c][i] : NULL);
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Creating the pool                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Every property that apply_page changes later is set here first, so that
+ * later changes overwrite an existing value instead of adding a new one.
+ */
+static void make_button(PoolButton *p, RecompuiResource parent, u32 clickId) {
+    p->el = recompui_create_button(sCtx, parent, "", BUTTONSTYLE_SECONDARY);
+    recompui_set_height(p->el, 36.0f, UNIT_DP);
+    recompui_set_min_height(p->el, 36.0f, UNIT_DP);
+    recompui_set_max_height(p->el, 36.0f, UNIT_DP);
+    recompui_set_padding_left(p->el, 12.0f, UNIT_DP);
+    recompui_set_padding_right(p->el, 12.0f, UNIT_DP);
+    recompui_set_min_width(p->el, 0.0f, UNIT_DP);
+    recompui_set_overflow(p->el, OVERFLOW_HIDDEN);
+    recompui_set_flex_grow(p->el, 0.0f);
+    recompui_set_flex_shrink(p->el, 0.0f);
+    recompui_set_justify_content(p->el, JUSTIFY_CONTENT_CENTER);
+    button_look(p->el, FALSE);
+    recompui_set_display(p->el, DISPLAY_NONE);
+    p->label = ui_label(sCtx, p->el, "", 17.0f, UI_TEXT);
+    recompui_register_callback(p->el, on_click, (void *)clickId);
+    p->hash = 0;
+    p->color = UI_TEXT;
+    p->shown = FALSE;
+    p->primary = FALSE;
+    p->wide = FALSE;
+}
+
+static void make_line(PoolLine *p, RecompuiResource parent, u32 firstClickId) {
+    s32 b;
+    p->row = ui_box(sCtx, parent, TRUE);
+    recompui_set_gap(p->row, 8.0f, UNIT_DP);
+    recompui_set_align_items(p->row, ALIGN_ITEMS_CENTER);
+    recompui_set_margin_top(p->row, 0.0f, UNIT_DP);
+    recompui_set_flex_shrink(p->row, 0.0f);
+    recompui_set_display(p->row, DISPLAY_NONE);
+    p->label = ui_label(sCtx, p->row, "", sStyleSize[LS_NORMAL], UI_TEXT);
+    recompui_set_line_height(p->label, sStyleSize[LS_NORMAL] * 1.3f, UNIT_DP);
+    recompui_set_font_weight(p->label, sStyleWeight[LS_NORMAL]);
+    recompui_set_flex_grow(p->label, 1.0f);
+    recompui_set_flex_shrink(p->label, 1.0f);
+    recompui_set_display(p->label, DISPLAY_BLOCK);
+    p->hash = 0;
+    p->color = UI_TEXT;
+    p->style = LS_NORMAL;
+    p->gap = 0;
+    p->shown = FALSE;
+    p->labelShown = TRUE;
+    for (b = 0; b < LINE_BUTTONS; b++) {
+        make_button(&p->btn[b], p->row, firstClickId + b);
+    }
+}
+
+static void build_pool(void) {
+    RecompuiResource root, panel, top, body;
+    s32 c, i;
+
     sCtx = recompui_create_context();
     recompui_open_context(sCtx);
-    sRoot = recompui_context_root(sCtx);
-    ui_absolute(sRoot, 0.0f, 0.0f, 0.0f, 0.0f);
-    recompui_set_width(sRoot, 100.0f, UNIT_PERCENT);
-    recompui_set_height(sRoot, 100.0f, UNIT_PERCENT);
-    recompui_set_display(sRoot, DISPLAY_FLEX);
-    recompui_set_justify_content(sRoot, JUSTIFY_CONTENT_CENTER);
-    recompui_set_align_items(sRoot, ALIGN_ITEMS_CENTER);
-    ui_set_bg(sRoot, 0x00000099);
+    root = recompui_context_root(sCtx);
+    ui_absolute(root, 0.0f, 0.0f, 0.0f, 0.0f);
+    recompui_set_width(root, 100.0f, UNIT_PERCENT);
+    recompui_set_height(root, 100.0f, UNIT_PERCENT);
+    recompui_set_display(root, DISPLAY_FLEX);
+    recompui_set_justify_content(root, JUSTIFY_CONTENT_CENTER);
+    recompui_set_align_items(root, ALIGN_ITEMS_CENTER);
+    ui_set_bg(root, 0x00000099);
 
-    sPanel = ui_box(sCtx, sRoot, FALSE);
-    recompui_set_width(sPanel, 1500.0f, UNIT_DP);
-    recompui_set_height(sPanel, 940.0f, UNIT_DP);
-    recompui_set_max_width(sPanel, 96.0f, UNIT_PERCENT);
-    ui_set_bg(sPanel, UI_PANEL_BG);
-    ui_set_border(sPanel, UI_PANEL_EDGE, 3.0f, 16.0f);
-    recompui_set_padding(sPanel, 20.0f, UNIT_DP);
-    sBody = RECOMPUI_NULL_RESOURCE;
+    panel = ui_box(sCtx, root, FALSE);
+    recompui_set_width(panel, 1500.0f, UNIT_DP);
+    recompui_set_height(panel, 940.0f, UNIT_DP);
+    recompui_set_max_width(panel, 96.0f, UNIT_PERCENT);
+    recompui_set_gap(panel, 10.0f, UNIT_DP);
+    ui_set_bg(panel, UI_PANEL_BG);
+    ui_set_border(panel, UI_PANEL_EDGE, 3.0f, 16.0f);
+    recompui_set_padding(panel, 20.0f, UNIT_DP);
+
+    top = ui_box(sCtx, panel, TRUE);
+    recompui_set_align_items(top, ALIGN_ITEMS_CENTER);
+    recompui_set_justify_content(top, JUSTIFY_CONTENT_SPACE_BETWEEN);
+    sTitleLabel = ui_label(sCtx, top, "", 28.0f, UI_HEADER);
+    recompui_set_font_weight(sTitleLabel, 700);
+    make_button(&sCloseBtn, top, CLICK_CLOSE);
+
+    sTabRow = ui_box(sCtx, panel, TRUE);
+    recompui_set_gap(sTabRow, 8.0f, UNIT_DP);
+    for (i = 0; i < TAB_COUNT; i++) {
+        make_button(&sTabBtn[i], sTabRow, CLICK_TAB + i);
+    }
+
+    sNoticeLabel = ui_label(sCtx, panel, "", 18.0f, MSG_COLOR_QUEST);
+    recompui_set_display(sNoticeLabel, DISPLAY_NONE);
+
+    body = ui_box(sCtx, panel, TRUE);
+    recompui_set_gap(body, 10.0f, UNIT_DP);
+    recompui_set_height(body, 790.0f, UNIT_DP);
+    recompui_set_flex_shrink(body, 0.0f);
+    for (c = 0; c < MENU_COLS; c++) {
+        PoolColumn *col = &sCols[c];
+        col->box = ui_box(sCtx, body, FALSE);
+        ui_set_bg(col->box, UI_INSET_BG);
+        ui_set_border(col->box, 0x6B5530FF, 1.0f, 8.0f);
+        recompui_set_padding(col->box, 10.0f, UNIT_DP);
+        recompui_set_gap(col->box, 4.0f, UNIT_DP);
+        recompui_set_height(col->box, 100.0f, UNIT_PERCENT);
+        recompui_set_min_width(col->box, 0.0f, UNIT_DP);
+        recompui_set_overflow_y(col->box, OVERFLOW_AUTO);
+        recompui_set_flex_basis(col->box, 0.0f, UNIT_DP);
+        recompui_set_flex_grow(col->box, 1.0f);
+        recompui_set_flex_shrink(col->box, 1.0f);
+        recompui_set_display(col->box, DISPLAY_FLEX);
+        col->width = 0.0f;
+        for (i = 0; i < COL_LINES; i++) {
+            make_line(&col->lines[i], col->box, (c * COL_LINES + i) * LINE_BUTTONS);
+        }
+    }
+
+    sTitleHash = 0;
+    sTitleShownColor = UI_HEADER;
+    sNoticeHash = 0;
+    sTabRowShown = TRUE;
+    sNoticeShown = FALSE;
     recompui_close_context(sCtx);
+    sPoolBuilt = TRUE;
+}
+
+/* ------------------------------------------------------------------ */
+/* Show / hide                                                         */
+/* ------------------------------------------------------------------ */
+
+void fate_menu_init(void) {
+    /* The pool is built the first time the menu opens, while nothing else is on screen. */
 }
 
 static void show(void) {
     if (!sShown) {
+        if (!sPoolBuilt) {
+            /* Hiding the HUD waits for the render thread to finish its frame. With no
+               context shown it skips RmlUi's update, so the pool can be built safely. */
+            fate_hud_hide_now();
+            build_pool();
+        }
         sShown = TRUE;
         gFateMenuOpen = TRUE;
         sWorldWasEnabled = func_8033511C();
         func_80335110(0); /* freeze the world, exactly like the pause menu */
+        build_page();
+        recompui_open_context(sCtx);
+        apply_page();
+        recompui_close_context(sCtx);
         recompui_show_context(sCtx);
         fate_play_sfx(SFX_C5_TWINKLY_POP);
     }
@@ -961,7 +1431,7 @@ static void show(void) {
 }
 
 void fate_menu_open(s32 tab) {
-    if (sCtx == RECOMPUI_NULL_CONTEXT || !fate_gameplay_active()) {
+    if (!fate_gameplay_active()) {
         return;
     }
     sTab = tab;
@@ -976,9 +1446,6 @@ void fate_menu_open(s32 tab) {
 }
 
 void fate_bargain_open(void) {
-    if (sCtx == RECOMPUI_NULL_CONTEXT) {
-        return;
-    }
     gFateBargainOpen = TRUE;
     fate_play_sfx(SFX_EA_GRUNTY_LAUGH_1);
     show();
@@ -1000,13 +1467,14 @@ void fate_menu_request_rebuild(void) {
 }
 
 void fate_menu_frame(void) {
-    if (sCtx == RECOMPUI_NULL_CONTEXT || !sShown) {
+    if (!sPoolBuilt || !sShown) {
         return;
     }
     if (sRebuild) {
         sRebuild = FALSE;
+        build_page();
         recompui_open_context(sCtx);
-        rebuild();
+        apply_page();
         recompui_close_context(sCtx);
     }
 }
@@ -1020,14 +1488,6 @@ static void do_action(s32 action, s32 arg) {
     char reason[64];
 
     switch (action) {
-        case ACT_TAB:
-            sTab = arg;
-            sSelKind = SEL_NONE;
-            sNotice[0] = '\0';
-            break;
-        case ACT_CLOSE:
-            fate_menu_close();
-            return;
         case ACT_RAISE_STAT:
             fate_raise_stat(arg);
             break;
@@ -1227,9 +1687,35 @@ static void do_action(s32 action, s32 arg) {
 }
 
 static void on_click(RecompuiResource resource, const RecompuiEventData *event, void *userdata) {
-    u32 data = (u32)userdata;
-    if (event->type != UI_EVENT_CLICK) {
+    u32 id = (u32)userdata;
+    s32 c, line, b;
+    const LineSpec *l;
+
+    if (event->type != UI_EVENT_CLICK || !sShown) {
         return;
     }
-    do_action((s32)(data >> 16), (s32)(data & 0xFFFF));
+    if (id == CLICK_CLOSE) {
+        if (!gFateBargainOpen) {
+            fate_menu_close();
+        }
+        return;
+    }
+    if (id >= CLICK_TAB && id < CLICK_TAB + TAB_COUNT) {
+        sTab = id - CLICK_TAB;
+        sSelKind = SEL_NONE;
+        sNotice[0] = '\0';
+        sRebuild = TRUE;
+        return;
+    }
+    b = id % LINE_BUTTONS;
+    line = (id / LINE_BUTTONS) % COL_LINES;
+    c = id / (LINE_BUTTONS * COL_LINES);
+    if (c >= MENU_COLS || line >= sSpecCount[c]) {
+        return;
+    }
+    l = &sSpec[c][line];
+    if (b >= l->buttons) {
+        return;
+    }
+    do_action(l->btn[b].action, l->btn[b].arg);
 }

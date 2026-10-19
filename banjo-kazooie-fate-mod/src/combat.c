@@ -559,6 +559,7 @@ void fate_on_enemy_killed(Actor *actor, FateEnemy *enemy) {
         return;
     }
     enemy->killed = TRUE;
+    FATE_TRACE("killed marker %p (roster %d)\n", actor->marker, enemy->rosterIdx);
     r = &gRoster[enemy->rosterIdx];
     champ = enemy->champion != CHAMP_NONE;
 

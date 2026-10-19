@@ -7,6 +7,12 @@ Kazooie and everyone else stay themselves; the rules around them become Fate's.
 Built against the [Banjo-Kazooie decompilation](https://gitlab.com/banjo.decomp/banjo-kazooie)
 using the official [BKRecompModTemplate](https://github.com/BanjoRecomp/BKRecompModTemplate).
 
+| | |
+|---|---|
+| ![Mumbo's Mountain with the Fate HUD](screenshots/01_mumbos_mountain_hud.jpg) | ![The Jinjo pet fighting a Grublin](screenshots/02_pet_fights_grublin.jpg) |
+| ![Inventory with randomized loot](screenshots/03_inventory_loot.jpg) | ![Grove shops](screenshots/04_grove_shops.jpg) |
+| ![Character sheet](screenshots/05_character_sheet.jpg) | ![Quest board](screenshots/06_quest_board.jpg) |
+
 ## Install
 
 1. Copy `dist/bk_fate_edition.nrm` into Banjo: Recompiled's `mods` folder (open it from the
@@ -69,6 +75,10 @@ make
 RecompModTool mod.toml build              # writes build/bk_fate_edition.nrm
 ```
 
+`make DEV=1 BUILD_DIR=build-dev` builds a test version with debug shortcuts (hold L and press
+D-Pad Down to warp to Mumbo's Mountain, D-Pad Left for a test kit with all moves, levels, gold and
+loot; Start skips the new-game intro). Don't ship it.
+
 `RecompModTool` checks every game function, data symbol, patch and hook the mod uses against
 Banjo: Recompiled's symbol list, so a successful build means every reference resolves.
 
@@ -90,4 +100,25 @@ saves into `saves/bk_fate_edition/save.bin` and writes each file's character to
 
 ## Status
 
-See the bottom of this file for what has been tested.
+Version 0.1.0. Tested in Banjo-Kazooie: Recompiled 1.0.2 on Linux with a US 1.0 ROM.
+
+Checked in the game:
+
+- The mod loads, its settings show in the Mods menu, and its saves go to their own file.
+  Characters survive quitting and relaunching.
+- The HUD in Spiral Mountain (Grove) and Mumbo's Mountain (Depth 1).
+- Every menu tab and Grove shop. Buying potions, spending attribute and skill points,
+  accepting a quest, selecting and equipping loot (stats update).
+- Opening and closing the menu several times, and about 80 tab and shop switches in a row,
+  without a crash.
+- The Jinjo pet follows Banjo between maps, fights Grublins on its own and kills them.
+- Monster hit points with a target bar, kills that award gold and experience, loot drops,
+  levelling up, spell selection and the Magic requirement for spells.
+
+Not yet checked in the game: fishing, champion fights, Gruntilda's bargain (dying), Mumbo's
+enchanting and sockets, sending the pet to town, quest turn-in, the later worlds and the Lair,
+identifying, retirement and heirlooms, Nightmare, and menu navigation with a controller (the mouse works).
+Expect balance to need tuning.
+
+The mod only runs in Banjo-Kazooie: Recompiled. It uses the recomp's UI library, mod APIs and
+extra memory, so it can't run on a real Nintendo 64 or in an N64 emulator.

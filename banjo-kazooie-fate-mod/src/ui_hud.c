@@ -197,6 +197,8 @@ void fate_hud_init(void) {
     recompui_set_gap(logBox, 3.0f, UNIT_DP);
     for (i = 0; i < LOG_LINES; i++) {
         sLogText[i] = ui_label(sCtx, logBox, "", 17.0f, UI_TEXT);
+        /* Set now so later updates only overwrite it (see the note in ui_menu.c). */
+        recompui_set_opacity(sLogText[i], 1.0f);
     }
 
     recompui_close_context(sCtx);
@@ -238,14 +240,14 @@ static void refresh(void) {
     fate_strcat(buf, "Level ");
     fate_strcat_int(buf, gFate.level);
     if (gFate.statPoints || gFate.skillPoints) {
-        fate_strcat(buf, "  (points to spend!)");
+        fate_strcat(buf, "  [+]");
     }
     set_text_cached(2, sLevelText, buf);
 
+    /* The fame title lives in the menu; long titles would wrap here. */
     buf[0] = '\0';
     fate_strcat_int(buf, (s32)gFate.gold);
-    fate_strcat(buf, " gold   |   ");
-    fate_strcat(buf, fate_fame_title());
+    fate_strcat(buf, " gold");
     set_text_cached(3, sGoldText, buf);
 
     buf[0] = '\0';
@@ -339,6 +341,14 @@ static void refresh(void) {
             ui_set_text_color(sLogText[i], sLog.color[i]);
             recompui_set_opacity(sLogText[i], sLog.age[i] > LOG_SECONDS - 1.5f ? (LOG_SECONDS - sLog.age[i]) / 1.5f : 1.0f);
         }
+    }
+}
+
+/* Takes the HUD off screen right away instead of at the end of the frame. */
+void fate_hud_hide_now(void) {
+    if (sCtx != RECOMPUI_NULL_CONTEXT && sShown) {
+        sShown = FALSE;
+        recompui_hide_context(sCtx);
     }
 }
 

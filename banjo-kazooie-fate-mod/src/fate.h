@@ -784,6 +784,7 @@ void fate_banner(const char *text, u32 color);
 void fate_hud_init(void);
 void fate_hud_frame(void);
 void fate_hud_mark_dirty(void);
+void fate_hud_hide_now(void);
 
 /* ------------------------------------------------------------------ */
 /* menus (ui_menu.c)                                                   */
