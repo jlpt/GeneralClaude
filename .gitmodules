@@ -1,0 +1,6 @@
+[submodule "banjo-kazooie-fate-mod/BanjoRecompSyms"]
+	path = banjo-kazooie-fate-mod/BanjoRecompSyms
+	url = https://github.com/BanjoRecomp/BanjoRecompSyms
+[submodule "banjo-kazooie-fate-mod/bk-decomp"]
+	path = banjo-kazooie-fate-mod/bk-decomp
+	url = https://gitlab.com/banjo.decomp/banjo-kazooie

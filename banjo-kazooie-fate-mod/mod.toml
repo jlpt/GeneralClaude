@@ -1,0 +1,88 @@
+# Banjo-Kazooie: Fate Edition, a mod for Banjo-Kazooie: Recompiled.
+
+[manifest]
+
+id = "bk_fate_edition"
+version = "0.1.0"
+display_name = "Banjo-Kazooie: Fate Edition"
+
+description = """
+Turns Banjo-Kazooie into a WildTangent "Fate"-style action RPG.
+
+Level up and spend attribute and skill points, earn fame, find randomized loot with \
+Normal, Magic, Unique, Elite and Legendary rarities, and fight oversized, named champion monsters. \
+A Jinjo pet fights at your side, carries loot and runs to town to sell it, and changes \
+form when you feed it fish you catch yourself. Spiral Mountain becomes Grove, with \
+Bottles, Gobi, Cheato, Mumbo, Brentilda, Tooty and Captain Blubber running the shops and \
+handing out quests. Every world is a deeper dungeon level. When you fall, Gruntilda \
+offers you a bargain.
+
+Controls: D-Pad Up menu, D-Pad Down health potion, D-Pad Left mana potion, \
+D-Pad Right cast spell, L fish (while wading) or cycle spells.
+
+Your saves for this mod are kept separately from your normal Banjo-Kazooie saves."""
+
+short_description = "Banjo-Kazooie as a Fate-style action RPG."
+
+authors = [ "GeneralClaude" ]
+
+game_id = "bk"
+
+minimum_recomp_version = "1.0.0"
+
+dependencies = [
+]
+
+optional_dependencies = [
+]
+
+native_libraries = [
+]
+
+[inputs]
+
+elf_path = "build/mod.elf"
+mod_filename = "bk_fate_edition"
+func_reference_syms_file = "BanjoRecompSyms/bk.us.rev0.syms.toml"
+data_reference_syms_files = [ "BanjoRecompSyms/bk.us.rev0.datasyms.toml" ]
+additional_files = [ ]
+
+[[manifest.config_options]]
+id = "difficulty"
+name = "Difficulty"
+description = "Scales monster health and damage. Casual 70%, Normal 100%, Hardcore 140%."
+type = "Enum"
+options = [ "Casual", "Normal", "Hardcore" ]
+default = "Normal"
+
+[[manifest.config_options]]
+id = "pet_species"
+name = "Pet"
+description = "Your companion for new characters. Fate offered a dog or a cat; Grove offers a Jinjo or a Bigbutt calf."
+type = "Enum"
+options = [ "Jinjo", "Bigbutt Calf", "None" ]
+default = "Jinjo"
+
+[[manifest.config_options]]
+id = "champions"
+name = "Champion Monsters"
+description = "Randomly upgrade monsters into named champions with more health, special traits and better loot."
+type = "Enum"
+options = [ "On", "Off" ]
+default = "On"
+
+[[manifest.config_options]]
+id = "death_bargain"
+name = "Gruntilda's Bargain"
+description = "When you fall in a world, choose how to come back (Fate's death choices) instead of losing a life."
+type = "Enum"
+options = [ "On", "Off" ]
+default = "On"
+
+[[manifest.config_options]]
+id = "show_hud"
+name = "Fate HUD"
+description = "Show the health, mana, experience, pet and target bars."
+type = "Enum"
+options = [ "On", "Off" ]
+default = "On"
