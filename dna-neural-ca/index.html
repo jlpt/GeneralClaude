@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: the growing specimen plate on the left; the genome and the rules it decodes to on the right. Stacks on phones. */
+/* Layout: arena and brain side by side with the training panel beside them; genome and decoded rules underneath. Stacks on phones. */
 :root {
   --bg: #f1eff5;
   --surface: #faf9fc;
@@ -15,7 +15,10 @@
   --grid: #d9d3e3;
   --accent: #5b36b8;
   --accent-ink: #ffffff;
-  /* neuron types: stain colours in light, fluorescent proteins in dark */
+  --food: #2b2438;
+  --c-best: #5b36b8;
+  --c-mean: #00918a;
+  /* neuron types: sensor, motor, then interneurons. Stain colours in light, fluorescent proteins in dark */
   --t0: #0b7fa8;
   --t1: #c4470f;
   --t2: #b3197c;
@@ -39,6 +42,9 @@
     --grid: #1d2032;
     --accent: #a48fff;
     --accent-ink: #120d24;
+    --food: #ece9f6;
+    --c-best: #8b74ec;
+    --c-mean: #1fa89c;
     --t0: #3fd2ff;
     --t1: #ff8f52;
     --t2: #ff62c8;
@@ -60,6 +66,9 @@
   --grid: #1d2032;
   --accent: #a48fff;
   --accent-ink: #120d24;
+  --food: #ece9f6;
+  --c-best: #8b74ec;
+  --c-mean: #1fa89c;
   --t0: #3fd2ff;
   --t1: #ff8f52;
   --t2: #ff62c8;
@@ -72,6 +81,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -80,7 +90,7 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 28px 48px;
 }
-.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 26px; }
 
 .top h1 {
   font-family: var(--font-display);
@@ -91,17 +101,42 @@ body {
   margin: 0;
   text-wrap: balance;
 }
-.top p { margin: 8px 0 0; color: var(--muted); max-width: 70ch; }
+.top p { margin: 8px 0 0; color: var(--muted); max-width: 74ch; }
 
-.layout { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 980px) {
-  .layout { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
-  .specimen { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.15rem;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+.mono { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+.main { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1120px) {
+  .main { grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); align-items: start; }
 }
 
-.specimen, .genome { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.stage { display: grid; gap: 12px; min-width: 0; }
+.views { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .views { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.view { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.view-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.square {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--plate);
+  overflow: hidden;
+}
+.square canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#brain { cursor: crosshair; }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
 .toolbar .spacer { flex: 1 1 auto; }
 
 button, select {
@@ -114,7 +149,8 @@ button, select {
   cursor: pointer;
 }
 button:hover, select:hover { border-color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); min-width: 84px; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary:hover { filter: brightness(1.08); }
 button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, .genemap button:focus-visible {
   outline: 2px solid var(--accent);
@@ -123,51 +159,63 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 
 .speed { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .speed input { width: 110px; accent-color: var(--accent); }
-.speed output { font-family: var(--font-mono); font-size: 12px; min-width: 7ch; font-variant-numeric: tabular-nums; }
-
-.plate {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  aspect-ratio: 1;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--plate);
-  overflow: hidden;
-}
-.plate canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
-
-.readout { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; color: var(--muted); }
-.readout .stats { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
-.status {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor;
-}
-.status[data-state="growing"] { color: var(--t3); }
-.status[data-state="paused"] { color: var(--muted); }
-.status[data-state="grown"] { color: var(--accent); }
+.speed output { font-family: var(--font-mono); font-size: 12px; min-width: 8ch; font-variant-numeric: tabular-nums; }
 
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
-.toggles label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-.toggles input { accent-color: var(--accent); margin: 0; }
+.toggles label, .check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input, .check input { accent-color: var(--accent); margin: 0; }
+.focus-info { margin: 0; min-height: 1.55em; font-size: 13px; color: var(--muted); }
+.caption { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 76ch; }
 
-.caption { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 68ch; }
-.focus-info { min-height: 1.55em; font-size: 13px; }
-
-h2 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.15rem;
-  letter-spacing: -0.005em;
-  margin: 0;
+/* training panel: the one boxed object, since it is the control centre */
+.train {
+  display: grid; gap: 14px; align-content: start; min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
 }
+.train-head { display: grid; gap: 4px; }
+.train-head p { margin: 0; font-size: 13.5px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.from { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.from select { padding: 7px 10px; font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.stats dd { margin: 2px 0 0; font-family: var(--font-mono); font-size: 18px; font-variant-numeric: tabular-nums; }
+.stats dd small { font-size: 12px; color: var(--muted); }
+
+.chart-box { display: grid; gap: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 2px; border-radius: 2px; background: var(--k); }
+.chart { position: relative; height: 180px; }
+.chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart-empty {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+  padding: 0 18px; font-size: 13px; color: var(--muted);
+}
+.tip {
+  position: absolute; top: 4px; pointer-events: none;
+  background: var(--plate); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; line-height: 1.45; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tip b { font-weight: 600; }
+.tip i { display: inline-block; width: 10px; height: 2px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--k); }
+.chart-caption { margin: 0; font-size: 12.5px; color: var(--muted); }
+.note { margin: 0; min-height: 1.55em; font-size: 13px; color: var(--muted); }
+.note strong { color: var(--ink); font-weight: 600; }
+
+.lower { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .lower { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: start; } }
+.genome, .rules-col { display: grid; gap: 12px; min-width: 0; align-content: start; }
 .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
-.mono { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.muted { color: var(--muted); }
 
 textarea {
   width: 100%;
-  min-height: 132px;
+  min-height: 150px;
   resize: vertical;
   font: 13.5px/1.6 var(--font-mono);
   letter-spacing: 0.04em;
@@ -178,11 +226,9 @@ textarea {
   border-radius: 8px;
   padding: 10px 12px;
 }
-
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .actions select { max-width: 100%; }
-.note { margin: 0; min-height: 1.55em; font-size: 13px; color: var(--muted); }
-.note strong { color: var(--ink); font-weight: 600; }
+.score { margin: 0; font-size: 14px; }
+.score b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
 
 .genemap {
   position: relative;
@@ -201,11 +247,10 @@ textarea {
 }
 .genemap button:hover { filter: brightness(1.12); }
 .genemap-legend { display: flex; justify-content: space-between; gap: 12px; margin-top: -6px; }
-
 .howto { margin: 0; font-size: 13.5px; color: var(--muted); }
 .howto code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); }
 
-.rules { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.rules { display: grid; border-top: 1px solid var(--line); }
 .rule { padding: 14px 0 16px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
 .rule header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .rule h3 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -215,15 +260,13 @@ textarea {
   color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 2px 7px;
 }
 .rule .loc { margin-left: auto; }
-.rule dl { margin: 0; display: grid; grid-template-columns: 7.2em minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
+.rule dl { margin: 0; display: grid; grid-template-columns: 7.4em minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
 .rule dt { color: var(--muted); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
 .rule dd { margin: 0; min-width: 0; }
-.chip {
-  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-  font-weight: 500;
-}
+.chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 500; }
 .chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-.empty { padding: 14px 0; color: var(--muted); font-size: 14px; }
+.w { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; margin-right: 10px; white-space: nowrap; }
+.empty { padding: 14px 0; color: var(--muted); font-size: 14px; margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
@@ -233,40 +276,78 @@ textarea {
 <div class="wrap">
   <header class="top">
     <h1>Neurogenesis Automaton</h1>
-    <p>A DNA string is read into growth rules, and a grid automaton runs those rules from a single cell. Neurons divide, release signals and grow axons; an axon that reaches a neuron it targets becomes a synapse.</p>
+    <p>A DNA string grows a spiking neural network on a grid, and that network steers a swimmer toward food. Training is evolution: every generation, the genomes whose brains collect the most food are copied with random mutations.</p>
   </header>
 
-  <div class="layout">
-    <section class="specimen" aria-label="Growing network">
+  <div class="main">
+    <section class="stage" aria-label="Live view">
+      <div class="views">
+        <figure class="view">
+          <div class="view-head"><h2>Arena</h2><span class="mono muted" id="arenaInfo"></span></div>
+          <div class="square" id="arenaWrap"><canvas id="arena" aria-label="The swimmer and food pellets"></canvas></div>
+        </figure>
+        <figure class="view">
+          <div class="view-head"><h2>Brain</h2><span class="mono muted" id="brainInfo"></span></div>
+          <div class="square" id="brainWrap"><canvas id="brain" aria-label="Neurons drawn as circles, synapses as lines; neurons flash when they spike"></canvas></div>
+        </figure>
+      </div>
       <div class="toolbar">
         <button id="play" class="primary" type="button">Pause</button>
-        <button id="step" type="button">Step</button>
-        <button id="restart" type="button">Regrow</button>
-        <button id="finish" type="button">Grow to end</button>
+        <button id="grow" type="button">Watch it grow</button>
         <span class="spacer"></span>
         <label class="speed" for="speed">Speed
-          <input id="speed" type="range" min="2" max="60" value="14">
-          <output id="speedOut" for="speed">14 /s</output>
+          <input id="speed" type="range" min="5" max="240" value="40">
+          <output id="speedOut" for="speed">40 ticks/s</output>
         </label>
       </div>
-
-      <div class="plate" id="plateWrap">
-        <canvas id="plate" aria-label="Neurons drawn as circles, synapses as lines"></canvas>
-      </div>
-
-      <div class="readout">
-        <span class="status" id="status" data-state="growing">Growing</span>
-        <span class="stats" id="stats">Step 0 · 1 neuron · 0 synapses</span>
-      </div>
       <div class="toggles">
-        <label for="showField"><input id="showField" type="checkbox" checked> Signal field</label>
+        <label for="showRays"><input id="showRays" type="checkbox" checked> Smell</label>
+        <label for="showField"><input id="showField" type="checkbox"> Growth signals</label>
         <label for="showGrid"><input id="showGrid" type="checkbox" checked> Grid cells</label>
-        <label for="showAxons"><input id="showAxons" type="checkbox" checked> Growing axons</label>
       </div>
-      <p class="focus-info muted" id="focusInfo">Hover or tap a neuron to trace its synapses.</p>
-      <p class="caption">Each step updates the 48 × 48 grid locally. Signals diffuse to neighbouring cells, neurons divide into nearby empty cells, and each axon tip moves one cell, following or avoiding the signal of the types it targets. Lines end in a dot for an excitatory synapse and a bar for an inhibitory one.</p>
+      <p class="focus-info" id="focusInfo">Hover or tap a neuron to trace its synapses.</p>
+      <p class="caption">The five cyan sensors along the top of the brain smell food at −60°, −30°, 0°, 30° and 60° from the swimmer's heading. The two orange motor neurons turn it left or right; it always swims forward. Neurons are leaky integrate-and-fire: they add up input, slowly leak, and spike when they cross a threshold. A line ends in a dot for an excitatory synapse and a bar for an inhibitory one.</p>
     </section>
 
+    <aside class="train" aria-label="Training">
+      <div class="train-head">
+        <h2>Training</h2>
+        <p>48 genomes per generation. Each one grows a brain and forages in 6 worlds; the top 4 survive unchanged and the rest are mutated copies of winners.</p>
+      </div>
+      <div class="actions">
+        <button id="train" class="primary" type="button">Start training</button>
+        <button id="resetTrain" type="button">Reset</button>
+      </div>
+      <label class="from" for="startFrom">Start from
+        <select id="startFrom">
+          <option value="random">48 random genomes</option>
+          <option value="shown">the genome shown</option>
+        </select>
+      </label>
+      <dl class="stats">
+        <div><dt>Generation</dt><dd id="statGen">–</dd></div>
+        <div><dt>Champion</dt><dd id="statChamp">–</dd></div>
+        <div><dt>Best this gen</dt><dd id="statBest">–</dd></div>
+        <div><dt>Population mean</dt><dd id="statMean">–</dd></div>
+      </dl>
+      <div class="chart-box">
+        <div class="legend">
+          <span style="--k: var(--c-best)"><i></i>Best genome</span>
+          <span style="--k: var(--c-mean)"><i></i>Population mean</span>
+        </div>
+        <div class="chart" id="chartWrap">
+          <canvas id="chart" aria-label="Food collected per episode, by generation"></canvas>
+          <div class="chart-empty" id="chartEmpty" hidden></div>
+          <div class="tip" id="tip" hidden></div>
+        </div>
+        <p class="chart-caption" id="chartCaption">Food per episode by generation.</p>
+      </div>
+      <label class="check" for="follow"><input id="follow" type="checkbox" checked> Show each new champion</label>
+      <p class="note" id="trainNote" aria-live="polite"></p>
+    </aside>
+  </div>
+
+  <div class="lower">
     <section class="genome" aria-label="Genome">
       <div class="panel-head">
         <h2>Genome</h2>
@@ -280,30 +361,43 @@ textarea {
           <option value="">Example genomes…</option>
         </select>
       </div>
+      <p class="score" id="score"></p>
       <p class="note" id="note" aria-live="polite"></p>
       <div class="genemap" id="genemap" aria-label="Gene locations along the DNA"></div>
       <div class="genemap-legend mono muted"><span>5′</span><span id="mapInfo"></span><span>3′</span></div>
-      <p class="howto">A gene starts at <code>ATG</code> and ends at a stop codon (<code>TAA</code>, <code>TAG</code>, <code>TGA</code>). Each codon of three bases is read as a number from 0 to 63, and a gene's first 16 codons set the rules for one neuron type. Gene 1 makes the zygote, the cell that every neuron grows from. Click a gene in the bar to find it in the sequence.</p>
+      <p class="howto">A gene starts at <code>ATG</code> and ends at a stop codon (<code>TAA</code>, <code>TAG</code>, <code>TGA</code>). Each codon of three bases is read as a number from 0 to 63, and a gene's first 24 codons set its rules, including its synapse weights and how its neurons spike. Gene 1 builds the sensors, gene 2 the motor neurons, gene 3 the zygote that every interneuron grows from, and genes 4–6 more interneuron types. Click a gene in the bar to find it in the sequence.</p>
+    </section>
 
+    <section class="rules-col" aria-label="Rules">
       <div class="panel-head"><h2>Rules</h2><span class="mono muted" id="ruleCount"></span></div>
       <div class="rules" id="rules"></div>
     </section>
   </div>
 </div>
 
-<script>
-(() => {
+<script id="core">
+// Genome decoding, development, spiking brain, foraging world and evolution.
+// No DOM access here: this block also runs inside a Web Worker.
+const Core = (() => {
 'use strict';
 
-// <core> — genome decoding and the automaton. No DOM access in this block.
+// ---------- development grid ----------
 const W = 48, H = 48;
-const MAX_TYPES = 6, MAX_NEURONS = 320, MAX_STEPS = 600;
+const MAX_TYPES = 6, MAX_NEURONS = 220, MAX_STEPS = 400;
 const DIFFUSION = 0.9, DECAY = 0.006, SUBSTEPS = 3;
+const SENSOR = 0, MOTOR = 1, FIRST_INTER = 2;
+const SENSOR_ANGLES = [-60, -30, 0, 30, 60];                      // smell directions, left to right
+const SENSOR_CELLS = [[14, 14], [19, 13], [24, 12], [29, 13], [34, 14]];  // an arc above the zygote
+const MOTOR_CELLS = [[18, 34], [30, 34]];                                   // turn left, turn right
+const ZYGOTE_CELL = [24, 24];
+
 const STOP_CODONS = new Set(['TAA', 'TAG', 'TGA']);
 const BASE_VALUE = { A: 0, C: 1, G: 2, T: 3 };
 const TURNS = [0, 45, 90, 135, 180, 225, 270, 315];
 const DIRS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+const JITTERS = [0, 30, -30, 60, -60];
 const DEG = Math.PI / 180;
+const now = () => (typeof performance !== 'undefined' ? performance.now() : 0);
 
 function cleanDNA(text) {
   return text.toUpperCase().replace(/[^ACGT]/g, '');
@@ -362,28 +456,39 @@ function geneValue(codons, i) {
   return (codons[i % n] + 17 * Math.floor(i / n)) & 63;
 }
 
+const GENE_CODONS = 24;   // codons read per gene; any after these are silent
+
 function decodeType(gene, index, nTypes) {
   const v = i => geneValue(gene.codons, i);
-  const all = (1 << nTypes) - 1;
-  const seekMask = (v(9) & all) || all;
+  const role = index === SENSOR ? 'sensor' : index === MOTOR ? 'motor' : 'inter';
+  // Sensors and motors connect only to interneurons; interneurons connect to interneurons and motors.
+  let allowed = 0;
+  for (let t = FIRST_INTER; t < nTypes; t++) allowed |= 1 << t;
+  if (role === 'inter') allowed |= 1 << MOTOR;
+  const nInter = Math.max(1, nTypes - FIRST_INTER);
+  const weights = [];
+  for (let t = 0; t < MAX_TYPES; t++) weights.push((v(18 + t) - 31.5) / 31.5 * 1.6);
   return {
-    index,
+    index, role,
     divPeriod: 1 + v(0) % 6,          // steps between divisions
     divCount: 1 + v(1) % 4,           // divisions per neuron
     divDist: 2 + v(2) % 4,            // cells from parent to child
     divAngle: (v(3) % 16) * 22.5,     // first division direction, relative to the neuron's own orientation
     divTurn: TURNS[v(4) % 8],         // rotation added at each further division
-    childA: v(5) % nTypes,            // daughter type on the 1st, 3rd, … division
+    childA: FIRST_INTER + v(5) % nInter,   // daughter type on the 1st, 3rd, … division
     maxGen: 2 + v(6) % 4,             // divides only while generation < maxGen
     axonCount: 1 + v(7) % 3,
     axonDelay: v(8) % 6,              // steps after the last division before axons sprout
-    seekMask,                         // bit t set: connects to type t
+    seekMask: (v(9) & allowed) || allowed,   // bit t set: connects to type t
     taxis: (v(10) - 31.5) / 31.5,     // +1 climbs the targets' signal, -1 flees it
     axonLen: 8 + v(11) % 28,
     straight: v(12) / 63,
     emit: 0.25 + 0.75 * v(13) / 63,   // signal released per substep
-    weight: (v(14) - 31.5) / 31.5,    // synapse weight: positive excites, negative inhibits
-    childB: v(15) % nTypes,           // daughter type on the 2nd, 4th, … division
+    threshold: 0.5 + v(14) / 63,      // membrane potential that triggers a spike
+    childB: FIRST_INTER + v(15) % nInter,  // daughter type on the 2nd, 4th, … division
+    leak: 0.5 + 0.45 * v(16) / 63,    // fraction of potential kept each tick
+    bias: -0.2 + 0.6 * v(17) / 63,    // constant input current
+    weights,                          // synapse weight onto each target type (codons 19–24)
   };
 }
 
@@ -402,7 +507,7 @@ function decodeGenome(dna) {
   const ignored = Math.max(0, genes.length - MAX_TYPES);
   genes = genes.slice(0, MAX_TYPES);
   const types = genes.map((g, i) => decodeType(g, i, genes.length));
-  const genome = { dna, genes, types, implicit, ignored };
+  const genome = { dna, genes, types, implicit, ignored, complete: types.length > FIRST_INTER };
   genome.seed = hashString(ruleKey(genome)) || 1;
   return genome;
 }
@@ -422,16 +527,19 @@ function createSim(genome) {
     pruned: [],                             // axons that gave up, kept briefly for drawing
     edges: new Set(),
     rng: mulberry32(genome.seed),
+    zygoteId: -1,
   };
-  if (nT) addNeuron(sim, 0, W >> 1, H >> 1, 0, 0);
+  if (nT > SENSOR) SENSOR_CELLS.forEach(([x, y], k) => addNeuron(sim, SENSOR, x, y, 0, 0, k));
+  if (nT > MOTOR) MOTOR_CELLS.forEach(([x, y], k) => addNeuron(sim, MOTOR, x, y, 0, 0, k));
+  if (nT > FIRST_INTER) sim.zygoteId = addNeuron(sim, FIRST_INTER, ZYGOTE_CELL[0], ZYGOTE_CELL[1], 0, 0, -1).id;
   return sim;
 }
 
-function addNeuron(sim, type, x, y, gen, orient) {
+function addNeuron(sim, type, x, y, gen, orient, port) {
   const n = {
-    id: sim.neurons.length, type, x, y, gen, orient,
+    id: sim.neurons.length, type, x, y, gen, orient, port,
     age: 0, divsDone: 0, axonsDone: 0, quietSince: -1,
-    inDeg: 0, outDeg: 0, bornAt: performance.now(),
+    inDeg: 0, outDeg: 0, bornAt: now(),
   };
   sim.neurons.push(n);
   sim.grid[y * W + x] = n.id;
@@ -439,7 +547,7 @@ function addNeuron(sim, type, x, y, gen, orient) {
 }
 
 function canDivide(n, T) {
-  return n.divsDone < T.divCount && n.gen < T.maxGen;
+  return T.role === 'inter' && n.divsDone < T.divCount && n.gen < T.maxGen;
 }
 
 // A child needs an empty cell with no neuron in its 3 × 3 neighbourhood.
@@ -453,8 +561,6 @@ function isFreeSpot(sim, x, y) {
   return true;
 }
 
-const JITTERS = [0, 30, -30, 60, -60];
-
 // The daughter goes in the rule's direction, or up to 60° off it (or one cell further) if that spot is crowded.
 function divide(sim, n, T) {
   const theta = n.orient + T.divAngle + n.divsDone * T.divTurn;
@@ -467,16 +573,23 @@ function divide(sim, n, T) {
       const x = n.x + Math.round(Math.cos(a) * dist);
       const y = n.y + Math.round(Math.sin(a) * dist);
       if (isFreeSpot(sim, x, y)) {
-        addNeuron(sim, type, x, y, n.gen + 1, theta + jitter);
+        addNeuron(sim, type, x, y, n.gen + 1, theta + jitter, -1);
         return;
       }
     }
   }
 }
 
-// Axons leave from the side opposite the division direction, spread evenly around the soma.
+// Interneuron axons leave opposite the division direction, spread around the soma.
+// Sensor axons fan downward into the brain; motor axons fan upward.
+function axonAngle(n, T) {
+  if (T.role === 'inter') return n.orient + T.divAngle + 180 + n.axonsDone * 360 / T.axonCount;
+  const base = T.role === 'sensor' ? 90 : -90;
+  return base + (n.axonsDone - (T.axonCount - 1) / 2) * 35;
+}
+
 function sprout(sim, n, T) {
-  const a = (n.orient + T.divAngle + 180 + n.axonsDone * 360 / T.axonCount) * DEG;
+  const a = axonAngle(n, T) * DEG;
   const hx = Math.cos(a), hy = Math.sin(a);
   n.axonsDone++;
   let best = -Infinity, bx = -1, by = -1;
@@ -545,12 +658,15 @@ function findContact(sim, c, T) {
   return -1;
 }
 
+// Only channels some axon steers by are diffused; the others stay at zero.
 function diffuse(sim) {
   const { types } = sim.genome;
   const N = W * H, f = sim.field, s = sim.scratch;
+  const read = types.reduce((m, T) => m | T.seekMask, 0);
   for (let sub = 0; sub < SUBSTEPS; sub++) {
-    for (const n of sim.neurons) f[n.type * N + n.y * W + n.x] += types[n.type].emit;
+    for (const n of sim.neurons) if ((read >> n.type) & 1) f[n.type * N + n.y * W + n.x] += types[n.type].emit;
     for (let t = 0; t < types.length; t++) {
+      if (!((read >> t) & 1)) continue;
       const o = t * N;
       for (let y = 0; y < H; y++) {
         const up = y > 0 ? -W : 0, dn = y < H - 1 ? W : 0;
@@ -589,12 +705,13 @@ function stepSim(sim) {
     const moved = moveCone(sim, c, T);
     const target = findContact(sim, c, T);
     if (target >= 0) {
+      const tgt = sim.neurons[target];
       sim.edges.add(c.owner * 4096 + target);
-      sim.synapses.push({ from: c.owner, to: target, weight: T.weight, bornAt: performance.now() });
+      sim.synapses.push({ from: c.owner, to: target, weight: T.weights[tgt.type], bornAt: now() });
       owner.outDeg++;
-      sim.neurons[target].inDeg++;
+      tgt.inDeg++;
     } else if (!moved || c.len >= T.axonLen) {
-      sim.pruned.push({ owner: c.owner, path: c.path, diedAt: performance.now() });
+      sim.pruned.push({ owner: c.owner, path: c.path, diedAt: now() });
     } else {
       still.push(c);
     }
@@ -611,72 +728,354 @@ function stepSim(sim) {
 
 function runToEnd(sim) {
   while (!sim.done) stepSim(sim);
+  return sim;
 }
 
-// Random genomes: 2–4 genes of 16–22 codons, separated by short non-coding stretches.
-function randomGenome(rand = Math.random) {
-  const pick = s => s[Math.floor(rand() * s.length)];
-  const senseCodon = () => {
-    for (;;) {
-      const c = pick('ACGT') + pick('ACGT') + pick('ACGT');
-      if (!STOP_CODONS.has(c)) return c;
-    }
+// ---------- spiking brain ----------
+// Leaky integrate-and-fire: each tick v ← v·leak + bias + input; a spike resets v to 0.
+// Spikes arrive one tick later, so loops in the wiring give the network memory.
+function compileBrain(sim) {
+  const N = sim.neurons.length, types = sim.genome.types;
+  const thr = new Float32Array(N), leak = new Float32Array(N), bias = new Float32Array(N);
+  sim.neurons.forEach((n, i) => {
+    const T = types[n.type];
+    thr[i] = T.threshold; leak[i] = T.leak; bias[i] = T.bias;
+  });
+  const outStart = new Int32Array(N + 1);
+  for (const s of sim.synapses) outStart[s.from + 1]++;
+  for (let i = 0; i < N; i++) outStart[i + 1] += outStart[i];
+  const fill = outStart.slice(0, N);
+  const outTo = new Int32Array(sim.synapses.length), outW = new Float32Array(sim.synapses.length);
+  for (const s of sim.synapses) {
+    const e = fill[s.from]++;
+    outTo[e] = s.to; outW[e] = s.weight;
+  }
+  const byPort = role => sim.neurons.filter(n => types[n.type].role === role).sort((a, b) => a.port - b.port).map(n => n.id);
+  return { N, thr, leak, bias, outStart, outTo, outW, sensorIds: byPort('sensor'), motorIds: byPort('motor') };
+}
+
+function createBrainState(brain) {
+  return {
+    v: new Float32Array(brain.N),
+    spike: new Uint8Array(brain.N),
+    next: new Uint8Array(brain.N),
+    inp: new Float32Array(brain.N),
+    ext: new Float32Array(brain.N),
   };
+}
+
+function brainTick(brain, st) {
+  const { N, thr, leak, bias, outStart, outTo, outW } = brain;
+  const { v, spike, next, inp, ext } = st;
+  for (let i = 0; i < N; i++) inp[i] = bias[i] + ext[i];
+  for (let i = 0; i < N; i++) {
+    if (!spike[i]) continue;
+    for (let e = outStart[i]; e < outStart[i + 1]; e++) inp[outTo[e]] += outW[e];
+  }
+  for (let i = 0; i < N; i++) {
+    let x = v[i] * leak[i] + inp[i];
+    if (x >= thr[i]) { next[i] = 1; x = 0; } else next[i] = 0;
+    v[i] = x < -3 ? -3 : x;
+  }
+  st.spike = next; st.next = spike;
+}
+
+// ---------- foraging world ----------
+// A wrap-around square world with food pellets. The agent always swims forward; it turns by the
+// difference between the recent firing rates of its turn-left and turn-right motor neurons.
+const WORLD = 100, FOOD_COUNT = 12, EAT_RADIUS = 3.5, AGENT_RADIUS = 2.2;
+const SPEED = 0.8, MAX_TURN = 0.3, SMELL_DECAY = 15, SMELL_RANGE = 45, SENSOR_GAIN = 1.6;
+const EPISODE_TICKS = 500;
+
+function wrapDelta(d) {
+  return d > WORLD / 2 ? d - WORLD : d < -WORLD / 2 ? d + WORLD : d;
+}
+
+function createWorld(seed) {
+  const rng = mulberry32(seed);
+  const food = [];
+  for (let i = 0; i < FOOD_COUNT; i++) food.push({ x: rng() * WORLD, y: rng() * WORLD });
+  return {
+    rng, food,
+    agent: { x: WORLD / 2, y: WORLD / 2, h: rng() * Math.PI * 2 },
+    sensors: new Float32Array(SENSOR_ANGLES.length),
+    rateL: 0, rateR: 0, eaten: 0, tick: 0, lastEat: -1,
+  };
+}
+
+// Smell: each sensor sums nearby food, weighted by distance and by how close the food lies to its direction.
+function sense(world) {
+  const { agent, food, sensors } = world;
+  sensors.fill(0);
+  for (const f of food) {
+    const dx = wrapDelta(f.x - agent.x), dy = wrapDelta(f.y - agent.y);
+    const d = Math.hypot(dx, dy);
+    if (d > SMELL_RANGE) continue;
+    const strength = Math.exp(-d / SMELL_DECAY);
+    const rel = Math.atan2(dy, dx) - agent.h;
+    for (let k = 0; k < SENSOR_ANGLES.length; k++) {
+      const c = Math.cos(rel - SENSOR_ANGLES[k] * DEG);
+      if (c > 0) sensors[k] += strength * c * c * c * c;
+    }
+  }
+  for (let k = 0; k < sensors.length; k++) sensors[k] = 1 - Math.exp(-2.5 * sensors[k]);
+}
+
+function worldTick(world, brain, st) {
+  sense(world);
+  const { sensorIds, motorIds } = brain;
+  for (let k = 0; k < sensorIds.length; k++) st.ext[sensorIds[k]] = SENSOR_GAIN * world.sensors[k];
+  brainTick(brain, st);
+  const sl = motorIds.length ? st.spike[motorIds[0]] : 0;
+  const sr = motorIds.length ? st.spike[motorIds[1]] : 0;
+  world.rateL = 0.8 * world.rateL + 0.2 * sl;
+  world.rateR = 0.8 * world.rateR + 0.2 * sr;
+  const a = world.agent;
+  a.h += MAX_TURN * (world.rateR - world.rateL);   // screen y points down, so a negative turn is to the left
+  a.x = (a.x + SPEED * Math.cos(a.h) + WORLD) % WORLD;
+  a.y = (a.y + SPEED * Math.sin(a.h) + WORLD) % WORLD;
+  for (const f of world.food) {
+    if (Math.hypot(wrapDelta(f.x - a.x), wrapDelta(f.y - a.y)) < EAT_RADIUS) {
+      world.eaten++;
+      world.lastEat = world.tick;
+      f.x = world.rng() * WORLD;
+      f.y = world.rng() * WORLD;
+    }
+  }
+  world.tick++;
+}
+
+function runEpisode(brain, seed, ticks = EPISODE_TICKS) {
+  const world = createWorld(seed), st = createBrainState(brain);
+  for (let t = 0; t < ticks; t++) worldTick(world, brain, st);
+  return world.eaten;
+}
+
+function growBrain(dna) {
+  const genome = decodeGenome(cleanDNA(dna));
+  if (!genome.complete) return null;
+  return compileBrain(runToEnd(createSim(genome)));
+}
+
+function score(brain, seeds) {
+  if (!brain) return 0;
+  let total = 0;
+  for (const s of seeds) total += runEpisode(brain, s);
+  return total / seeds.length;
+}
+
+// ---------- evolution ----------
+// Each generation: grow every genome's brain, score it on the same few worlds, keep the best few
+// unchanged, and fill the rest with mutated copies of tournament winners.
+const VALIDATION_SEEDS = [9101, 9102, 9103, 9104, 9105, 9106, 9107, 9108];
+const POP_SIZE = 48, ELITES = 4, TRAIN_EPISODES = 6, TOURNAMENT = 3;
+
+function randomCodon(rand, allowStop = false) {
   for (;;) {
-    const nGenes = 2 + Math.floor(rand() * 3);
+    let c = '';
+    for (let i = 0; i < 3; i++) c += 'ACGT'[Math.floor(rand() * 4)];
+    if (allowStop || !STOP_CODONS.has(c)) return c;
+  }
+}
+
+// Random genomes: sensor gene, motor gene, zygote gene, then 0–3 more interneuron genes,
+// each 24–30 codons, separated by short non-coding stretches.
+function randomGenome(rand = Math.random) {
+  const stops = [...STOP_CODONS];
+  for (;;) {
+    const nGenes = 3 + Math.floor(rand() * 4);
     let dna = '';
     for (let g = 0; g < nGenes; g++) {
       const junk = 2 + Math.floor(rand() * 9);
-      for (let i = 0; i < junk; i++) dna += pick('ACGT');
+      for (let i = 0; i < junk; i++) dna += 'ACGT'[Math.floor(rand() * 4)];
       dna += 'ATG';
-      const len = 16 + Math.floor(rand() * 7);
-      for (let i = 0; i < len; i++) dna += senseCodon();
-      dna += pick([...STOP_CODONS]);
+      const len = GENE_CODONS + Math.floor(rand() * 7);
+      for (let i = 0; i < len; i++) dna += randomCodon(rand);
+      dna += stops[Math.floor(rand() * 3)];
     }
-    for (let i = Math.floor(rand() * 6); i > 0; i--) dna += pick('ACGT');
     if (findGenes(dna).length === nGenes) return dna;
   }
 }
-// </core>
+
+// Point mutations (about 1.5 per genome), plus rare codon insertions and deletions.
+function mutate(dna, rand) {
+  const s = dna.split('');
+  const rate = 1.5 / s.length;
+  for (let i = 0; i < s.length; i++) {
+    if (rand() < rate) {
+      const others = 'ACGT'.replace(s[i], '');
+      s[i] = others[Math.floor(rand() * 3)];
+    }
+  }
+  let out = s.join('');
+  if (rand() < 0.05) {
+    const at = Math.floor(rand() * out.length);
+    out = out.slice(0, at) + randomCodon(rand, true) + out.slice(at);
+  }
+  if (rand() < 0.05 && out.length > 120) {
+    const at = Math.floor(rand() * (out.length - 3));
+    out = out.slice(0, at) + out.slice(at + 3);
+  }
+  return out;
+}
+
+function createEvolver({ seed = 1, popSize = POP_SIZE, start = null } = {}) {
+  const rand = mulberry32(seed);
+  const pop = [];
+  if (start) {
+    pop.push(start);
+    while (pop.length < popSize) pop.push(mutate(start, rand));
+  } else {
+    while (pop.length < popSize) pop.push(randomGenome(rand));
+  }
+  const cache = new Map();   // dna → brain, so unchanged elites are not regrown
+  const ev = {
+    gen: 0, pop, scores: new Array(popSize).fill(0), next: 0,
+    seeds: [], history: [], champion: null,
+  };
+  const newSeeds = () => { ev.seeds = []; for (let i = 0; i < TRAIN_EPISODES; i++) ev.seeds.push(1 + Math.floor(rand() * 1e9)); };
+  newSeeds();
+
+  const brainFor = dna => {
+    if (cache.has(dna)) return cache.get(dna);
+    const b = growBrain(dna);
+    cache.set(dna, b);
+    if (cache.size > popSize * 2) cache.delete(cache.keys().next().value);
+    return b;
+  };
+
+  // Scores one genome. Returns a report object when that finishes a generation, otherwise null.
+  ev.evaluateNext = () => {
+    const i = ev.next++;
+    ev.scores[i] = score(brainFor(ev.pop[i]), ev.seeds);
+    return ev.next >= ev.pop.length ? finishGeneration() : null;
+  };
+
+  function finishGeneration() {
+    const order = ev.pop.map((_, i) => i).sort((a, b) => ev.scores[b] - ev.scores[a]);
+    const best = order[0];
+    const mean = ev.scores.reduce((a, b) => a + b, 0) / ev.scores.length;
+    const bestDNA = ev.pop[best];
+    const valid = score(brainFor(bestDNA), VALIDATION_SEEDS);
+    let improved = false;
+    if (!ev.champion || valid > ev.champion.fitness) {
+      ev.champion = { dna: bestDNA, fitness: valid, gen: ev.gen };
+      improved = true;
+    }
+    const report = { gen: ev.gen, best: ev.scores[best], mean, valid, champion: ev.champion, improved };
+    ev.history.push({ gen: ev.gen, best: ev.scores[best], mean, valid });
+
+    const pick = () => {
+      let w = Math.floor(rand() * ev.pop.length);
+      for (let k = 1; k < TOURNAMENT; k++) {
+        const c = Math.floor(rand() * ev.pop.length);
+        if (ev.scores[c] > ev.scores[w]) w = c;
+      }
+      return ev.pop[w];
+    };
+    const nextPop = order.slice(0, ELITES).map(i => ev.pop[i]);
+    if (!nextPop.includes(ev.champion.dna)) nextPop.push(ev.champion.dna);
+    while (nextPop.length < ev.pop.length) nextPop.push(mutate(pick(), rand));
+    ev.pop = nextPop;
+    ev.scores = new Array(ev.pop.length).fill(0);
+    ev.next = 0;
+    ev.gen++;
+    newSeeds();
+    return report;
+  }
+  return ev;
+}
+
+return {
+  W, H, MAX_TYPES, SENSOR, MOTOR, FIRST_INTER, SENSOR_ANGLES, GENE_CODONS,
+  WORLD, FOOD_COUNT, EAT_RADIUS, AGENT_RADIUS, EPISODE_TICKS, SMELL_RANGE, POP_SIZE,
+  VALIDATION_SEEDS,
+  cleanDNA, findGenes, decodeGenome, ruleKey, createSim, stepSim, runToEnd,
+  compileBrain, createBrainState, brainTick, createWorld, sense, worldTick, runEpisode,
+  growBrain, score, randomGenome, mutate, createEvolver, mulberry32,
+};
+})();
+</script>
+<script>
+// Runs the evolution loop. Self-contained so its source can be copied into a Web Worker next to Core.
+function trainerLogic(post, budgetMs) {
+  let ev = null, running = false, scheduled = false;
+  function loop() {
+    scheduled = false;
+    if (!running) return;
+    const t0 = Date.now();
+    while (Date.now() - t0 < budgetMs) {
+      const r = ev.evaluateNext();
+      if (r) post({ type: 'generation', report: r });
+    }
+    post({ type: 'progress', gen: ev.gen, done: ev.next, total: ev.pop.length });
+    schedule();
+  }
+  function schedule() {
+    if (!scheduled) { scheduled = true; setTimeout(loop, 0); }
+  }
+  return m => {
+    if (m.cmd === 'start') { ev = Core.createEvolver({ seed: m.seed, start: m.start }); running = true; schedule(); }
+    else if (m.cmd === 'pause') running = false;
+    else if (m.cmd === 'resume') { if (ev) { running = true; schedule(); } }
+  };
+}
+</script>
+<script>
+(() => {
+'use strict';
 
 const EXAMPLES = [
-  { name: "Four-type circuit",
-    note: "All four genes are expressed. Type 2 makes inhibitory synapses (the bars); the other types excite.",
-    dna: "CGCCGCTACCATGGGCGTGGTAAGTCTATGCTTGCACATAAGCGTGGGTAGAAATTCTAGATGGGAAACACTGTAGTGTGTATGCCCCGTTTGGAGTGCTATCCTGTGGTACTGCGCCGGTCATTTATCCAAGAAATTGCTTAATGCTAATGTTCCACTTGGTAGCTAGCCGCCCTCTAGATGTATACACCAGAGCTAACTCCGCGAAATTGTAGAGCGCGAGATGGTGTGCAGCGAACTATCGTCGCGACAACAACTAACTTGGTGGTACAGGATCGAGTAAGCATG" },
-  { name: "Hub and spokes",
-    note: "There is only one Type 1 neuron, the zygote, and Type 3 axons seek nothing else, so they all converge on it.",
-    dna: "CTGGGTATGCTGGGGGCCTCTCAGACCTGGGTTCAATCCCTAGGTTGTAGGGCTCCTTGCTTTGGAAAGGAGAGATAACTCCCGGATGCCCCGTTCTGAAATGTACGGGTTGTGTGGTACCGCCTGTACCATTCCAGGTTAACTCGGGGGACATGTTAAGCTCGATGAAGTGTTTGCGTAAAAGCGTTCCCCTTGAAGTCGGACGGCCTCTCGGCTAATA" },
-  { name: "Branching fan",
-    note: "Gene 2 is never expressed because no division makes a Type 2 daughter. Type 1 alone branches into a fan.",
-    dna: "AGCCCCTTGCATGAATGGCTTTCAAGTCGGGAATCTACATCAATTCTCCTTCAATTGTGTACTATGAAGATGAATTTACCTGGTGTTCCCTGTAACTGGGTCTGCGTGGGGATGTTTACCGGACCTTAGCTAAA" },
-  { name: "Dense ganglion",
-    note: "Type 3 divides four times, every step, two cells apart, which packs a tight cluster. Type 2 never appears.",
-    dna: "TGATGACATGCGACCGGGGTACCCCCAAGATTCTTCCCGTGCAGACTGGAACAAGCACGCCATAATTTGTGTGATGAGAACAGTAGGCACCCTTCATCCCGGGTCTATCTTGACCAATCTTCAGCGGACTAGTCATTAAGGTTCTGGTGATGGGGGGTCGATCAACGCCATTTCACCCCATTTCATCGCACGTTCAGCGGATCTAG" },
-  { name: "Inhibitory web",
-    note: "Type 2 axons grow straight and follow the signal, arcing across the cluster. Most synapses here inhibit.",
-    dna: "CAATCTTATGCGCCACCATCTTTATAGAAGTTCCTTGATAGCGGGAAGTCGCAGACTCCCGTTGTTCTGATTCAGATGCCCTTTGGGCAACCGCATGTCGTAAGATATTGCGACTGGTTGACCCCTGGGACTCTTAGACATGGCTAGATATGCATTATGATTGGGATTTAATGGCAGGACGTGTAGAGATCCTACGGATATACCGCGCGTGAACGAAATGTGGGCTTCTTCTCTATTCTCGAGTCGACACTCGAACATATTTTCGGACAGGATCTCATACGAGACGTGACT" },
-
+  {"name": "Evolved forager", "note": "Evolved over 251 generations from random genomes. It collects 17.88 food per episode on the test worlds; a brain that swims straight gets about 4.", "dna": "CGTCCTCAATGTTGAAATTCTGCAGCACTAATTATTGTCTTGACTATATCTTTGACGGTGGGCAAGGCCGATTTGGTCTTAAGTACTCATGAGAGATGATACTTTCCGCTGATTTCAAGTCGATATTTCCATCGCTAGAGGAGCGGTGCGCAAGGCTTGTGATCCTCTGTGGATACCATGCCCCATGTTAACAAGATGCGAGGTTGCGCATTAGCGCCGCCGCAACAGTCCAGCCCGGCATGTTTTTGTACAGAGTTTTGGGGTGCGCCAAGCGTT"},
+  {"name": "Second evolved forager", "note": "Evolved over 20 generations from random genomes. It collects 17.38 food per episode on the test worlds; a brain that swims straight gets about 4.", "dna": "ACGTCTTCCATGACTCGTTCAACTAATTTATTACGGCCCATCCAATCGCTTAAGGTATTCCTAGCTGGCTGCGTCATCTATACAGTGCCCATACGGTAGGCATGCGACACGAACCTGTTAAAGTAAGACCTTATGGCCCACATAGGACTACGCCAGGTTCAGGCCCTTTCTGTGGGCGATAAGTCTAATGTACGCTGAGCTAAGTGCTGTTTCGAATAGGTTTTACTTGAGCCAAGTCGATGCCGATTGGTTCGAGGAAGGTTGAAATCGAATGGCGGTCTGCCGGCTGTTCCATACCGTTAGCCTGGCCTGTTGTCGTAATGGGATGGTTGAGAAGATGAGCCCTAGGTAATGGAAAGAGATGCTCCAACAAGAGATACCTCGACCACTTCCGCCCTTGTTAATGGAGCAAAAATCTATCTGGTCTGCCACACTCCGGTATAGGACATAG"},
+  {"name": "Third evolved forager", "note": "Evolved over 218 generations from random genomes. It collects 16.38 food per episode on the test worlds; a brain that swims straight gets about 4.", "dna": "AAGATGATTTAAGGTTTTCGGGCGCTAGGGGCAACGCAGCCAATGGCCTTAGAACCATCGGTACCGATCAACGTAAGGTCGGACCATCTCTGCCGGGTCGAATCCGAGGCTGGTGGCAAACAACTTGAGGGAACCACGCTTCTATTAAACCGAAGGAGATGGCGGTGAAGTATGGGAGCTGAAAACAAGGGCGCTAGCGCGTAAGGAGCGGTTCAAGACCTGGTATGCTGCCGGTCCGCATTCAAACAAAAGCATATTTCAACGATGAAGAGGGCCTTGCCACGCA"}
 ];
-const DEFAULT_DNA = EXAMPLES[0].dna;
+// Generation-by-generation scores from the run that evolved the first example.
+const RECORDED_RUN = [{"gen":0,"best":5.5,"mean":5.13,"valid":3.62},{"gen":1,"best":2.83,"mean":2.83,"valid":3.62},{"gen":2,"best":3.67,"mean":3.53,"valid":3.62},{"gen":3,"best":4.67,"mean":3.8,"valid":2.62},{"gen":4,"best":4.67,"mean":4.54,"valid":3.62},{"gen":5,"best":2.67,"mean":2.67,"valid":3.62},{"gen":6,"best":4.83,"mean":4.74,"valid":3.62},{"gen":7,"best":2.67,"mean":2.67,"valid":3.62},{"gen":8,"best":3.67,"mean":3.67,"valid":3.62},{"gen":9,"best":7.33,"mean":3.02,"valid":8.12},{"gen":10,"best":7,"mean":4.39,"valid":8.12},{"gen":11,"best":9.83,"mean":3.93,"valid":8.12},{"gen":12,"best":8.33,"mean":3.99,"valid":8.12},{"gen":13,"best":8.5,"mean":5.22,"valid":8.12},{"gen":14,"best":9,"mean":4.8,"valid":8.12},{"gen":15,"best":7.67,"mean":5.38,"valid":8.12},{"gen":16,"best":8.83,"mean":4.65,"valid":9.25},{"gen":17,"best":8.5,"mean":4.17,"valid":9.25},{"gen":18,"best":8.67,"mean":4.65,"valid":8.12},{"gen":19,"best":8.67,"mean":4.95,"valid":9.12},{"gen":20,"best":7.83,"mean":4.05,"valid":9.12},{"gen":21,"best":8.5,"mean":5.1,"valid":9.25},{"gen":22,"best":8.33,"mean":4.57,"valid":9.12},{"gen":23,"best":8.33,"mean":4.52,"valid":9.12},{"gen":24,"best":8.67,"mean":4.01,"valid":8.75},{"gen":25,"best":9,"mean":4.51,"valid":9.25},{"gen":26,"best":9.33,"mean":5.58,"valid":9.12},{"gen":27,"best":8.33,"mean":4.3,"valid":9.12},{"gen":28,"best":8.5,"mean":5.02,"valid":9.12},{"gen":29,"best":8.67,"mean":5.09,"valid":9.12},{"gen":30,"best":8,"mean":4.84,"valid":7.38},{"gen":31,"best":8.67,"mean":5.15,"valid":9.38},{"gen":32,"best":8.83,"mean":4.36,"valid":9.12},{"gen":33,"best":9.83,"mean":4.98,"valid":9.38},{"gen":34,"best":9.83,"mean":3.99,"valid":9},{"gen":35,"best":10,"mean":5.89,"valid":9},{"gen":36,"best":11.33,"mean":6.22,"valid":9},{"gen":37,"best":10.33,"mean":6.17,"valid":9},{"gen":38,"best":12.17,"mean":7.46,"valid":11.25},{"gen":39,"best":12.83,"mean":7.4,"valid":8.88},{"gen":40,"best":10.33,"mean":6.41,"valid":9},{"gen":41,"best":12.33,"mean":7.32,"valid":10.38},{"gen":42,"best":13.83,"mean":7.74,"valid":13},{"gen":43,"best":11.17,"mean":7.74,"valid":11.25},{"gen":44,"best":11.5,"mean":6.86,"valid":13},{"gen":45,"best":11.83,"mean":7.79,"valid":10},{"gen":46,"best":12.5,"mean":7.39,"valid":13},{"gen":47,"best":11.83,"mean":7.52,"valid":11.38},{"gen":48,"best":12,"mean":8.0,"valid":11.38},{"gen":49,"best":12.67,"mean":9.7,"valid":11.38},{"gen":50,"best":12,"mean":9.09,"valid":10.88},{"gen":51,"best":13.33,"mean":9.64,"valid":10.88},{"gen":52,"best":11.33,"mean":9.37,"valid":11.38},{"gen":53,"best":12.67,"mean":9.14,"valid":11.38},{"gen":54,"best":13.83,"mean":7.8,"valid":10.75},{"gen":55,"best":12.83,"mean":8.57,"valid":13},{"gen":56,"best":12.5,"mean":7.9,"valid":11.38},{"gen":57,"best":15.83,"mean":10.67,"valid":10.75},{"gen":58,"best":12.83,"mean":8.59,"valid":11.5},{"gen":59,"best":11.67,"mean":8.93,"valid":11.5},{"gen":60,"best":11.83,"mean":7.93,"valid":11.38},{"gen":61,"best":14.5,"mean":9.73,"valid":11.38},{"gen":62,"best":13,"mean":9.02,"valid":13},{"gen":63,"best":12.67,"mean":8.66,"valid":12.75},{"gen":64,"best":12.67,"mean":9.4,"valid":12.75},{"gen":65,"best":13.83,"mean":9.63,"valid":12.75},{"gen":66,"best":13.5,"mean":8.0,"valid":12.75},{"gen":67,"best":13.67,"mean":8.72,"valid":13},{"gen":68,"best":12.5,"mean":8.55,"valid":9.5},{"gen":69,"best":13.5,"mean":9.57,"valid":13},{"gen":70,"best":13.17,"mean":9.52,"valid":10.62},{"gen":71,"best":15,"mean":10.01,"valid":13.38},{"gen":72,"best":13.83,"mean":8.14,"valid":13.38},{"gen":73,"best":14,"mean":10.44,"valid":14.12},{"gen":74,"best":14.17,"mean":10.11,"valid":13.5},{"gen":75,"best":14.67,"mean":10.36,"valid":14.62},{"gen":76,"best":15.83,"mean":11.21,"valid":14.5},{"gen":77,"best":14.67,"mean":8.89,"valid":14.5},{"gen":78,"best":14.83,"mean":10.35,"valid":14.62},{"gen":79,"best":15.67,"mean":10.93,"valid":14.75},{"gen":80,"best":15,"mean":9.62,"valid":13.12},{"gen":81,"best":15.17,"mean":10.76,"valid":14.75},{"gen":82,"best":16.5,"mean":11.03,"valid":13.5},{"gen":83,"best":15.33,"mean":9.65,"valid":14.5},{"gen":84,"best":14.17,"mean":10.27,"valid":14.5},{"gen":85,"best":16.83,"mean":10.59,"valid":16.38},{"gen":86,"best":15.5,"mean":9.66,"valid":16.38},{"gen":87,"best":16.17,"mean":11.25,"valid":14.5},{"gen":88,"best":16.17,"mean":10.51,"valid":16.38},{"gen":89,"best":15.67,"mean":12.1,"valid":16.38},{"gen":90,"best":17,"mean":12.27,"valid":16.38},{"gen":91,"best":15.67,"mean":12.09,"valid":16.75},{"gen":92,"best":17.33,"mean":12.85,"valid":16.75},{"gen":93,"best":16,"mean":12.72,"valid":16.38},{"gen":94,"best":15.67,"mean":9.84,"valid":15.88},{"gen":95,"best":16,"mean":9.76,"valid":14.12},{"gen":96,"best":17.5,"mean":12.77,"valid":15.88},{"gen":97,"best":16.5,"mean":11.43,"valid":15.88},{"gen":98,"best":16.17,"mean":11.94,"valid":14.38},{"gen":99,"best":16.5,"mean":12.3,"valid":16.62},{"gen":100,"best":16.5,"mean":11.9,"valid":14.75},{"gen":101,"best":16.17,"mean":12.52,"valid":15.25},{"gen":102,"best":17.33,"mean":12.27,"valid":16.12},{"gen":103,"best":16.83,"mean":13.18,"valid":16.12},{"gen":104,"best":15.83,"mean":11.42,"valid":16.75},{"gen":105,"best":16.5,"mean":11.64,"valid":15.62},{"gen":106,"best":15.33,"mean":11.62,"valid":16.12},{"gen":107,"best":16.17,"mean":12.99,"valid":15.75},{"gen":108,"best":16.67,"mean":10.2,"valid":15.62},{"gen":109,"best":17.17,"mean":11.97,"valid":15.62},{"gen":110,"best":17,"mean":10.91,"valid":14.62},{"gen":111,"best":16.5,"mean":11.75,"valid":14.88},{"gen":112,"best":16.5,"mean":12.1,"valid":14.62},{"gen":113,"best":16,"mean":12.02,"valid":14.88},{"gen":114,"best":17.17,"mean":10.68,"valid":16.88},{"gen":115,"best":17.17,"mean":12.28,"valid":16.88},{"gen":116,"best":17.33,"mean":11.98,"valid":16.25},{"gen":117,"best":15.5,"mean":10.14,"valid":14.88},{"gen":118,"best":15.83,"mean":11.6,"valid":14.62},{"gen":119,"best":15.67,"mean":11.92,"valid":14.62},{"gen":120,"best":16.33,"mean":12.5,"valid":15.88},{"gen":121,"best":17,"mean":12.81,"valid":14.88},{"gen":122,"best":18,"mean":12.5,"valid":16},{"gen":123,"best":16.17,"mean":11.03,"valid":16.88},{"gen":124,"best":16.17,"mean":12.18,"valid":15.62},{"gen":125,"best":17.5,"mean":10.45,"valid":14.12},{"gen":126,"best":17,"mean":11.47,"valid":15},{"gen":127,"best":17.67,"mean":11.65,"valid":15},{"gen":128,"best":16.67,"mean":12.25,"valid":15},{"gen":129,"best":15.83,"mean":12.21,"valid":16.88},{"gen":130,"best":16.5,"mean":10.4,"valid":14.12},{"gen":131,"best":15,"mean":11.75,"valid":16.5},{"gen":132,"best":17.17,"mean":12.08,"valid":16.25},{"gen":133,"best":16.67,"mean":11.09,"valid":15.12},{"gen":134,"best":16.83,"mean":11.26,"valid":16.38},{"gen":135,"best":17.17,"mean":12.15,"valid":16.38},{"gen":136,"best":17.17,"mean":11.59,"valid":14.5},{"gen":137,"best":15.67,"mean":11.05,"valid":15.75},{"gen":138,"best":17.17,"mean":10.9,"valid":15.75},{"gen":139,"best":17.67,"mean":11.28,"valid":16.88},{"gen":140,"best":16.33,"mean":10.71,"valid":15.75},{"gen":141,"best":17.17,"mean":10.7,"valid":14.88},{"gen":142,"best":17.5,"mean":11.92,"valid":15.75},{"gen":143,"best":16.67,"mean":10.4,"valid":14.38},{"gen":144,"best":16.17,"mean":11.82,"valid":14.38},{"gen":145,"best":18,"mean":13.01,"valid":14.5},{"gen":146,"best":16.83,"mean":11.7,"valid":16.25},{"gen":147,"best":16.5,"mean":11.64,"valid":16.88},{"gen":148,"best":16.5,"mean":13.04,"valid":16.88},{"gen":149,"best":17.67,"mean":12.45,"valid":15.75},{"gen":150,"best":18.5,"mean":12.34,"valid":14.88},{"gen":151,"best":15.83,"mean":11.6,"valid":16.62},{"gen":152,"best":17.67,"mean":12.25,"valid":17.5},{"gen":153,"best":17,"mean":12.43,"valid":16.38},{"gen":154,"best":16.5,"mean":11.99,"valid":14.88},{"gen":155,"best":16.5,"mean":10.67,"valid":14.88},{"gen":156,"best":17,"mean":11.34,"valid":16.12},{"gen":157,"best":16.67,"mean":12.59,"valid":15.62},{"gen":158,"best":17.17,"mean":12.89,"valid":15},{"gen":159,"best":16.33,"mean":11.64,"valid":16.38},{"gen":160,"best":16.83,"mean":12.55,"valid":16.88},{"gen":161,"best":15.83,"mean":12.55,"valid":17},{"gen":162,"best":17.83,"mean":12.93,"valid":15.75},{"gen":163,"best":16.83,"mean":12.43,"valid":16.88},{"gen":164,"best":16.17,"mean":12.29,"valid":15.12},{"gen":165,"best":15.67,"mean":12.64,"valid":16},{"gen":166,"best":17,"mean":14.82,"valid":16.25},{"gen":167,"best":18.17,"mean":13.27,"valid":15.5},{"gen":168,"best":17.67,"mean":12.45,"valid":15.62},{"gen":169,"best":17.5,"mean":10.56,"valid":15.12},{"gen":170,"best":16,"mean":11.65,"valid":16.62},{"gen":171,"best":17.5,"mean":12.46,"valid":15.62},{"gen":172,"best":16,"mean":11.7,"valid":15.62},{"gen":173,"best":17.17,"mean":12.56,"valid":15.25},{"gen":174,"best":16.83,"mean":11.66,"valid":17.5},{"gen":175,"best":15.33,"mean":10.26,"valid":15.25},{"gen":176,"best":16.5,"mean":12.46,"valid":16.5},{"gen":177,"best":17.5,"mean":12.1,"valid":17.5},{"gen":178,"best":16.17,"mean":13.37,"valid":15.88},{"gen":179,"best":17.5,"mean":12.02,"valid":15.88},{"gen":180,"best":16.67,"mean":12.14,"valid":17.12},{"gen":181,"best":16.67,"mean":11.66,"valid":14.38},{"gen":182,"best":19.83,"mean":13.23,"valid":17.12},{"gen":183,"best":17.5,"mean":13.07,"valid":16.62},{"gen":184,"best":16.17,"mean":13.49,"valid":17},{"gen":185,"best":16.5,"mean":11.37,"valid":14.5},{"gen":186,"best":17,"mean":11.83,"valid":17.12},{"gen":187,"best":15.67,"mean":13.18,"valid":16.25},{"gen":188,"best":17.67,"mean":14.0,"valid":15.25},{"gen":189,"best":15.67,"mean":11.6,"valid":15.5},{"gen":190,"best":16.67,"mean":12.31,"valid":15.5},{"gen":191,"best":16.5,"mean":12.66,"valid":17.5},{"gen":192,"best":17.67,"mean":13.19,"valid":15.5},{"gen":193,"best":17.17,"mean":13.04,"valid":16.62},{"gen":194,"best":17.5,"mean":12.73,"valid":17.5},{"gen":195,"best":16.83,"mean":12.44,"valid":15.62},{"gen":196,"best":16,"mean":12.38,"valid":15.88},{"gen":197,"best":17.17,"mean":12.45,"valid":17.5},{"gen":198,"best":15.83,"mean":12.18,"valid":17.5},{"gen":199,"best":17.33,"mean":13.34,"valid":15.88},{"gen":200,"best":16.5,"mean":12.24,"valid":15.25},{"gen":201,"best":16.67,"mean":12.06,"valid":17.5},{"gen":202,"best":18,"mean":10.12,"valid":15.88},{"gen":203,"best":17.17,"mean":12.31,"valid":16.38},{"gen":204,"best":16.5,"mean":11.95,"valid":15},{"gen":205,"best":16.83,"mean":11.11,"valid":15.88},{"gen":206,"best":17.83,"mean":12.66,"valid":16.25},{"gen":207,"best":18.17,"mean":13.29,"valid":16.5},{"gen":208,"best":16.83,"mean":13.3,"valid":17.5},{"gen":209,"best":16.17,"mean":12.8,"valid":16.38},{"gen":210,"best":18.33,"mean":11.34,"valid":17},{"gen":211,"best":18,"mean":13.34,"valid":15.38},{"gen":212,"best":17,"mean":12.88,"valid":17.38},{"gen":213,"best":15.67,"mean":12.04,"valid":13.88},{"gen":214,"best":16.17,"mean":11.15,"valid":15.25},{"gen":215,"best":16.5,"mean":11.47,"valid":15.88},{"gen":216,"best":17.17,"mean":13.03,"valid":15.88},{"gen":217,"best":15.83,"mean":11.96,"valid":14},{"gen":218,"best":15.83,"mean":9.89,"valid":16.88},{"gen":219,"best":15.33,"mean":11.7,"valid":17.12},{"gen":220,"best":18,"mean":14.84,"valid":16.62},{"gen":221,"best":17,"mean":12.88,"valid":16.62},{"gen":222,"best":17.33,"mean":12.05,"valid":16},{"gen":223,"best":16.67,"mean":13.82,"valid":17.5},{"gen":224,"best":16.83,"mean":11.56,"valid":17.5},{"gen":225,"best":16,"mean":11.56,"valid":16.62},{"gen":226,"best":16.17,"mean":11.53,"valid":16.62},{"gen":227,"best":16.83,"mean":12.12,"valid":16.25},{"gen":228,"best":17.17,"mean":11.52,"valid":16},{"gen":229,"best":15.5,"mean":9.88,"valid":16.62},{"gen":230,"best":16.5,"mean":11.03,"valid":17.12},{"gen":231,"best":17,"mean":12.24,"valid":16.38},{"gen":232,"best":17.67,"mean":13.05,"valid":16},{"gen":233,"best":15.83,"mean":11.78,"valid":17.5},{"gen":234,"best":16.17,"mean":12.85,"valid":16.62},{"gen":235,"best":16.17,"mean":12.18,"valid":15.5},{"gen":236,"best":17,"mean":10.17,"valid":16.5},{"gen":237,"best":16.17,"mean":10.25,"valid":14.25},{"gen":238,"best":17.17,"mean":12.92,"valid":16.62},{"gen":239,"best":18.67,"mean":12.22,"valid":16.5},{"gen":240,"best":14.33,"mean":10.75,"valid":14},{"gen":241,"best":15.67,"mean":12.39,"valid":14.75},{"gen":242,"best":16.67,"mean":11.9,"valid":16.5},{"gen":243,"best":17.67,"mean":10.43,"valid":17.38},{"gen":244,"best":15.67,"mean":11.69,"valid":17.62},{"gen":245,"best":17,"mean":10.61,"valid":15.12},{"gen":246,"best":16.33,"mean":10.79,"valid":16.5},{"gen":247,"best":17.5,"mean":12.25,"valid":16.25},{"gen":248,"best":15.5,"mean":12.66,"valid":16.38},{"gen":249,"best":16.5,"mean":12.15,"valid":15.62},{"gen":250,"best":16.67,"mean":10.78,"valid":17.88},{"gen":251,"best":16.5,"mean":12.79,"valid":15.62},{"gen":252,"best":15.83,"mean":11.75,"valid":15.12},{"gen":253,"best":15.33,"mean":12.08,"valid":16.12},{"gen":254,"best":17.33,"mean":12.56,"valid":16.12},{"gen":255,"best":17.33,"mean":12.26,"valid":16.25},{"gen":256,"best":16.83,"mean":12.93,"valid":16.5},{"gen":257,"best":17.5,"mean":10.73,"valid":15.25},{"gen":258,"best":15.83,"mean":12.02,"valid":16.12},{"gen":259,"best":16.67,"mean":10.64,"valid":14.38},{"gen":260,"best":16.83,"mean":11.33,"valid":15.12},{"gen":261,"best":17,"mean":13.12,"valid":15.12},{"gen":262,"best":17.67,"mean":13.02,"valid":14.75},{"gen":263,"best":17,"mean":13.97,"valid":14.88},{"gen":264,"best":16.5,"mean":11.9,"valid":17},{"gen":265,"best":17.17,"mean":12.5,"valid":14.5},{"gen":266,"best":16.33,"mean":11.65,"valid":15.38},{"gen":267,"best":16.67,"mean":13.1,"valid":15.38},{"gen":268,"best":17.67,"mean":11.91,"valid":14.75},{"gen":269,"best":16.83,"mean":14.15,"valid":17.38},{"gen":270,"best":16,"mean":11.37,"valid":15.38},{"gen":271,"best":16.5,"mean":11.55,"valid":17.88},{"gen":272,"best":16.83,"mean":12.94,"valid":16.5},{"gen":273,"best":16.67,"mean":12.26,"valid":17.5},{"gen":274,"best":17.17,"mean":11.2,"valid":16.12},{"gen":275,"best":17,"mean":13.06,"valid":17.88},{"gen":276,"best":17.83,"mean":13.63,"valid":14.75},{"gen":277,"best":15.17,"mean":12.2,"valid":17.5},{"gen":278,"best":15.83,"mean":12.23,"valid":14.5},{"gen":279,"best":17.17,"mean":11.81,"valid":15.5},{"gen":280,"best":15.83,"mean":12.77,"valid":16.38},{"gen":281,"best":16.83,"mean":12.03,"valid":14.62},{"gen":282,"best":16.5,"mean":12.92,"valid":14.62},{"gen":283,"best":17.5,"mean":12.34,"valid":15},{"gen":284,"best":15.17,"mean":12.96,"valid":15.5},{"gen":285,"best":17.5,"mean":13.49,"valid":15.5},{"gen":286,"best":15.83,"mean":11.89,"valid":17.5},{"gen":287,"best":16.33,"mean":12.67,"valid":14.62},{"gen":288,"best":15.5,"mean":11.27,"valid":17.5},{"gen":289,"best":17.67,"mean":11.66,"valid":14.62},{"gen":290,"best":16,"mean":12.66,"valid":14.5},{"gen":291,"best":17.17,"mean":11.95,"valid":15.62},{"gen":292,"best":15.33,"mean":11.73,"valid":15.62},{"gen":293,"best":17.67,"mean":12.44,"valid":14.88},{"gen":294,"best":16.5,"mean":13.63,"valid":16},{"gen":295,"best":16.67,"mean":13.06,"valid":17.5},{"gen":296,"best":15.83,"mean":11.46,"valid":14.88},{"gen":297,"best":15.83,"mean":11.26,"valid":16},{"gen":298,"best":14.5,"mean":12.11,"valid":17.88},{"gen":299,"best":15.83,"mean":11.31,"valid":14.62},{"gen":300,"best":17.67,"mean":11.89,"valid":15.25},{"gen":301,"best":17.17,"mean":12.32,"valid":15.12},{"gen":302,"best":16,"mean":11.58,"valid":16.12},{"gen":303,"best":16.33,"mean":12.84,"valid":15.25},{"gen":304,"best":15.83,"mean":12.23,"valid":16.12},{"gen":305,"best":16.5,"mean":11.44,"valid":14.88},{"gen":306,"best":15.83,"mean":11.77,"valid":16},{"gen":307,"best":17.33,"mean":13.71,"valid":16},{"gen":308,"best":15.67,"mean":12.54,"valid":15.38},{"gen":309,"best":16,"mean":12.75,"valid":16.12},{"gen":310,"best":15.67,"mean":11.98,"valid":15.62},{"gen":311,"best":16.17,"mean":11.86,"valid":15.62},{"gen":312,"best":17.67,"mean":13.15,"valid":15.75},{"gen":313,"best":16.83,"mean":12.59,"valid":14.5},{"gen":314,"best":17.17,"mean":14.16,"valid":15.88},{"gen":315,"best":17,"mean":13.69,"valid":15.88},{"gen":316,"best":17.5,"mean":14.22,"valid":14.88},{"gen":317,"best":17.5,"mean":13.56,"valid":16},{"gen":318,"best":17.17,"mean":14.18,"valid":15.88},{"gen":319,"best":16.5,"mean":12.24,"valid":16},{"gen":320,"best":17.33,"mean":14.35,"valid":14.88},{"gen":321,"best":16.17,"mean":13.1,"valid":14.38},{"gen":322,"best":16.17,"mean":13.88,"valid":16.5},{"gen":323,"best":17.33,"mean":13.95,"valid":15.88},{"gen":324,"best":16,"mean":13.12,"valid":15.88},{"gen":325,"best":17.17,"mean":12.43,"valid":15.88},{"gen":326,"best":16.83,"mean":14.97,"valid":15.88},{"gen":327,"best":17.17,"mean":15.16,"valid":17.88},{"gen":328,"best":15.83,"mean":12.55,"valid":15.62},{"gen":329,"best":16.67,"mean":13.52,"valid":13.88},{"gen":330,"best":16.5,"mean":12.89,"valid":14.75},{"gen":331,"best":15.33,"mean":12.24,"valid":17.88},{"gen":332,"best":16,"mean":12.24,"valid":14.75},{"gen":333,"best":17,"mean":10.98,"valid":15.75},{"gen":334,"best":16,"mean":13.48,"valid":15.75},{"gen":335,"best":16.33,"mean":12.04,"valid":15.25},{"gen":336,"best":15.67,"mean":12.56,"valid":15.25},{"gen":337,"best":16,"mean":13.03,"valid":15.5},{"gen":338,"best":15.83,"mean":11.98,"valid":16.5},{"gen":339,"best":17,"mean":13.02,"valid":15},{"gen":340,"best":16.33,"mean":10.68,"valid":15.75},{"gen":341,"best":16.33,"mean":13.22,"valid":14.12},{"gen":342,"best":16.17,"mean":12.2,"valid":16.5},{"gen":343,"best":15.83,"mean":12.56,"valid":15.12},{"gen":344,"best":15.33,"mean":11.36,"valid":14.12},{"gen":345,"best":16.33,"mean":13.38,"valid":16.5},{"gen":346,"best":16.33,"mean":12.01,"valid":14.25},{"gen":347,"best":16.83,"mean":13.42,"valid":15.25},{"gen":348,"best":18.5,"mean":13.7,"valid":16.5},{"gen":349,"best":18.67,"mean":13.86,"valid":16.5},{"gen":350,"best":15.83,"mean":12.85,"valid":16.5},{"gen":351,"best":17.17,"mean":11.98,"valid":15.25},{"gen":352,"best":15.83,"mean":12.48,"valid":15.25},{"gen":353,"best":19.5,"mean":13.84,"valid":15.25},{"gen":354,"best":15.83,"mean":11.76,"valid":16.5},{"gen":355,"best":16.17,"mean":12.79,"valid":15.12},{"gen":356,"best":18,"mean":14.56,"valid":16.25},{"gen":357,"best":18.33,"mean":13.89,"valid":16.88},{"gen":358,"best":16.33,"mean":12.76,"valid":16.25},{"gen":359,"best":18.33,"mean":15.14,"valid":16.5},{"gen":360,"best":16.5,"mean":12.48,"valid":15.25},{"gen":361,"best":18,"mean":13.28,"valid":15.25},{"gen":362,"best":17.67,"mean":12.85,"valid":15.12},{"gen":363,"best":15.17,"mean":11.42,"valid":15.12},{"gen":364,"best":17.33,"mean":13.42,"valid":17.62},{"gen":365,"best":17.83,"mean":12.85,"valid":15.12},{"gen":366,"best":17.17,"mean":11.84,"valid":15.12},{"gen":367,"best":18,"mean":11.62,"valid":15.25},{"gen":368,"best":16.5,"mean":11.8,"valid":15.25},{"gen":369,"best":17,"mean":12.67,"valid":15.25},{"gen":370,"best":17.5,"mean":12.69,"valid":15.38},{"gen":371,"best":16.33,"mean":11.97,"valid":15.38},{"gen":372,"best":18.17,"mean":13.15,"valid":14.88},{"gen":373,"best":15.17,"mean":11.71,"valid":17.88},{"gen":374,"best":17.67,"mean":12.57,"valid":15.38},{"gen":375,"best":17.17,"mean":13.73,"valid":15.38},{"gen":376,"best":15.17,"mean":11.83,"valid":15.38},{"gen":377,"best":16.83,"mean":13.15,"valid":15.5},{"gen":378,"best":15.5,"mean":13.18,"valid":15.38},{"gen":379,"best":15.67,"mean":12.78,"valid":17.88},{"gen":380,"best":16.17,"mean":12.32,"valid":16.75},{"gen":381,"best":16.67,"mean":14.43,"valid":15.12},{"gen":382,"best":17.5,"mean":12.29,"valid":17.88},{"gen":383,"best":17,"mean":12.02,"valid":15.38},{"gen":384,"best":16.83,"mean":12.84,"valid":15.12},{"gen":385,"best":15.67,"mean":10.75,"valid":14.5},{"gen":386,"best":17.17,"mean":13.76,"valid":16.25},{"gen":387,"best":16,"mean":13.78,"valid":15.5},{"gen":388,"best":16.83,"mean":13.52,"valid":14.5},{"gen":389,"best":17,"mean":12.42,"valid":15.12},{"gen":390,"best":16.67,"mean":11.92,"valid":14.75},{"gen":391,"best":17.67,"mean":14.66,"valid":15.38},{"gen":392,"best":17.17,"mean":13.24,"valid":15.75},{"gen":393,"best":17,"mean":13.4,"valid":16},{"gen":394,"best":16.17,"mean":14.13,"valid":15.38},{"gen":395,"best":16,"mean":11.3,"valid":17.88},{"gen":396,"best":16.83,"mean":12.49,"valid":15.5},{"gen":397,"best":17.17,"mean":14.1,"valid":15.75},{"gen":398,"best":17.67,"mean":14.51,"valid":15.5},{"gen":399,"best":16.5,"mean":13.09,"valid":15.38}];
 
-// ---------- page ----------
+const C = Core;
 const $ = id => document.getElementById(id);
-const canvas = $('plate'), ctx = canvas.getContext('2d');
-const dnaInput = $('dna');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const dnaInput = $('dna');
 
-let genome = null, sim = null;
-let playing = false, speed = 14, acc = 0, lastFrame = 0;
-let size = 600, dpr = 1;
-let hoverId = -1, pinnedId = -1;
-let palette = null;
-let lastStatsKey = '';
+// ---------- live view state ----------
+const live = {
+  dna: '', genome: null, sim: null, brain: null, st: null, world: null,
+  mode: 'grow', playing: true, acc: 0, episode: 0, history: [], trail: [], eats: [],
+  lastSpike: new Float64Array(0), score: null, source: '',
+};
+let speed = 40, lastFrame = 0, hoverId = -1, pinnedId = -1, palette = null;
 
+// ---------- canvases ----------
+function makeCanvas(id) {
+  const canvas = $(id);
+  return { canvas, ctx: canvas.getContext('2d'), size: 300, dpr: 1 };
+}
+const arena = makeCanvas('arena'), brainView = makeCanvas('brain');
+const chart = { canvas: $('chart'), ctx: $('chart').getContext('2d'), w: 300, h: 180, dpr: 1, hover: -1 };
 const fieldCanvas = document.createElement('canvas');
-fieldCanvas.width = W; fieldCanvas.height = H;
+fieldCanvas.width = C.W; fieldCanvas.height = C.H;
 const fieldCtx = fieldCanvas.getContext('2d');
-const fieldImg = fieldCtx.createImageData(W, H);
+const fieldImg = fieldCtx.createImageData(C.W, C.H);
 const latticeCanvas = document.createElement('canvas');
+
+function fitCanvas(v) {
+  const rect = v.canvas.parentElement.getBoundingClientRect();
+  v.size = Math.max(100, rect.width);
+  v.dpr = window.devicePixelRatio || 1;
+  v.canvas.width = Math.round(v.size * v.dpr);
+  v.canvas.height = Math.round(v.size * v.dpr);
+}
+
+function fitChart() {
+  const rect = chart.canvas.parentElement.getBoundingClientRect();
+  chart.w = Math.max(100, rect.width);
+  chart.h = rect.height;
+  chart.dpr = window.devicePixelRatio || 1;
+  chart.canvas.width = Math.round(chart.w * chart.dpr);
+  chart.canvas.height = Math.round(chart.h * chart.dpr);
+  drawChart();
+}
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -689,33 +1088,27 @@ function readPalette() {
   const get = name => cs.getPropertyValue(name).trim();
   const types = [0, 1, 2, 3, 4, 5].map(i => get('--t' + i));
   palette = {
-    plate: get('--plate'), ink: get('--ink'), muted: get('--muted'), grid: get('--grid'),
+    plate: get('--plate'), ink: get('--ink'), muted: get('--muted'), grid: get('--grid'), line: get('--line'),
+    accent: get('--accent'), food: get('--food'), best: get('--c-best'), mean: get('--c-mean'),
     glow: get('--glow') === '1',
     fieldAlpha: parseFloat(get('--field-alpha')) || 0.35,
     types, typeRGB: types.map(hexToRgb),
   };
   drawLattice();
-}
-
-function resize() {
-  const rect = canvas.parentElement.getBoundingClientRect();
-  size = Math.max(100, rect.width);
-  dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(size * dpr);
-  canvas.height = Math.round(size * dpr);
-  drawLattice();
+  drawChart();
 }
 
 function drawLattice() {
   if (!palette) return;
-  latticeCanvas.width = Math.round(size * dpr);
-  latticeCanvas.height = Math.round(size * dpr);
+  const v = brainView;
+  latticeCanvas.width = Math.round(v.size * v.dpr);
+  latticeCanvas.height = Math.round(v.size * v.dpr);
   const g = latticeCanvas.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
   g.fillStyle = palette.grid;
-  const cell = size / W, r = Math.max(0.6, cell * 0.07);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  const cell = v.size / C.W, r = Math.max(0.6, cell * 0.07);
+  for (let y = 0; y < C.H; y++) {
+    for (let x = 0; x < C.W; x++) {
       g.beginPath();
       g.arc((x + 0.5) * cell, (y + 0.5) * cell, r, 0, Math.PI * 2);
       g.fill();
@@ -723,13 +1116,15 @@ function drawLattice() {
   }
 }
 
-const cellSize = () => size / W;
+// ---------- brain drawing ----------
+const cellSize = () => brainView.size / C.W;
 const centerOf = n => [(n.x + 0.5) * cellSize(), (n.y + 0.5) * cellSize()];
 const radiusOf = n => cellSize() * (0.42 + 0.035 * Math.min(n.inDeg + n.outDeg, 8));
 const ease = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+const flashAt = (id, t) => live.lastSpike[id] ? Math.exp(-(t - live.lastSpike[id]) / 140) : 0;
 
-function drawField() {
-  const N = W * H, nT = genome.types.length, f = sim.field, d = fieldImg.data;
+function drawField(ctx, size) {
+  const N = C.W * C.H, nT = live.genome.types.length, f = live.sim.field, d = fieldImg.data;
   for (let i = 0; i < N; i++) {
     // Colour leans hard toward the strongest signal so overlapping types don't average to grey.
     let r = 0, g = 0, b = 0, wsum = 0, peak = 0;
@@ -755,7 +1150,7 @@ function drawField() {
 }
 
 function synapseCurve(s) {
-  const a = sim.neurons[s.from], b = sim.neurons[s.to];
+  const a = live.sim.neurons[s.from], b = live.sim.neurons[s.to];
   const [x1, y1] = centerOf(a), [x2, y2] = centerOf(b);
   const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
   const bend = 0.13 * len;   // bend to one side so A→B and B→A stay apart
@@ -771,28 +1166,31 @@ function synapseCurve(s) {
   };
 }
 
-function drawSynapses(now, focus) {
+function drawSynapses(ctx, t, focus) {
+  const running = live.mode === 'run';
   ctx.lineCap = 'round';
-  for (const s of sim.synapses) {
+  for (const s of live.sim.synapses) {
     const g = synapseCurve(s);
-    const col = palette.types[sim.neurons[s.from].type];
+    const col = palette.types[live.sim.neurons[s.from].type];
     const related = focus < 0 || s.from === focus || s.to === focus;
-    const fade = reduceMotion ? 1 : ease((now - s.bornAt) / 380);
-    ctx.globalAlpha = (related ? (focus < 0 ? 0.72 : 1) : 0.08) * fade;
+    const born = reduceMotion || running ? 1 : ease((t - s.bornAt) / 380);
+    const pulse = running ? flashAt(s.from, t) : 0;
+    const base = focus < 0 ? (running ? 0.3 + 0.65 * pulse : 0.72) : related ? 1 : 0.07;
+    ctx.globalAlpha = base * born;
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
-    ctx.lineWidth = 0.7 + 1.4 * Math.abs(s.weight);
+    ctx.lineWidth = 0.6 + 0.9 * Math.min(1.6, Math.abs(s.weight));
     ctx.beginPath();
     ctx.moveTo(g.sx, g.sy);
     ctx.quadraticCurveTo(g.cx, g.cy, g.ex, g.ey);
     ctx.stroke();
     if (s.weight >= 0) {
       ctx.beginPath();
-      ctx.arc(g.ex, g.ey, 2.3, 0, Math.PI * 2);
+      ctx.arc(g.ex, g.ey, 2.2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      const k = 3.6;
-      ctx.lineWidth = 1.9;
+      const k = 3.4;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(g.ex - g.ty * k, g.ey + g.tx * k);
       ctx.lineTo(g.ex + g.ty * k, g.ey - g.tx * k);
@@ -802,7 +1200,7 @@ function drawSynapses(now, focus) {
   ctx.globalAlpha = 1;
 }
 
-function tracePath(path) {
+function tracePath(ctx, path) {
   const cell = cellSize();
   ctx.beginPath();
   path.forEach(([x, y], i) => {
@@ -811,15 +1209,15 @@ function tracePath(path) {
   });
 }
 
-function drawCones(now, focus) {
-  const cell = cellSize();
+function drawCones(ctx, t, focus) {
+  const cell = cellSize(), sim = live.sim;
   ctx.lineWidth = 1.1;
   ctx.lineJoin = 'round';
   for (const c of sim.cones) {
     const col = palette.types[sim.neurons[c.owner].type];
     ctx.globalAlpha = focus < 0 || c.owner === focus ? 0.5 : 0.1;
     ctx.strokeStyle = col;
-    tracePath(c.path);
+    tracePath(ctx, c.path);
     ctx.stroke();
     ctx.globalAlpha = focus < 0 || c.owner === focus ? 0.95 : 0.15;
     ctx.fillStyle = col;
@@ -827,13 +1225,13 @@ function drawCones(now, focus) {
     ctx.arc((c.x + 0.5) * cell, (c.y + 0.5) * cell, Math.max(1.6, cell * 0.17), 0, Math.PI * 2);
     ctx.fill();
   }
-  sim.pruned = sim.pruned.filter(p => now - p.diedAt < 650);
+  sim.pruned = sim.pruned.filter(p => t - p.diedAt < 650);
   if (!reduceMotion) {
     for (const p of sim.pruned) {
-      ctx.globalAlpha = 0.4 * (1 - (now - p.diedAt) / 650);
+      ctx.globalAlpha = 0.4 * (1 - (t - p.diedAt) / 650);
       ctx.strokeStyle = palette.types[sim.neurons[p.owner].type];
       ctx.setLineDash([2, 3]);
-      tracePath(p.path);
+      tracePath(ctx, p.path);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -841,29 +1239,33 @@ function drawCones(now, focus) {
   ctx.globalAlpha = 1;
 }
 
-function drawNeurons(now, focus, linked) {
-  for (const n of sim.neurons) {
+function drawNeurons(ctx, t, focus, linked) {
+  const running = live.mode === 'run';
+  for (const n of live.sim.neurons) {
     const [x, y] = centerOf(n);
-    const r = radiusOf(n) * (reduceMotion ? 1 : ease((now - n.bornAt) / 320));
+    const flash = running ? flashAt(n.id, t) : 0;
+    let r = radiusOf(n) * (1 + 0.3 * flash);
+    if (!running && !reduceMotion) r *= ease((t - n.bornAt) / 320);
     if (r <= 0.2) continue;
     const col = palette.types[n.type];
-    const base = linked && !linked.has(n.id) ? 0.22 : 1;
-    if (palette.glow) {
-      ctx.globalAlpha = 0.16 * base;
+    const dim = linked && !linked.has(n.id) ? 0.22 : 1;
+    if (palette.glow || flash > 0.05) {
+      ctx.globalAlpha = ((palette.glow ? 0.12 : 0) + 0.22 * flash) * dim;
       ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(x, y, r * 2.2, 0, Math.PI * 2);
+      ctx.arc(x, y, r * (1.7 + 0.6 * flash), 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = base;
+    ctx.globalAlpha = dim * (running ? 0.5 + 0.5 * flash : 1);
     ctx.fillStyle = col;
     ctx.strokeStyle = palette.plate;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = dim;
     ctx.stroke();
-    if (n.id === 0) {
+    if (n.id === live.sim.zygoteId) {
       ctx.strokeStyle = palette.muted;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2.5]);
@@ -883,16 +1285,31 @@ function drawNeurons(now, focus, linked) {
   ctx.globalAlpha = 1;
 }
 
-// Time-lapse stamp and a microscope-style scale bar.
-function drawPlateMarks() {
-  const cell = cellSize();
+// Labels for the input and output neurons, plus a time stamp.
+function drawBrainMarks(ctx, size) {
+  const types = live.genome.types;
   ctx.fillStyle = palette.muted;
-  ctx.strokeStyle = palette.muted;
-  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, Menlo, monospace';
-  ctx.textBaseline = 'alphabetic';
+  ctx.font = '500 10.5px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+  ctx.textAlign = 'center';
+  for (const n of live.sim.neurons) {
+    const role = types[n.type].role;
+    if (role === 'inter') continue;
+    const [x, y] = centerOf(n), r = radiusOf(n);
+    if (role === 'sensor') {
+      const a = C.SENSOR_ANGLES[n.port];
+      ctx.textBaseline = 'bottom';
+      ctx.fillText((a < 0 ? '−' : '') + Math.abs(a) + '°', x, y - r - 5);
+    } else {
+      ctx.textBaseline = 'top';
+      ctx.fillText(n.port ? 'right' : 'left', x, y + r + 5);
+    }
+  }
   ctx.textAlign = 'left';
-  ctx.fillText('t = ' + sim.step, 12, 20);
-  const len = 10 * cell, x1 = size - 14 - len, x2 = size - 14, y = size - 14;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '500 11px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+  ctx.fillText(live.mode === 'run' ? 'spiking' : 'growing · step ' + live.sim.step, 12, 20);
+  const cell = cellSize(), len = 10 * cell, x2 = size - 14, x1 = x2 - len, y = size - 14;
+  ctx.strokeStyle = palette.muted;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(x1, y); ctx.lineTo(x2, y);
@@ -901,99 +1318,303 @@ function drawPlateMarks() {
   ctx.stroke();
   ctx.textAlign = 'right';
   ctx.fillText('10 cells', x2, y - 7);
+  ctx.textAlign = 'left';
 }
 
 function linkedTo(id) {
   const set = new Set([id]);
-  for (const s of sim.synapses) {
+  for (const s of live.sim.synapses) {
     if (s.from === id) set.add(s.to);
     if (s.to === id) set.add(s.from);
   }
   return set;
 }
 
-function draw(now) {
+function drawBrain(t) {
+  const { ctx, size, dpr } = brainView;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = 1;
   ctx.fillStyle = palette.plate;
   ctx.fillRect(0, 0, size, size);
-  if (!sim) return;
-  if ($('showField').checked && genome.types.length) drawField();
+  if (!live.sim) return;
+  if ($('showField').checked && live.genome.types.length) drawField(ctx, size);
   if ($('showGrid').checked) ctx.drawImage(latticeCanvas, 0, 0, size, size);
   const focus = pinnedId >= 0 ? pinnedId : hoverId;
   const linked = focus >= 0 ? linkedTo(focus) : null;
-  drawSynapses(now, focus);
-  if ($('showAxons').checked) drawCones(now, focus);
-  drawNeurons(now, focus, linked);
-  drawPlateMarks();
+  drawSynapses(ctx, t, focus);
+  if (live.mode === 'grow') drawCones(ctx, t, focus);
+  drawNeurons(ctx, t, focus, linked);
+  if (live.genome.types.length) drawBrainMarks(ctx, size);
+}
+
+// ---------- arena drawing ----------
+function drawArena(t) {
+  const { ctx, size, dpr } = arena;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = palette.plate;
+  ctx.fillRect(0, 0, size, size);
+  const k = size / C.WORLD;
+  ctx.strokeStyle = palette.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let g = 10; g < C.WORLD; g += 10) {
+    ctx.moveTo(g * k, 0); ctx.lineTo(g * k, size);
+    ctx.moveTo(0, g * k); ctx.lineTo(size, g * k);
+  }
+  ctx.stroke();
+  const world = live.world;
+  if (!world) return;
+
+  // trail, broken where the agent wraps across an edge
+  ctx.strokeStyle = palette.accent;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  const tr = live.trail;
+  for (let i = 1; i < tr.length; i++) {
+    const [ax, ay] = tr[i - 1], [bx, by] = tr[i];
+    if (Math.abs(ax - bx) > C.WORLD / 2 || Math.abs(ay - by) > C.WORLD / 2) continue;
+    ctx.globalAlpha = 0.45 * i / tr.length;
+    ctx.beginPath();
+    ctx.moveTo(ax * k, ay * k);
+    ctx.lineTo(bx * k, by * k);
+    ctx.stroke();
+  }
+
+  // food
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = palette.food;
+  const fr = Math.max(2, 1.1 * k);
+  for (const f of world.food) {
+    ctx.beginPath();
+    ctx.arc(f.x * k, f.y * k, fr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  live.eats = live.eats.filter(e => t - e.at < 600);
+  for (const e of live.eats) {
+    const p = (t - e.at) / 600;
+    ctx.globalAlpha = 1 - p;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(e.x * k, e.y * k, (C.EAT_RADIUS + 6 * p) * k, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // agent, drawn again across edges when it overlaps one
+  const a = world.agent;
+  for (const ox of [-C.WORLD, 0, C.WORLD]) {
+    for (const oy of [-C.WORLD, 0, C.WORLD]) {
+      const x = a.x + ox, y = a.y + oy;
+      if (x < -12 || y < -12 || x > C.WORLD + 12 || y > C.WORLD + 12) continue;
+      drawAgent(ctx, x * k, y * k, a.h, k, world);
+    }
+  }
+}
+
+function drawAgent(ctx, x, y, h, k, world) {
+  const r = C.AGENT_RADIUS * k;
+  if ($('showRays').checked) {
+    ctx.strokeStyle = palette.types[0];
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    C.SENSOR_ANGLES.forEach((deg, i) => {
+      const s = world.sensors[i];
+      if (s < 0.02) return;
+      const ang = h + deg * Math.PI / 180, len = r + s * 16 * k;
+      ctx.globalAlpha = 0.25 + 0.6 * s;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(ang) * r, y + Math.sin(ang) * r);
+      ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  }
+  // motor fins light up with the firing rate of the turn-left / turn-right neurons
+  ctx.fillStyle = palette.types[1];
+  [[world.rateL, -1], [world.rateR, 1]].forEach(([rate, side]) => {
+    const ang = h + side * Math.PI / 2;
+    ctx.globalAlpha = 0.15 + 0.85 * Math.min(1, rate * 1.5);
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(ang) * r * 0.95, y + Math.sin(ang) * r * 0.95, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = palette.accent;
+  ctx.strokeStyle = palette.plate;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = palette.plate;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(h) * r, y + Math.sin(h) * r);
+  ctx.stroke();
+}
+
+// ---------- live simulation ----------
+let episodeSeed = 1;
+
+function show(dna, { source = 'custom', animate = !reduceMotion } = {}) {
+  live.dna = dna;
+  live.source = source;
+  live.genome = C.decodeGenome(C.cleanDNA(dna));
+  live.sim = C.createSim(live.genome);
+  live.history = [];
+  live.episode = 0;
+  hoverId = pinnedId = -1;
+  live.score = 0;
+  if (animate || !live.genome.complete) {
+    // An incomplete genome still grows, but has no brain to swim with.
+    live.mode = 'grow';
+    live.world = C.createWorld(episodeSeed);
+    live.trail = [];
+    if (live.genome.complete) live.score = C.score(C.growBrain(dna), C.VALIDATION_SEEDS);
+    else if (!animate) C.runToEnd(live.sim);
+  } else {
+    C.runToEnd(live.sim);
+    startRun();
+    live.score = C.score(live.brain, C.VALIDATION_SEEDS);
+  }
+  live.playing = true;
+  live.acc = 0;
+  renderGenome();
+  updateFocusInfo();
+}
+
+function startRun() {
+  live.mode = 'run';
+  live.brain = C.compileBrain(live.sim);
+  newEpisode();
+}
+
+function newEpisode() {
+  episodeSeed = 1 + ((episodeSeed * 2654435761) >>> 0) % 1e9;
+  live.world = C.createWorld(episodeSeed);
+  live.st = C.createBrainState(live.brain);
+  live.lastSpike = new Float64Array(live.brain.N);
+  live.trail = [];
+  live.episode++;
+}
+
+function tickLive(t) {
+  const w = live.world;
+  const before = w.eaten;
+  C.worldTick(w, live.brain, live.st);
+  const sp = live.st.spike;
+  for (let i = 0; i < sp.length; i++) if (sp[i]) live.lastSpike[i] = t;
+  if (w.eaten > before) live.eats.push({ x: w.agent.x, y: w.agent.y, at: t });
+  live.trail.push([w.agent.x, w.agent.y]);
+  if (live.trail.length > 100) live.trail.shift();
+  if (w.tick >= C.EPISODE_TICKS) {
+    live.history.push(w.eaten);
+    if (live.history.length > 5) live.history.shift();
+    newEpisode();
+  }
+}
+
+function frame(t) {
+  const dt = Math.min(100, t - lastFrame);
+  lastFrame = t;
+  if (live.playing && live.sim) {
+    live.acc += dt * speed / 1000;
+    let k = 0;
+    if (live.mode === 'grow') {
+      while (live.acc >= 1 && k < 8 && !live.sim.done) { C.stepSim(live.sim); live.acc -= 1; k++; }
+      if (live.sim.done) {
+        if (live.genome.complete) startRun();
+        else live.playing = false;
+      }
+    } else if (live.brain) {
+      while (live.acc >= 1 && k < 24) { tickLive(t); live.acc -= 1; k++; }
+    }
+    if (live.acc > 4) live.acc = 0;
+  }
+  applyPendingChampion(t);
+  updateLiveInfo();
+  drawArena(t);
+  drawBrain(t);
+  requestAnimationFrame(frame);
 }
 
 // ---------- readouts ----------
 const plural = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
-const typeName = t => `Type ${t + 1}`;
-const typeChip = t => `<span class="chip" style="--c: var(--t${t})">${t + 1}</span>`;
+const typeName = t => t === C.SENSOR ? 'Sensor' : t === C.MOTOR ? 'Motor' : `Inter ${t - 1}`;
+const typeChip = t => `<span class="chip" style="--c: var(--t${t})">${typeName(t)}</span>`;
+const signed = x => (x < 0 ? '−' : '+') + Math.abs(x).toFixed(2);
+let lastInfoKey = '';
 
-function updateReadout() {
-  const state = sim.done ? 'grown' : playing ? 'growing' : 'paused';
-  const key = `${state}|${sim.step}|${sim.neurons.length}|${sim.synapses.length}`;
-  if (key !== lastStatsKey) {
-    lastStatsKey = key;
-    const status = $('status');
-    status.dataset.state = state;
-    status.textContent = { grown: 'Fully grown', growing: 'Growing', paused: 'Paused' }[state];
-    $('stats').textContent = `Step ${sim.step} · ${plural(sim.neurons.length, 'neuron')} · ${plural(sim.synapses.length, 'synapse')}`;
-    $('play').textContent = playing ? 'Pause' : sim.done ? 'Replay' : 'Play';
-    $('step').disabled = sim.done;
-    $('finish').disabled = sim.done;
-    const counts = genome.types.map(() => 0);
-    for (const n of sim.neurons) counts[n.type]++;
-    document.querySelectorAll('[data-count]').forEach(el => {
-      const k = counts[+el.dataset.count];
-      el.textContent = k ? plural(k, 'neuron') : sim.done ? 'never born' : 'none yet';
-    });
+function updateLiveInfo() {
+  let arenaText = '', brainText = '';
+  const sim = live.sim;
+  if (sim) brainText = `${plural(sim.neurons.length, 'neuron')} · ${plural(sim.synapses.length, 'synapse')}`;
+  if (!live.genome || !live.genome.complete) {
+    arenaText = 'needs 3 genes to swim';
+  } else if (live.mode === 'grow') {
+    arenaText = 'waiting for the brain to grow';
+  } else if (live.world) {
+    arenaText = `episode ${live.episode} · tick ${live.world.tick} / ${C.EPISODE_TICKS} · ${live.world.eaten} food`;
   }
+  const key = arenaText + '|' + brainText + '|' + live.playing + live.mode;
+  if (key === lastInfoKey) return;
+  lastInfoKey = key;
+  $('arenaInfo').textContent = arenaText;
+  $('brainInfo').textContent = brainText;
+  $('play').textContent = live.playing ? 'Pause' : 'Play';
 }
 
 function updateFocusInfo() {
   const id = pinnedId >= 0 ? pinnedId : hoverId;
   const info = $('focusInfo');
-  if (id < 0 || !sim.neurons[id]) {
+  if (id < 0 || !live.sim || !live.sim.neurons[id]) {
     info.textContent = 'Hover or tap a neuron to trace its synapses.';
     return;
   }
-  const n = sim.neurons[id];
-  const parts = [`Neuron ${n.id}${n.id === 0 ? ' (zygote)' : ''}`, typeName(n.type), `generation ${n.gen}`,
-    plural(n.inDeg, 'input'), plural(n.outDeg, 'output')];
+  const n = live.sim.neurons[id], T = live.genome.types[n.type];
+  const label = T.role === 'sensor' ? `Sensor, smells at ${C.SENSOR_ANGLES[n.port]}°`
+    : T.role === 'motor' ? `Motor, turns ${n.port ? 'right' : 'left'}`
+    : `${typeName(n.type)}${n.id === live.sim.zygoteId ? ' (zygote)' : ''} · generation ${n.gen}`;
+  const parts = [`Neuron ${n.id}`, label, plural(n.inDeg, 'input'), plural(n.outDeg, 'output')];
   info.textContent = parts.join(' · ') + (pinnedId >= 0 ? ' · tap again to release' : '');
 }
 
 function describeRules(T, nTypes) {
   const targets = [];
   for (let t = 0; t < nTypes; t++) if ((T.seekMask >> t) & 1) targets.push(t);
-  const targetText = targets.length === nTypes && nTypes > 1 ? 'any type' : targets.map(typeChip).join(' ');
   const steer = T.taxis > 0.2 ? 'follows their signal' : T.taxis < -0.2 ? 'avoids their signal' : 'mostly ignores signals';
   const path = T.straight > 0.66 ? 'grows straight' : T.straight < 0.33 ? 'wanders' : 'curves gently';
   const strength = Math.abs(T.taxis) > 0.6 ? 'strongly ' : '';
-  const gens = T.maxGen === 1 ? 'generation 0 only' : `generations 0–${T.maxGen - 1}`;
-  const turn = T.divTurn === 0 ? 'always in the same direction' : `turning ${T.divTurn}° each time`;
-  const w = T.weight;
-  const sign = w >= 0 ? '+' : '−';
-  return [
-    ['Divides', `${plural(T.divCount, 'time')}, every ${plural(T.divPeriod, 'step')}, ${T.divDist} cells away, ${turn}`],
-    ['Daughters', `${T.childA === T.childB ? `all ${typeChip(T.childA)}` : `alternate ${typeChip(T.childA)} and ${typeChip(T.childB)}`} · divides in ${gens}`],
-    ['Axons', `${T.axonCount}, sprouting ${T.axonDelay ? plural(T.axonDelay, 'step') + ' after' : 'right after'} its last division, up to ${T.axonLen} cells long`],
-    ['Targets', `${targetText} · ${strength}${steer}, ${path}`],
-    ['Signal', `releases ${T.emit.toFixed(2)} per substep`],
-    ['Synapse', `${w >= 0 ? 'excitatory' : 'inhibitory'}, weight ${sign}${Math.abs(w).toFixed(2)}`],
-  ];
+  const tonic = T.bias / (1 - T.leak) >= T.threshold;
+  const rows = [];
+  if (T.role === 'inter') {
+    const gens = T.maxGen === 1 ? 'generation 0 only' : `generations 0–${T.maxGen - 1}`;
+    const turn = T.divTurn === 0 ? 'always in the same direction' : `turning ${T.divTurn}° each time`;
+    rows.push(['Divides', `${plural(T.divCount, 'time')}, every ${plural(T.divPeriod, 'step')}, ${T.divDist} cells away, ${turn}`]);
+    rows.push(['Daughters', `${T.childA === T.childB ? `all ${typeChip(T.childA)}` : `alternate ${typeChip(T.childA)} and ${typeChip(T.childB)}`} · divides in ${gens}`]);
+    rows.push(['Axons', `${T.axonCount}, sprouting ${T.axonDelay ? plural(T.axonDelay, 'step') + ' after' : 'right after'} its last division, up to ${T.axonLen} cells long`]);
+  } else {
+    rows.push(['Axons', `${T.axonCount} per neuron, sprouting after ${plural(T.axonDelay, 'step')}, up to ${T.axonLen} cells long`]);
+  }
+  rows.push(['Targets', targets.length ? `${targets.map(typeChip).join(' ')} · ${strength}${steer}, ${path}` : 'none yet: add an interneuron gene']);
+  rows.push(['Weights', targets.length ? targets.map(t => `<span class="w">${typeName(t)} ${signed(T.weights[t])}</span>`).join('') : '–']);
+  rows.push(['Spiking', `threshold ${T.threshold.toFixed(2)}, keeps ${Math.round(T.leak * 100)}% of its charge each tick, bias ${signed(T.bias)}${tonic ? ' (fires on its own)' : ''}`]);
+  if (T.role !== 'sensor') rows.push(['Signal', `releases ${T.emit.toFixed(2)} per substep while growing`]);
+  return rows;
 }
 
 function renderGenome() {
-  const { dna, genes, types } = genome;
+  const { dna, genes, types } = live.genome;
   const coding = genes.reduce((k, g) => k + g.end - g.start, 0);
   $('dnaCount').textContent = `${dna.length} bases`;
   $('ruleCount').textContent = plural(types.length, 'neuron type');
   $('mapInfo').textContent = genes.length ? `${plural(genes.length, 'gene')} · ${coding} coding bases` : 'no genes';
+  $('score').innerHTML = live.genome.complete
+    ? `Collects <b>${live.score.toFixed(2)}</b> food per episode on average, across ${C.VALIDATION_SEEDS.length} test worlds.`
+    : 'This genome needs at least 3 genes (sensors, motors and a zygote) to build a working brain.';
 
   const map = $('genemap');
   map.innerHTML = '';
@@ -1003,7 +1624,7 @@ function renderGenome() {
     b.style.left = (g.start / dna.length * 100) + '%';
     b.style.width = ((g.end - g.start) / dna.length * 100) + '%';
     b.style.setProperty('--c', `var(--t${i})`);
-    b.title = `Gene ${i + 1}: bases ${g.start + 1}–${g.end}`;
+    b.title = `Gene ${i + 1} (${typeName(i)}): bases ${g.start + 1}–${g.end}`;
     b.setAttribute('aria-label', `Select gene ${i + 1} in the sequence`);
     b.addEventListener('click', () => selectBases(g.start, g.end));
     map.appendChild(b);
@@ -1011,22 +1632,25 @@ function renderGenome() {
 
   const rules = $('rules');
   if (!types.length) {
-    rules.innerHTML = '<p class="empty">No genes yet. Type at least three bases (A, C, G, T), or pick an example genome.</p>';
+    rules.innerHTML = '<p class="empty">No genes yet. Type some DNA (A, C, G, T), press Random genome, or pick an example.</p>';
     return;
   }
   rules.innerHTML = types.map((T, i) => {
     const g = genes[i];
+    const title = T.role === 'sensor' ? 'Sensors' : T.role === 'motor' ? 'Motors' : typeName(i);
     const tags = [];
-    if (i === 0) tags.push('<span class="tag">zygote</span>');
-    if (genome.implicit) tags.push('<span class="tag">no ATG found, whole strand read</span>');
+    if (T.role === 'sensor') tags.push('<span class="tag">5 smell directions</span>');
+    if (T.role === 'motor') tags.push('<span class="tag">turn left · turn right</span>');
+    if (i === C.FIRST_INTER) tags.push('<span class="tag">zygote</span>');
+    if (live.genome.implicit) tags.push('<span class="tag">no ATG found, whole strand read</span>');
     else if (!g.stopped) tags.push('<span class="tag">no stop codon</span>');
     const rows = describeRules(T, types.length).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     return `<article class="rule" style="--c: var(--t${i})">
-      <header><span class="soma" aria-hidden="true"></span><h3>${typeName(i)}</h3>${tags.join('')}
-        <span class="loc mono muted">bases ${g.start + 1}–${g.end} · ${plural(g.codons.length, 'codon')} · <span data-count="${i}"></span></span></header>
+      <header><span class="soma" aria-hidden="true"></span><h3>${title}</h3>${tags.join('')}
+        <span class="loc mono muted">gene ${i + 1} · bases ${g.start + 1}–${g.end} · ${plural(g.codons.length, 'codon')}</span></header>
       <dl>${rows}</dl>
     </article>`;
-  }).join('') + (genome.ignored ? `<p class="empty">${plural(genome.ignored, 'more gene')} found after gene 6 ${genome.ignored === 1 ? 'is' : 'are'} ignored.</p>` : '');
+  }).join('') + (live.genome.ignored ? `<p class="empty">${plural(live.genome.ignored, 'more gene')} found after gene 6 ${live.genome.ignored === 1 ? 'is' : 'are'} ignored.</p>` : '');
 }
 
 // Gene positions count bases only; map them back onto the raw text, which may hold spaces or line breaks.
@@ -1044,31 +1668,22 @@ function selectBases(start, end) {
   dnaInput.setSelectionRange(from, to);
 }
 
-// ---------- control ----------
-function regrow() {
-  sim = createSim(genome);
-  hoverId = pinnedId = -1;
-  acc = 0;
-  if (reduceMotion) {
-    runToEnd(sim);
-    playing = false;
-  } else {
-    playing = !sim.done;
-  }
-  lastStatsKey = '';
-  updateReadout();
-  updateFocusInfo();
-}
-
-function load(text) {
-  genome = decodeGenome(cleanDNA(text));
-  renderGenome();
-  regrow();
-}
-
 function setNote(html) { $('note').innerHTML = html; }
 
-function mutate() {
+function setDNA(dna, opts) {
+  dnaInput.value = dna;
+  show(dna, opts);
+}
+
+// Viewing your own genome stops the view from jumping to new champions.
+function takeOverView() {
+  if ($('follow').checked && training.state !== 'idle') {
+    $('follow').checked = false;
+    setTrainNote('Stopped showing new champions while you explore a genome. Tick the box to follow training again.');
+  }
+}
+
+function mutateShown() {
   const raw = dnaInput.value;
   const positions = [];
   for (let i = 0; i < raw.length; i++) if (/[ACGT]/i.test(raw[i])) positions.push(i);
@@ -1077,51 +1692,285 @@ function mutate() {
   const old = raw[i].toUpperCase();
   let next = 'ACGT'.replace(old, '')[Math.floor(Math.random() * 3)];
   if (raw[i] !== old) next = next.toLowerCase();
-  dnaInput.value = raw.slice(0, i) + next + raw.slice(i + 1);
-
-  const before = genome;
+  const before = live.genome, beforeScore = live.score;
   const inGene = before.genes.findIndex(g => k >= g.start && k < g.end);
-  load(dnaInput.value);
+  takeOverView();
+  setDNA(raw.slice(0, i) + next + raw.slice(i + 1), { source: 'custom', animate: false });
 
   let effect;
-  if (ruleKey(before) === ruleKey(genome)) {
-    effect = inGene >= 0 ? `Inside gene ${inGene + 1}, but no rule changed, so the network regrows the same.`
-                         : 'Non-coding DNA, so no rule changed and the network regrows the same.';
-  } else if (before.types.length !== genome.types.length) {
-    effect = `The number of genes went from ${before.types.length} to ${genome.types.length}.`;
+  if (C.ruleKey(before) === C.ruleKey(live.genome)) {
+    effect = inGene >= 0 ? `Inside gene ${inGene + 1}, but no rule changed, so the brain is identical.`
+                         : 'Non-coding DNA, so no rule changed and the brain is identical.';
+  } else if (before.types.length !== live.genome.types.length) {
+    effect = `The number of genes went from ${before.types.length} to ${live.genome.types.length}.`;
   } else {
-    const changed = genome.types.filter((T, t) => JSON.stringify(T) !== JSON.stringify(before.types[t])).map(T => typeName(T.index));
-    effect = `Changed the rules of ${new Intl.ListFormat('en').format(changed)}.`;
+    const changed = live.genome.types.filter((T, t) => JSON.stringify(T) !== JSON.stringify(before.types[t])).map(T => typeName(T.index));
+    effect = `Changed the rules of ${new Intl.ListFormat('en').format(changed)}. Score ${beforeScore.toFixed(2)} → ${live.score.toFixed(2)}.`;
   }
   setNote(`<strong>Base ${k + 1}: ${old} → ${next.toUpperCase()}.</strong> ${effect}`);
 }
 
-function setDNA(dna, note) {
-  dnaInput.value = dna;
-  load(dna);
-  setNote(note);
-}
+// ---------- training ----------
+const training = {
+  state: 'idle', history: [], champion: null, recorded: null,
+  pending: null, lastSwitch: 0, genTimes: [], progress: null,
+};
 
-function frame(now) {
-  const dt = Math.min(100, now - lastFrame);
-  lastFrame = now;
-  if (playing && !sim.done) {
-    acc += dt * speed / 1000;
-    let k = 0;
-    while (acc >= 1 && k < 6 && !sim.done) { stepSim(sim); acc -= 1; k++; }
-    if (k === 6) acc = 0;
-    if (sim.done) playing = false;
+function setTrainNote(html) { $('trainNote').innerHTML = html; }
+
+function createTrainer(onMessage) {
+  const sent = [];
+  let handle = null, worker = null;
+  const useLocal = () => {
+    handle = trainerLogic(onMessage, 14);
+    sent.forEach(m => handle(m));
+  };
+  try {
+    const src = $('core').textContent + '\n' + trainerLogic.toString() +
+      '\nconst handle = trainerLogic(m => postMessage(m), 60);\nonmessage = e => handle(e.data);\n';
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    worker.onmessage = e => onMessage(e.data);
+    worker.onerror = () => { worker = null; useLocal(); };
+  } catch (err) {
+    useLocal();
   }
-  updateReadout();
-  draw(now);
-  requestAnimationFrame(frame);
+  return {
+    post(m) {
+      sent.push(m);
+      if (worker) worker.postMessage(m); else handle(m);
+    },
+  };
 }
 
+const trainer = createTrainer(m => {
+  if (m.type === 'progress') {
+    training.progress = m;
+    if (training.state === 'running') renderTrainStats();
+    return;
+  }
+  if (m.type !== 'generation' || training.state === 'idle') return;
+  const r = m.report;
+  training.history.push({ gen: r.gen, best: r.best, mean: r.mean, valid: r.valid });
+  training.champion = r.champion;
+  training.genTimes.push(performance.now());
+  if (training.genTimes.length > 6) training.genTimes.shift();
+  if (r.improved && $('follow').checked) training.pending = r.champion;
+  renderTrainStats();
+  drawChart();
+});
+
+function applyPendingChampion(t) {
+  const c = training.pending;
+  if (!c || t - training.lastSwitch < 3500) return;
+  training.pending = null;
+  training.lastSwitch = t;
+  dnaInput.value = c.dna;
+  show(c.dna, { source: 'champion', animate: false });
+  setNote(`<strong>Champion from generation ${c.gen + 1}.</strong> It scored ${c.fitness.toFixed(2)} food per episode on the test worlds.`);
+}
+
+function renderTrainStats() {
+  const h = training.history, last = h[h.length - 1];
+  const running = training.state === 'running';
+  $('train').textContent = running ? 'Pause training' : training.state === 'paused' ? 'Resume training' : 'Start training';
+  $('resetTrain').disabled = training.state === 'idle';
+  $('startFrom').disabled = training.state !== 'idle';
+  if (training.state === 'idle') {
+    ['statGen', 'statChamp', 'statBest', 'statMean'].forEach(id => { $(id).textContent = '–'; });
+    return;
+  }
+  const p = training.progress;
+  const gen = (p ? p.gen : h.length) + 1;
+  $('statGen').innerHTML = `${gen}${p && running ? ` <small>${p.done}/${p.total}</small>` : ''}`;
+  $('statChamp').innerHTML = training.champion ? `${training.champion.fitness.toFixed(2)} <small>gen ${training.champion.gen + 1}</small>` : '–';
+  $('statBest').textContent = last ? last.best.toFixed(2) : '–';
+  $('statMean').textContent = last ? last.mean.toFixed(2) : '–';
+}
+
+function startOrPauseTraining() {
+  if (training.state === 'idle') {
+    const fromShown = $('startFrom').value === 'shown' && live.genome && live.genome.complete;
+    training.history = [];
+    training.champion = null;
+    training.progress = null;
+    training.state = 'running';
+    trainer.post({ cmd: 'start', seed: (Date.now() % 1e9) | 0, start: fromShown ? live.dna : null });
+    $('follow').checked = true;
+    setTrainNote(fromShown ? 'Training from mutants of the genome shown.' : 'Training from 48 random genomes. Most random brains are never wired from sensors to motors, so expect a slow start and then jumps.');
+  } else if (training.state === 'running') {
+    training.state = 'paused';
+    trainer.post({ cmd: 'pause' });
+    setTrainNote('Paused. The champion keeps swimming in the arena.');
+  } else {
+    training.state = 'running';
+    trainer.post({ cmd: 'resume' });
+    setTrainNote('');
+  }
+  renderTrainStats();
+  drawChart();
+}
+
+function resetTraining() {
+  trainer.post({ cmd: 'pause' });
+  training.state = 'idle';
+  training.history = [];
+  training.champion = null;
+  training.pending = null;
+  training.progress = null;
+  setTrainNote('Training cleared.');
+  renderTrainStats();
+  drawChart();
+}
+
+// ---------- fitness chart ----------
+function chartData() {
+  if (training.state !== 'idle') return { rows: training.history, recorded: false };
+  return { rows: training.recorded || [], recorded: true };
+}
+
+function niceStep(max) {
+  const raw = max / 4, pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const m = raw / pow;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * pow;
+}
+
+const CHART_PAD = { l: 30, r: 40, t: 8, b: 20 };
+
+function chartScales(rows) {
+  const maxGen = Math.max(10, rows.length ? rows[rows.length - 1].gen : 0);
+  const maxY = Math.max(4, ...rows.map(r => r.best));
+  const step = niceStep(maxY);
+  const top = Math.ceil(maxY / step) * step;
+  const { l, r, t, b } = CHART_PAD;
+  return {
+    maxGen, top, step,
+    x: g => l + (chart.w - l - r) * g / maxGen,
+    y: v => t + (chart.h - t - b) * (1 - v / top),
+  };
+}
+
+function drawChart() {
+  if (!palette) return;
+  const { ctx, w, h, dpr } = chart;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const { rows, recorded } = chartData();
+  const empty = $('chartEmpty');
+  $('chartCaption').textContent = recorded && rows.length
+    ? 'Recorded training run that evolved the example forager. Start training to make your own.'
+    : 'Food per episode by generation. Higher is better.';
+  if (!rows.length) {
+    empty.hidden = false;
+    empty.textContent = training.state === 'idle'
+      ? 'Press Start training. Each generation takes about a second.'
+      : 'Scoring the first generation…';
+    return;
+  }
+  empty.hidden = true;
+  const s = chartScales(rows);
+  const { l, r, t, b } = CHART_PAD;
+  ctx.font = '11px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = palette.line;
+  ctx.fillStyle = palette.muted;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let v = 0; v <= s.top + 1e-9; v += s.step) {
+    const y = Math.round(s.y(v)) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(l, y); ctx.lineTo(w - r, y);
+    ctx.stroke();
+    ctx.fillText(String(+v.toFixed(1)), l - 6, y);
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  // generations are numbered from 1; ticks sit on round numbers
+  const gStep = niceStep(s.maxGen);
+  ctx.fillText('1', s.x(0), h - b + 5);
+  for (let g = gStep; g <= s.maxGen + 1 + 1e-9; g += gStep) if (g - 1 > gStep * 0.4) ctx.fillText(String(g), s.x(g - 1), h - b + 5);
+
+  const line = (key, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    rows.forEach((row, i) => {
+      const x = s.x(row.gen), y = s.y(row[key]);
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+    const last = rows[rows.length - 1];
+    const ex = s.x(last.gen), ey = s.y(last[key]);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = palette.plate;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    return { ex, ey, value: last[key] };
+  };
+  const mean = line('mean', palette.mean);
+  const best = line('best', palette.best);
+  // direct labels at the line ends, nudged apart when they would collide
+  ctx.fillStyle = palette.ink;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  let by = best.ey, my = mean.ey;
+  if (Math.abs(by - my) < 13) { const mid = (by + my) / 2; by = mid - 7; my = mid + 7; }
+  ctx.fillText(best.value.toFixed(1), best.ex + 8, Math.max(t + 6, by));
+  ctx.fillText(mean.value.toFixed(1), mean.ex + 8, Math.min(h - b - 6, my));
+
+  if (chart.hover >= 0 && chart.hover < rows.length) {
+    const row = rows[chart.hover], x = Math.round(s.x(row.gen)) + 0.5;
+    ctx.strokeStyle = palette.muted;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, t); ctx.lineTo(x, h - b);
+    ctx.stroke();
+    for (const [key, color] of [['best', palette.best], ['mean', palette.mean]]) {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = palette.plate;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, s.y(row[key]), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+function chartHover(ev) {
+  const { rows } = chartData();
+  const tip = $('tip');
+  if (!rows.length) { tip.hidden = true; return; }
+  const rect = chart.canvas.getBoundingClientRect();
+  const s = chartScales(rows);
+  const px = ev.clientX - rect.left;
+  const g = (px - CHART_PAD.l) / (chart.w - CHART_PAD.l - CHART_PAD.r) * s.maxGen;
+  let idx = rows.findIndex(r => r.gen >= g);
+  if (idx < 0) idx = rows.length - 1;
+  if (idx > 0 && Math.abs(rows[idx - 1].gen - g) < Math.abs(rows[idx].gen - g)) idx--;
+  chart.hover = idx;
+  const row = rows[idx];
+  tip.innerHTML = `<b>Generation ${row.gen + 1}</b><br><span style="--k: var(--c-best)"><i></i>best ${row.best.toFixed(2)}</span><br>` +
+    `<span style="--k: var(--c-mean)"><i></i>mean ${row.mean.toFixed(2)}</span><br>champion test score ${row.valid.toFixed(2)}`;
+  tip.hidden = false;
+  const x = s.x(row.gen);
+  const tw = tip.offsetWidth;
+  tip.style.left = Math.min(chart.w - tw, Math.max(0, x > chart.w / 2 ? x - tw - 10 : x + 10)) + 'px';
+  drawChart();
+}
+
+// ---------- events ----------
 function pickNeuron(ev) {
-  const rect = canvas.getBoundingClientRect();
-  const px = (ev.clientX - rect.left) * size / rect.width, py = (ev.clientY - rect.top) * size / rect.height;
+  if (!live.sim) return -1;
+  const rect = brainView.canvas.getBoundingClientRect();
+  const px = (ev.clientX - rect.left) * brainView.size / rect.width;
+  const py = (ev.clientY - rect.top) * brainView.size / rect.height;
   let best = -1, bestD = Infinity;
-  for (const n of sim.neurons) {
+  for (const n of live.sim.neurons) {
     const [x, y] = centerOf(n);
     const d = Math.hypot(x - px, y - py);
     if (d < radiusOf(n) + 6 && d < bestD) { best = n.id; bestD = d; }
@@ -1129,59 +1978,58 @@ function pickNeuron(ev) {
   return best;
 }
 
-$('play').addEventListener('click', () => {
-  if (sim.done) { regrow(); playing = true; }
-  else playing = !playing;
-  lastStatsKey = '';
-  updateReadout();
+$('play').addEventListener('click', () => { live.playing = !live.playing; });
+$('grow').addEventListener('click', () => {
+  takeOverView();
+  show(live.dna, { source: live.source, animate: true });
 });
-$('step').addEventListener('click', () => { playing = false; stepSim(sim); updateReadout(); });
-$('restart').addEventListener('click', () => regrow());
-$('finish').addEventListener('click', () => { runToEnd(sim); playing = false; updateReadout(); });
 $('speed').addEventListener('input', e => {
   speed = +e.target.value;
-  $('speedOut').textContent = `${speed} /s`;
+  $('speedOut').textContent = `${speed} ticks/s`;
 });
-$('mutate').addEventListener('click', mutate);
-// Retry a few times so the button rarely lands on a genome that stops at a handful of cells.
-function interestingRandomGenome() {
-  let dna = '';
-  for (let tries = 0; tries < 30; tries++) {
-    dna = randomGenome();
-    const trial = createSim(decodeGenome(dna));
-    runToEnd(trial);
-    const n = trial.neurons.length;
-    const kinds = new Set(trial.neurons.map(x => x.type)).size;
-    if (n >= 25 && n <= 220 && trial.synapses.length >= 0.7 * n && kinds >= 2) break;
-  }
-  return dna;
-}
-
+$('mutate').addEventListener('click', mutateShown);
 $('random').addEventListener('click', () => {
-  const dna = interestingRandomGenome();
-  setDNA(dna, `<strong>Random genome.</strong> ${plural(findGenes(dna).length, 'gene')} placed between short stretches of non-coding DNA.`);
+  takeOverView();
+  const dna = C.randomGenome();
+  setDNA(dna, { source: 'custom' });
+  setNote(`<strong>Random genome.</strong> ${plural(C.findGenes(dna).length, 'gene')}, untrained. Most random brains just swim straight or circle.`);
   $('preset').value = '';
 });
 $('preset').addEventListener('change', e => {
   const ex = EXAMPLES.find(x => x.dna === e.target.value);
-  if (ex) setDNA(ex.dna, `<strong>${ex.name}.</strong> ${ex.note}`);
+  if (!ex) return;
+  takeOverView();
+  setDNA(ex.dna, { source: 'example' });
+  setNote(`<strong>${ex.name}.</strong> ${ex.note}`);
 });
 let typingTimer = 0;
 dnaInput.addEventListener('input', () => {
   clearTimeout(typingTimer);
-  typingTimer = setTimeout(() => { load(dnaInput.value); setNote(''); $('preset').value = ''; }, 350);
+  typingTimer = setTimeout(() => {
+    takeOverView();
+    show(dnaInput.value, { source: 'custom' });
+    setNote('');
+    $('preset').value = '';
+  }, 400);
 });
-canvas.addEventListener('pointermove', ev => {
+$('train').addEventListener('click', startOrPauseTraining);
+$('resetTrain').addEventListener('click', resetTraining);
+$('follow').addEventListener('change', e => {
+  if (e.target.checked && training.champion) training.pending = training.champion;
+});
+brainView.canvas.addEventListener('pointermove', ev => {
   if (ev.pointerType !== 'mouse') return;
   const id = pickNeuron(ev);
   if (id !== hoverId) { hoverId = id; updateFocusInfo(); }
 });
-canvas.addEventListener('pointerleave', () => { hoverId = -1; updateFocusInfo(); });
-canvas.addEventListener('click', ev => {
+brainView.canvas.addEventListener('pointerleave', () => { hoverId = -1; updateFocusInfo(); });
+brainView.canvas.addEventListener('click', ev => {
   const id = pickNeuron(ev);
   pinnedId = id === pinnedId ? -1 : id;
   updateFocusInfo();
 });
+chart.canvas.addEventListener('pointermove', chartHover);
+chart.canvas.addEventListener('pointerleave', () => { chart.hover = -1; $('tip').hidden = true; drawChart(); });
 
 for (const ex of EXAMPLES) {
   const o = document.createElement('option');
@@ -1192,12 +2040,20 @@ for (const ex of EXAMPLES) {
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readPalette);
 new MutationObserver(readPalette).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-new ResizeObserver(resize).observe($('plateWrap'));
+new ResizeObserver(() => { fitCanvas(arena); }).observe($('arenaWrap'));
+new ResizeObserver(() => { fitCanvas(brainView); drawLattice(); }).observe($('brainWrap'));
+new ResizeObserver(fitChart).observe($('chartWrap'));
 
-resize();
+fitCanvas(arena);
+fitCanvas(brainView);
 readPalette();
-dnaInput.value = DEFAULT_DNA;
-load(DEFAULT_DNA);
+fitChart();
+training.recorded = RECORDED_RUN;
+renderTrainStats();
+drawChart();
+dnaInput.value = EXAMPLES[0].dna;
+show(EXAMPLES[0].dna, { source: 'example' });
+setNote(`<strong>${EXAMPLES[0].name}.</strong> ${EXAMPLES[0].note}`);
 requestAnimationFrame(t => { lastFrame = t; frame(t); });
 })();
 </script>
