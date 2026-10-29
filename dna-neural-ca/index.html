@@ -1600,7 +1600,7 @@ function describeRules(T, nTypes) {
     rows.push(['Axons', `${T.axonCount} per neuron, sprouting after ${plural(T.axonDelay, 'step')}, up to ${T.axonLen} cells long`]);
   }
   rows.push(['Targets', targets.length ? `${targets.map(typeChip).join(' ')} · ${strength}${steer}, ${path}` : 'none yet: add an interneuron gene']);
-  rows.push(['Weights', targets.length ? targets.map(t => `<span class="w">${typeName(t)} ${signed(T.weights[t])}</span>`).join('') : '–']);
+  rows.push(['Weights', targets.length ? targets.map(t => `<span class="w">${typeName(t)} ${signed(T.weights[t])}</span>`).join(' ') : '–']);
   rows.push(['Spiking', `threshold ${T.threshold.toFixed(2)}, keeps ${Math.round(T.leak * 100)}% of its charge each tick, bias ${signed(T.bias)}${tonic ? ' (fires on its own)' : ''}`]);
   if (T.role !== 'sensor') rows.push(['Signal', `releases ${T.emit.toFixed(2)} per substep while growing`]);
   return rows;
