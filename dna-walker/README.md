@@ -25,12 +25,36 @@ its motor neuron's recent firing rate. When the motor neuron is silent, the musc
 
 Five sensor neurons, built by gene 1:
 
-- **beat A / beat B**: a steady rhythm, once a second, that alternates between the two
+- **beat A / beat B**: a steady rhythm that alternates between the two, once a second
 - **rear foot / front foot**: whether that foot is on the ground
 - **tilt**: how far the body is pitched nose-up or nose-down
 
-Gene 2 builds the four motor neurons and gene 3 onward the interneurons, as in the forager. In this version sensors
-may also connect straight to motor neurons (reflex arcs), which made training much more reliable.
+Gene 2 builds the four motor neurons and gene 3 onward the interneurons, as in the forager. Sensors may also connect
+straight to motor neurons (reflex arcs), which made training much more reliable.
+
+## The encoding
+
+Each gene's first 29 codons are read. Codons 1–24 are as in the forager: growth (divisions, axons, which types to
+connect to), spiking settings, and a base weight onto each target type. The rest make it richer:
+
+- **Weight map (codons 25–28, on by default).** A synapse's weight is its type-pair base weight, shifted by where its
+  two neurons sit: how far toward the front the target is, how far toward the front the source is, whether the two
+  are on the same side or crossed, and how long the synapse is. So the four motor neurons can each get their own
+  weights from the same type, which a type-pair table alone can't do.
+- **Learning synapses (codon 29, off by default).** Reward-modulated plasticity: a synapse whose source fired just
+  before its target builds an eligibility trace, which becomes a weight change when the walker moves faster than its
+  recent average. The lower half of codon values means no learning.
+- **DNA sets the beat (off by default).** The sensor gene never divides, so its division codon is reused to set the
+  beat's speed, from 0.5 to 3 times a second.
+
+The three can be switched in the page's training panel. They change how the same DNA is read, so switching them
+regrows and rescores the walker shown.
+
+**Small DNA changes make small brain changes.** Axon growth has a little randomness. Originally it was seeded from all
+the decoded rules, so a mutation that only nudged a weight re-rolled every axon path and rewired the whole brain. Now
+each type's axons are seeded only by that type's growth rules, and each axon tip draws its own noise from which axon
+it is and how far it has grown. Of single mutations that change a rule, the share that leaves the wiring untouched
+went from 0–4% to 61–63%.
 
 ## Rules that keep it honest
 
@@ -51,14 +75,44 @@ Distance in 10 seconds on flat ground. Every run starts from the same pose, so a
 |---|---:|
 | no muscle activity (stands still) | 0.05 |
 | best hand-made rhythm (each muscle on one of 4 phases of a 1 Hz sine) | 4.83 |
-| evolved, 4 runs of 150 generations | 0.65, 3.05, 5.33, 6.17 |
-| evolved, 4 runs of 500 generations (the best three are the examples in the page) | 3.31, 5.62, 5.88, 6.15 |
+| best rhythm found by searching muscle drives directly, no brain, about 1 beat per second | 7.4–8.7 |
+| the same search allowed up to 3 beats per second (a fast scurry) | 18.0 |
+| evolved brains, 150 generations (44 runs, both encodings with the rewiring fix) | median 3.6, best 7.5 |
+| evolved brains, shipped encoding: the 4 best of the 22 weight-map runs below, continued to 500 generations (the examples in the page) | 6.41, 6.83, 7.27, 8.80 |
 
-Most runs find a real stepping gait (level body, front foot lifting and swinging forward about once a second),
-and the best beat the best hand-made rhythm. About 1 run in 4 gets stuck early on a gait that falls.
+## Does the richer encoding help?
+
+Not on this task, as far as I could measure. Each row is a separate set of evolution runs, 48 genomes per
+generation, scored by metres walked in 10 seconds:
+
+| Encoding | Runs | Mean after 150 gens |
+|---|---:|---:|
+| old | 6 | 4.22 |
+| + weight map | 6 | 4.58 |
+| + learning, first rule | 6 | 3.30 |
+| + weight map + learning, first rule | 6 | 2.77 |
+| + learning, fixed rule | 6 | 3.31 |
+| + weight map + learning, fixed rule | 6 | 3.66 |
+| + weight map + DNA beat | 6 | 3.10 |
+| old, with the rewiring fix | 22 | 4.27 |
+| + weight map, with the rewiring fix | 22 | 3.93 |
+
+After 500 generations (4 runs each): old 5.24, weight map 4.75, weight map + DNA beat 3.75.
+
+- The weight map makes no measurable difference: with 22 runs each, the gap is 0.34 m and a permutation test gives
+  p = 0.54. Run-to-run spread (about 2 m) swamps it.
+- Learning made things worse in every version. The first rule rewarded raw forward speed, so weights ran away; the
+  fixed rule rewards speed above the recent average and lets genes switch learning off, and it was still worse. On
+  flat ground with identical runs, evolution can set the weights directly, so learning has nothing to adapt to.
+- Letting the DNA set the beat made things worse: most random genomes start with an unworkable rhythm.
+- The rewiring fix made mutations far more local without measurably changing results.
+
+What limits these walkers is the search, not the encoding: muscle drives searched directly reach 7.4–8.7 m at the
+same pace, and evolution through a grown brain gets a median of about 3.6 m.
 
 ## Ideas for next steps
 
+- A stronger search: bigger populations (one Web Worker per core), crossover between genomes, or novelty search.
+- Uneven ground and a push now and then, so gaits must use the foot and tilt sensors, and so learning has something
+  to adapt to.
 - Let the DNA build the body too: number of legs, segment lengths, muscle placement.
-- Uneven ground and a push now and then, so gaits must use the foot and tilt sensors to stay up.
-- Drop the beat inputs and see whether the recurrent network evolves its own rhythm (a central pattern generator).

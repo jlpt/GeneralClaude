@@ -178,6 +178,8 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .from { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .from select { padding: 7px 10px; font-size: 13px; }
+.encoding { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.encoding .enc-label { width: 100%; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 0; }
 .stats div { min-width: 0; }
 .stats dt { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -258,7 +260,7 @@ textarea {
   color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 2px 7px;
 }
 .rule .loc { margin-left: auto; }
-.rule dl { margin: 0; display: grid; grid-template-columns: 7.4em minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
+.rule dl { margin: 0; display: grid; grid-template-columns: 8.4em minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
 .rule dt { color: var(--muted); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
 .rule dd { margin: 0; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 500; }
@@ -304,7 +306,7 @@ textarea {
         <label for="showGrid"><input id="showGrid" type="checkbox" checked> Grid cells</label>
       </div>
       <p class="focus-info" id="focusInfo">Hover or tap a neuron to trace its synapses.</p>
-      <p class="caption">The five cyan sensors along the top of the brain feel a steady beat (A and B take turns, once a second), whether each foot is on the ground, and how far the body tilts. The four orange motor neurons contract the hip and knee muscles, which glow as they work and take about 0.2 s to respond. If anything but a foot touches the ground, the walker has fallen and the run ends. 60 ticks is one second. Neurons are leaky integrate-and-fire: they add up input, slowly leak, and spike when they cross a threshold. A line ends in a dot for an excitatory synapse and a bar for an inhibitory one.</p>
+      <p class="caption">The five cyan sensors along the top of the brain feel a steady beat (A and B take turns), whether each foot is on the ground, and how far the body tilts. The four orange motor neurons contract the hip and knee muscles, which glow as they work and take about 0.2 s to respond. A line's thickness shows its synapse's weight; with learning switched on you can watch it change. If anything but a foot touches the ground, the walker has fallen and the run ends. 60 ticks is one second. Neurons are leaky integrate-and-fire: they add up input, slowly leak, and spike when they cross a threshold. A line ends in a dot for an excitatory synapse and a bar for an inhibitory one.</p>
     </section>
 
     <aside class="train" aria-label="Training">
@@ -322,6 +324,12 @@ textarea {
           <option value="shown">the genome shown</option>
         </select>
       </label>
+      <div class="encoding" role="group" aria-labelledby="encLabel">
+        <span class="enc-label" id="encLabel">Encoding</span>
+        <label class="check" for="optMap"><input id="optMap" type="checkbox"> Weight map</label>
+        <label class="check" for="optBeat"><input id="optBeat" type="checkbox"> DNA sets the beat</label>
+        <label class="check" for="optLearn"><input id="optLearn" type="checkbox"> Learning synapses</label>
+      </div>
       <dl class="stats">
         <div><dt>Generation</dt><dd id="statGen">–</dd></div>
         <div><dt>Champion</dt><dd id="statChamp">–</dd></div>
@@ -363,7 +371,7 @@ textarea {
       <p class="note" id="note" aria-live="polite"></p>
       <div class="genemap" id="genemap" aria-label="Gene locations along the DNA"></div>
       <div class="genemap-legend mono muted"><span>5′</span><span id="mapInfo"></span><span>3′</span></div>
-      <p class="howto">A gene starts at <code>ATG</code> and ends at a stop codon (<code>TAA</code>, <code>TAG</code>, <code>TGA</code>). Each codon of three bases is read as a number from 0 to 63, and a gene's first 24 codons set its rules, including its synapse weights and how its neurons spike. Gene 1 builds the sensors, gene 2 the motor neurons, gene 3 the zygote that every interneuron grows from, and genes 4–6 more interneuron types. Click a gene in the bar to find it in the sequence.</p>
+      <p class="howto">A gene starts at <code>ATG</code> and ends at a stop codon (<code>TAA</code>, <code>TAG</code>, <code>TGA</code>). Each codon of three bases is read as a number from 0 to 63, and a gene's first 29 codons set its rules: how its neurons divide and wire up, their synapse weights, how those weights shift with where the two neurons sit (the weight map), and how they spike. The encoding switches in Training change how the DNA is read: the sensor gene can set the beat's speed, and codon 29 can make synapses learn while the walker moves. Gene 1 builds the sensors, gene 2 the motor neurons, gene 3 the zygote that every interneuron grows from, and genes 4–6 more interneuron types. Click a gene in the bar to find it in the sequence.</p>
     </section>
 
     <section class="rules-col" aria-label="Rules">
@@ -453,7 +461,16 @@ function geneValue(codons, i) {
   return (codons[i % n] + 17 * Math.floor(i / n)) & 63;
 }
 
-const GENE_CODONS = 24;   // codons read per gene; any after these are silent
+const GENE_CODONS = 29;   // codons read per gene; any after these are silent
+// Optional parts of the encoding. They change how the same DNA is read, so the page and the training
+// worker must use the same settings.
+const config = {
+  weightMap: true,   // codons 25–28 shift each synapse's weight by where its two neurons sit
+  dnaBeat: false,    // the sensor gene sets the beat's speed (otherwise once a second)
+  learning: false,   // codon 29 sets how fast synapses learn while walking
+};
+const AXIS = 12;           // cells per unit of position in the weight map
+const MAX_WEIGHT = 2.5;
 
 function decodeType(gene, index, nTypes) {
   const v = i => geneValue(gene.codons, i);
@@ -469,6 +486,7 @@ function decodeType(gene, index, nTypes) {
   return {
     index, role,
     divPeriod: 1 + v(0) % 6,          // steps between divisions
+    beatHz: 0.5 + 2.5 * v(0) / 63,    // sensors only (they never divide): how fast the beat runs
     divCount: 1 + v(1) % 4,           // divisions per neuron
     divDist: 2 + v(2) % 4,            // cells from parent to child
     divAngle: (v(3) % 16) * 22.5,     // first division direction, relative to the neuron's own orientation
@@ -487,7 +505,27 @@ function decodeType(gene, index, nTypes) {
     leak: 0.5 + 0.45 * v(16) / 63,    // fraction of potential kept each tick
     bias: -0.2 + 0.6 * v(17) / 63,    // constant input current
     weights,                          // synapse weight onto each target type (codons 19–24)
+    // codons 25–28: the weight map. x runs from the rear (left of the grid) to the front (right).
+    mapTarget: (v(24) - 31.5) / 31.5,         // extra weight per unit the target sits toward the front
+    mapSource: (v(25) - 31.5) / 31.5,         // extra weight per unit the source sits toward the front
+    mapSide: (v(26) - 31.5) / 31.5 * 1.5,     // + favours same-side pairs, − favours crossed pairs
+    mapReach: (v(27) - 31.5) / 31.5,          // + favours long synapses, − short ones
+    // codon 29: how fast its outgoing synapses learn while the walker moves; the lower half means not at all
+    learnRate: v(28) < 32 ? 0 : (v(28) - 31) / 32 * 0.01,
   };
+}
+
+// The rules that shape growth. Everything else (weights, the weight map, spiking settings) only acts
+// once the brain is built, so changing it must not change the wiring.
+const GROWTH_RULES = ['role', 'divPeriod', 'divCount', 'divDist', 'divAngle', 'divTurn', 'childA', 'childB', 'maxGen',
+  'axonCount', 'axonDelay', 'seekMask', 'taxis', 'axonLen', 'straight', 'emit'];
+
+// Stateless noise in [0, 1) from four integers.
+function noise(seed, a, b, c) {
+  let h = seed ^ Math.imul(a + 1, 0x9E3779B1) ^ Math.imul(b + 1, 0x85EBCA77) ^ Math.imul(c + 1, 0xC2B2AE3D);
+  h = Math.imul(h ^ (h >>> 16), 0x7FEB352D);
+  h = Math.imul(h ^ (h >>> 15), 0x846CA68B);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
 function ruleKey(genome) {
@@ -506,7 +544,9 @@ function decodeGenome(dna) {
   genes = genes.slice(0, MAX_TYPES);
   const types = genes.map((g, i) => decodeType(g, i, genes.length));
   const genome = { dna, genes, types, implicit, ignored, complete: types.length > FIRST_INTER };
-  genome.seed = hashString(ruleKey(genome)) || 1;
+  // Each type's axons get noise seeded by that type's own growth rules, so a mutation in one gene
+  // leaves the other types' axon paths alone, and a weight mutation leaves every path alone.
+  genome.growthSeeds = types.map(T => hashString(JSON.stringify(GROWTH_RULES.map(f => T[f]))) || 1);
   return genome;
 }
 
@@ -524,7 +564,6 @@ function createSim(genome) {
     synapses: [],
     pruned: [],                             // axons that gave up, kept briefly for drawing
     edges: new Set(),
-    rng: mulberry32(genome.seed),
     zygoteId: -1,
   };
   if (nT > SENSOR) SENSOR_CELLS.forEach(([x, y], k) => addNeuron(sim, SENSOR, x, y, 0, 0, k));
@@ -589,7 +628,6 @@ function axonAngle(n, T) {
 function sprout(sim, n, T) {
   const a = axonAngle(n, T) * DEG;
   const hx = Math.cos(a), hy = Math.sin(a);
-  n.axonsDone++;
   let best = -Infinity, bx = -1, by = -1;
   for (const [dx, dy] of DIRS) {
     const x = n.x + dx, y = n.y + dy;
@@ -597,12 +635,13 @@ function sprout(sim, n, T) {
     const s = (dx * hx + dy * hy) / Math.hypot(dx, dy);
     if (s > best) { best = s; bx = x; by = y; }
   }
-  if (bx < 0) return;
+  if (bx < 0) { n.axonsDone++; return; }
   sim.cones.push({
-    owner: n.id, x: bx, y: by, hx, hy, len: 1,
+    owner: n.id, id: n.id * 8 + n.axonsDone, x: bx, y: by, hx, hy, len: 1,
     path: [[n.x, n.y], [bx, by]],
     visited: new Set([by * W + bx]),
   });
+  n.axonsDone++;
 }
 
 function seek(sim, mask, idx) {
@@ -618,8 +657,10 @@ function moveCone(sim, c, T) {
   let ax = c.x - owner.x, ay = c.y - owner.y;
   const al = Math.hypot(ax, ay) || 1;
   ax /= al; ay /= al;
+  const seed = sim.genome.growthSeeds[owner.type];
   let best = -Infinity, bx = -1, by = -1, bux = 0, buy = 0;
-  for (const [dx, dy] of DIRS) {
+  for (let d = 0; d < 8; d++) {
+    const [dx, dy] = DIRS[d];
     const x = c.x + dx, y = c.y + dy;
     if (x < 0 || y < 0 || x >= W || y >= H) continue;
     const idx = y * W + x;
@@ -628,7 +669,7 @@ function moveCone(sim, c, T) {
     const grad = Math.max(-1, Math.min(1, (seek(sim, T.seekMask, idx) - here) / (here + 1e-4)));
     let s = 2.2 * T.taxis * grad
           + (0.25 + 1.1 * T.straight) * (ux * c.hx + uy * c.hy)
-          + (1.1 - 0.8 * T.straight) * (sim.rng() - 0.5);
+          + (1.1 - 0.8 * T.straight) * (noise(seed, c.id, c.len, d) - 0.5);
     if (c.visited.has(idx)) s -= 1.5;
     if (c.len < 5) s += 0.7 * (ux * ax + uy * ay);   // first steps lead away from its own soma
     if (s > best) { best = s; bx = x; by = y; bux = ux; buy = uy; }
@@ -641,6 +682,17 @@ function moveCone(sim, c, T) {
   c.visited.add(by * W + bx);
   c.len++;
   return true;
+}
+
+// A synapse starts from its type-pair weight, shifted by where the two neurons sit.
+function synapseWeight(T, a, b) {
+  let w = T.weights[b.type];
+  if (config.weightMap) {
+    const xa = (a.x - ZYGOTE_CELL[0]) / AXIS, xb = (b.x - ZYGOTE_CELL[0]) / AXIS;
+    const reach = Math.hypot(a.x - b.x, a.y - b.y) / AXIS;
+    w += T.mapTarget * xb + T.mapSource * xa + T.mapSide * xa * xb + T.mapReach * (reach - 1);
+  }
+  return Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, w));
 }
 
 function findContact(sim, c, T) {
@@ -705,7 +757,7 @@ function stepSim(sim) {
     if (target >= 0) {
       const tgt = sim.neurons[target];
       sim.edges.add(c.owner * 4096 + target);
-      sim.synapses.push({ from: c.owner, to: target, weight: T.weights[tgt.type], bornAt: now() });
+      sim.synapses.push({ from: c.owner, to: target, weight: synapseWeight(T, owner, tgt), bornAt: now() });
       owner.outDeg++;
       tgt.inDeg++;
     } else if (!moved || c.len >= T.axonLen) {
@@ -732,6 +784,10 @@ function runToEnd(sim) {
 // ---------- spiking brain ----------
 // Leaky integrate-and-fire: each tick v ← v·leak + bias + input; a spike resets v to 0.
 // Spikes arrive one tick later, so loops in the wiring give the network memory.
+// Learning is reward-modulated: a synapse whose source fired just before its target builds up an
+// eligibility trace, and the trace turns into a weight change when the walker moves forward faster
+// than its recent average (and the opposite change when it moves slower).
+const TRACE_DECAY = 0.8, ELIGIBILITY_DECAY = 0.95;
 function compileBrain(sim) {
   const N = sim.neurons.length, types = sim.genome.types;
   const thr = new Float32Array(N), leak = new Float32Array(N), bias = new Float32Array(N);
@@ -743,13 +799,19 @@ function compileBrain(sim) {
   for (const s of sim.synapses) outStart[s.from + 1]++;
   for (let i = 0; i < N; i++) outStart[i + 1] += outStart[i];
   const fill = outStart.slice(0, N);
-  const outTo = new Int32Array(sim.synapses.length), outW = new Float32Array(sim.synapses.length);
-  for (const s of sim.synapses) {
+  const E = sim.synapses.length;
+  const outTo = new Int32Array(E), outW = new Float32Array(E), outRate = new Float32Array(E);
+  const edgeOf = new Int32Array(E);   // synapse index → position in the outgoing lists
+  sim.synapses.forEach((s, k) => {
     const e = fill[s.from]++;
     outTo[e] = s.to; outW[e] = s.weight;
-  }
+    outRate[e] = config.learning ? types[sim.neurons[s.from].type].learnRate : 0;
+    edgeOf[k] = e;
+  });
   const byPort = role => sim.neurons.filter(n => types[n.type].role === role).sort((a, b) => a.port - b.port).map(n => n.id);
-  return { N, thr, leak, bias, outStart, outTo, outW, sensorIds: byPort('sensor'), motorIds: byPort('motor') };
+  const beatHz = config.dnaBeat && types.length ? types[SENSOR].beatHz : 1;
+  return { N, thr, leak, bias, outStart, outTo, outW, outRate, edgeOf, learns: outRate.some(r => r !== 0), beatHz,
+    sensorIds: byPort('sensor'), motorIds: byPort('motor') };
 }
 
 function createBrainState(brain) {
@@ -759,21 +821,42 @@ function createBrainState(brain) {
     next: new Uint8Array(brain.N),
     inp: new Float32Array(brain.N),
     ext: new Float32Array(brain.N),
+    w: brain.outW.slice(),                       // this lifetime's weights, starting from the grown ones
+    trace: new Float32Array(brain.N),            // recent firing of each neuron
+    elig: new Float32Array(brain.outW.length),   // recent "source fired, then target fired" per synapse
+    reward: 0,                                   // set by the body: speed above its recent average, −1 to 1
+    avgSpeed: 0,
   };
 }
 
 function brainTick(brain, st) {
-  const { N, thr, leak, bias, outStart, outTo, outW } = brain;
-  const { v, spike, next, inp, ext } = st;
+  const { N, thr, leak, bias, outStart, outTo, outRate } = brain;
+  const { v, spike, next, inp, ext, w, trace, elig } = st;
   for (let i = 0; i < N; i++) inp[i] = bias[i] + ext[i];
   for (let i = 0; i < N; i++) {
     if (!spike[i]) continue;
-    for (let e = outStart[i]; e < outStart[i + 1]; e++) inp[outTo[e]] += outW[e];
+    for (let e = outStart[i]; e < outStart[i + 1]; e++) inp[outTo[e]] += w[e];
   }
   for (let i = 0; i < N; i++) {
     let x = v[i] * leak[i] + inp[i];
     if (x >= thr[i]) { next[i] = 1; x = 0; } else next[i] = 0;
     v[i] = x < -3 ? -3 : x;
+  }
+  if (brain.learns) {
+    for (let i = 0; i < N; i++) {
+      for (let e = outStart[i]; e < outStart[i + 1]; e++) {
+        const j = outTo[e];
+        let el = elig[e] * ELIGIBILITY_DECAY;
+        if (next[j]) el += trace[i];          // source fired before target: credit
+        if (next[i]) el -= 0.5 * trace[j];    // target fired before source: blame
+        elig[e] = el;
+        if (outRate[e] && st.reward) {
+          const nw = w[e] + outRate[e] * st.reward * el;
+          w[e] = nw > MAX_WEIGHT ? MAX_WEIGHT : nw < -MAX_WEIGHT ? -MAX_WEIGHT : nw;
+        }
+      }
+    }
+    for (let i = 0; i < N; i++) trace[i] = trace[i] * TRACE_DECAY + next[i];
   }
   st.spike = next; st.next = spike;
 }
@@ -785,7 +868,7 @@ function brainTick(brain, st) {
 const GRAVITY = 9.8, DT = 1 / 60, DAMPING = 0.995, ITERATIONS = 10, MUSCLE_STIFFNESS = 0.9;
 const STATIC_FRICTION = 1.2, KINETIC_FRICTION = 0.8;
 const MUSCLE_RESPONSE = 0.08;   // muscles take about 0.2 s to follow their motor neuron, so they can't buzz
-const BEAT_HZ = 1, SENSOR_GAIN = 1.6, EPISODE_TICKS = 600;   // 10 seconds
+const SENSOR_GAIN = 1.6, EPISODE_TICKS = 600;   // 10 seconds
 const SENSOR_NAMES = ['beat A', 'rear foot', 'tilt', 'front foot', 'beat B'];
 const MOTOR_NAMES = ['rear hip', 'rear knee', 'front hip', 'front knee'];
 
@@ -865,11 +948,12 @@ const hasFallen = b => b.y.some((y, i) => y < 0.01 && !BODY.feet.includes(i));
 
 function createWalk() {
   const body = createBody();
-  return { body, tick: 0, startX: torsoX(body), sensors: new Float32Array(SENSOR_NAMES.length), fallen: false };
+  const x = torsoX(body);
+  return { body, tick: 0, startX: x, lastX: x, sensors: new Float32Array(SENSOR_NAMES.length), fallen: false, beatHz: 1 };
 }
 
 function sense(walk) {
-  const b = walk.body, s = walk.sensors, phase = 2 * Math.PI * BEAT_HZ * walk.tick * DT;
+  const b = walk.body, s = walk.sensors, phase = 2 * Math.PI * walk.beatHz * walk.tick * DT;
   s[0] = Math.max(0, Math.sin(phase));
   s[1] = b.y[BODY.feet[0]] < 0.01 ? 1 : 0;
   s[2] = Math.min(1, Math.max(0, 0.5 + pitch(b) / (Math.PI / 4)));   // 0.5 when level, higher nose-up
@@ -879,6 +963,7 @@ function sense(walk) {
 
 function walkTick(walk, brain, st) {
   if (walk.fallen) return;
+  walk.beatHz = brain.beatHz;
   sense(walk);
   const { sensorIds, motorIds } = brain;
   for (let k = 0; k < sensorIds.length; k++) st.ext[sensorIds[k]] = SENSOR_GAIN * walk.sensors[k];
@@ -886,6 +971,11 @@ function walkTick(walk, brain, st) {
   const drive = walk.body.drive;
   for (let k = 0; k < motorIds.length; k++) drive[k] = 0.8 * drive[k] + 0.2 * st.spike[motorIds[k]];
   stepBody(walk.body);
+  // the reward for learning is how much faster than usual the body moved forward this tick
+  const x = torsoX(walk.body), speed = (x - walk.lastX) / DT;
+  st.reward = Math.max(-1, Math.min(1, (speed - st.avgSpeed) / 0.3));
+  st.avgSpeed += (speed - st.avgSpeed) * 0.02;
+  walk.lastX = x;
   walk.tick++;
   if (hasFallen(walk.body)) walk.fallen = true;
 }
@@ -1040,7 +1130,7 @@ function createEvolver({ seed = 1, popSize = POP_SIZE, start = null } = {}) {
 
 return {
   W, H, MAX_TYPES, SENSOR, MOTOR, FIRST_INTER, GENE_CODONS, POP_SIZE, VALIDATION_SEEDS,
-  BODY, DT, EPISODE_TICKS, SENSOR_NAMES, MOTOR_NAMES, stepBody,
+  BODY, DT, EPISODE_TICKS, SENSOR_NAMES, MOTOR_NAMES, config, stepBody,
   cleanDNA, findGenes, decodeGenome, ruleKey, createSim, stepSim, runToEnd,
   compileBrain, createBrainState, brainTick, createWalk, walkTick, distance, torsoX, trial, runEpisode,
   growBrain, score, randomGenome, mutate, createEvolver, mulberry32,
@@ -1066,7 +1156,12 @@ function trainerLogic(post, budgetMs) {
     if (!scheduled) { scheduled = true; setTimeout(loop, 0); }
   }
   return m => {
-    if (m.cmd === 'start') { ev = Core.createEvolver({ seed: m.seed, start: m.start }); running = true; schedule(); }
+    if (m.cmd === 'start') {
+      if (m.config) Object.assign(Core.config, m.config);
+      ev = Core.createEvolver({ seed: m.seed, start: m.start });
+      running = true;
+      schedule();
+    }
     else if (m.cmd === 'pause') running = false;
     else if (m.cmd === 'resume') { if (ev) { running = true; schedule(); } }
   };
@@ -1077,12 +1172,12 @@ function trainerLogic(post, budgetMs) {
 'use strict';
 
 const EXAMPLES = [
-  {"name": "Evolved walker", "note": "Evolved over 254 generations from random genomes. It walks 6.15 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "ACCTTCCATGTTCAGATCTTTATTCTCCGTCCCTAAGAAATCACCCGAACTTATCGACGGCGTTACGGCCGTTAAAGCCTGGGAAGCTCTGTGATGATGGCCTACCCGCTAGTGCGATATTAGCAACTTCAGGTGGCCGCCTGCGCTGCCAACCGCCGAGAGGAACAATAGGGCTTGATAACATCCCACTAGGTGCAATGTTTGTTAAACAGGGAGAGCAAAGGGTCTTTCGCCGCAGGACAAGCACAACGGGGAACAAATTCAGCACCGTTTAGTATGGTTGCCATGCGGGCTGATACCACAAAAGGGCGGATAGTTGTGCAAGCTTTGCTATCGGTAGTCTTCCATGGGGGAGCCCACAGTTATAATTGACTGAATGGTCGAGCCAGTCAAAATCCAGACTCTACGCTTCGGTCCCCGATCGCGGGTAAATGGTTCGTTCTGCCTTCGGTGA"},
-  {"name": "Second evolved walker", "note": "Evolved over 293 generations from random genomes. It walks 5.88 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "ATTATTTTGATGTCGCCTCCGGCAAAACCTAACGAGATTGAGCTCCCTCGGTGTGGCTTATGTAGCGAGTTTTACGCGATGGAGACTCTTGACAAATGAGGTAGAAATGAATTGGGATGTTAGACTCTCGGGCGTCGCCGGGCTGTCAGTTTGTTACACTACGAGCGCCAACCCGCCCCTTCTCGCTTAATGTTTCGATGGATTTGCTTTGCCAAGCCGCGCGTCTGAACACGGACCAACGTCAAGATTTGTTCAGCCAAATGCGGTTAGTTCCGGCATCGTGATACAGGTATGAACAGCGAAACTGCTATGGTCGCATATCTCGATGTCATGGGCTGCGGTCGCCACACGCAGTGCTCCTTCCTCTACAAGAAGTTTGGGAATCCCATGACGGACCGAAACGAATCTGAAAAAACGTTACCCTGGTTCAGCAATGATGCAATATTACCCCGCCGTTCAGATGTTAGACCCACTTGATTCGCATGAGCGCCTCAAATCAATGCACATCAGAGGTGGACTCGCACGGGGTAACTCTGGGCTGGGGTAACGAATGTAGACGGCAGTGA"},
-  {"name": "Third evolved walker", "note": "Evolved over 424 generations from random genomes. It walks 5.62 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "GGCATGGGGCTTAGCAGCTCGCGAGCGAGTGCCACGCTTTATGTCAGACGATCCATCGCTTAGCCGACCAAATTTCGTATGTCGGCTCATGTGCGCATGCCACCTCAGTTCGCCTCACTTCGGACTCGCGGAGGGAGACTGTCTATCGAGTCCTCCGTGCATGACCTCGAAGCATGGGTACGATAAGGCTGAAATTCAAGCCTGGTTCTCCAATAGAGTGGGAGCGGCGTAACTTAAGGGTAACTGGCTTAGTATAGGGCTATGCGATGTAGAGGAGTCTCACATGAACGCAAAATGGCGCGTGACCGTCGTGTTTTCATGTCCACTTCGGTGTGCGCATGACTAGATTCATAGTTAATATAACACCCTTGTATCGCTCTTACGAACGGACACCGGCGACCGAACCAAACGGGATTAGTCTGGCTAAGTCCGGAGTATAAAGAATTAATTCTCGGTTGTTCGCGCGGGTTAGAATACGACTTGAATGGCAAGAGGGTACCCAGTGACACCTTTGTATATTTGTGA"}
+  {"name": "Evolved walker", "note": "Evolved over 374 generations from random genomes. It walks 8.80 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "GCATACGAAATGCGAGCTGGACTCTCAACCTGTCTACGGAGGTCGCCCCAATCCAAACGATTCCCTCATTCCGTAGCCAAAAGAAGTTCATGGCTGCCAACACAGGGTGAATCTAATGCGTGAGGGAGTTATGAATTTGTTTGGGCAAAACCTGCCTACATACTGGCGCACCGCAAATGTCGCTCGGCGTGGGTGTACTCTTTCTGCGTTCCAAGGACCCGAACTGTCATAGTCGCCGAACTATGGATAACGGAATAAGCGATCTCTGTGCTATTCCCTTCGGAAGTAAGGTGGCTGTGATTGTTAGGCAGTTTTTGGAAAGCTAATGTTGCTAAATCCTATGGCAGTCGCGACCTTGCGCAAAACGCACGAGCGACGAAGGACTGTGGGTCGCGGCGCGCCGCATGTCTGCGCCAAAGGTCAGGTGCTCTGCTTTTAAATTTATACATGGCACGGCCGTGTCCTTCATAAGCGTTACACCTCTCAGTCGTTCAAACCTATCAGTATTTTGTGCGCCTCTTGGTGCCCACGTTTCTTTGCCTCAGCTCCGCGTTTTGAAATTATGCATTCATGCTGGGGCATCTCCAAACGAAGAGCCGACAACGTTAAGATAATGTTAACGTGCCACTAATAGCCCACTGAAGCGGTCCTACTAACG"},
+  {"name": "Second evolved walker", "note": "Evolved over 443 generations from random genomes. It walks 7.27 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "GGAATGCATATTCAGAGAAATGGGTTACGCCTGCCTGGGAACCACTACACTATAATAGCTCCCATCCGTCATGTCCGCCCCACATAAGCCGTCCTTCTCGAGCTTAGGCTTTGATATATGGCCCGCCTATGTCGACCGAACACGGGCATGTCAAAACAACCTTCCGCCATGTGTACTCTCTGGGCCCCTCCAATGCTTGCACATCCGCTGGGGGCCTAGGTATGCTTTGGTTAGTAAGACGTCCGTGGCTCGATGTTAGAGTAAGAACCACTTCGCGTCCCGATTCATTACGAATGCGGCATTGTTTCGGTTGCCCAGCCTCAATATTTTAACAATGATATCTACGGTTTCCTTACGCGGAACTGCGATCAAGAGGGATCTAAAGAGCGGCACAGCTTTGTTTATATTTCCAACTTGCCCTAGTATTGGGCGGTGACCTATGGCGACGTTTCCATTATATGGCCACCAACTATATCGAGGGGGCCCGAGTCTATGTACGCAGACAGTTGGAGGCACCATCGCCGCTCTAGACTGA"},
+  {"name": "Third evolved walker", "note": "Evolved over 495 generations from random genomes. It walks 6.83 m in 10 seconds; a brain that never moves the legs scores 0.", "dna": "TGTGATATGTGCAGAGCATGTGTTCGAATTCATATTTTTGAACAACGTTTGCGACGCAAGTTTGAAGGTGACCCAGTGACGCGAGGTTTTGGGCGTTTCTGACTGAGAATGAGGCAGGCCTTACCCTGTTATTCGGGGCTACCACCACCAACGAAAGCAGGTTTACGACTTGATGTGATTCGACGATCCGAACCGATAGAGTAGTTCCTCCATGCGTCTACTAAAATGTCCCGAAGAACCTAATCGTGGTAGGCGGAACCGCACGGCTAATGCATGGCACTGGGGATGCCTGTTGGTGGAGGGGTCTCACGAAGGCTAAAACCAACCATGGACGTGAAAGTGACGGTTAGTCTTATGTTTCGGGTACCTTCTACTTCGGGCGTACGAACACTAATCCCCCGTGGCAATCCAATTCAACTCGAA"}
 ];
 // Generation-by-generation scores from the run that evolved the first example.
-const RECORDED_RUN = [{"gen":0,"best":0.25,"mean":0.03,"valid":0.25},{"gen":1,"best":0.25,"mean":0.09,"valid":0.25},{"gen":2,"best":0.25,"mean":0.11,"valid":0.25},{"gen":3,"best":0.25,"mean":0.13,"valid":0.25},{"gen":4,"best":0.25,"mean":0.13,"valid":0.25},{"gen":5,"best":0.35,"mean":0.15,"valid":0.35},{"gen":6,"best":0.35,"mean":0.14,"valid":0.35},{"gen":7,"best":0.36,"mean":0.16,"valid":0.36},{"gen":8,"best":0.36,"mean":0.17,"valid":0.36},{"gen":9,"best":0.36,"mean":0.17,"valid":0.36},{"gen":10,"best":0.36,"mean":0.08,"valid":0.36},{"gen":11,"best":0.7,"mean":0.17,"valid":0.7},{"gen":12,"best":0.7,"mean":0.1,"valid":0.7},{"gen":13,"best":0.7,"mean":0.21,"valid":0.7},{"gen":14,"best":0.7,"mean":0.2,"valid":0.7},{"gen":15,"best":0.7,"mean":0.22,"valid":0.7},{"gen":16,"best":0.7,"mean":0.15,"valid":0.7},{"gen":17,"best":0.89,"mean":0.26,"valid":0.89},{"gen":18,"best":0.89,"mean":0.33,"valid":0.89},{"gen":19,"best":0.89,"mean":0.31,"valid":0.89},{"gen":20,"best":0.89,"mean":0.34,"valid":0.89},{"gen":21,"best":0.89,"mean":0.33,"valid":0.89},{"gen":22,"best":0.89,"mean":0.35,"valid":0.89},{"gen":23,"best":0.89,"mean":0.29,"valid":0.89},{"gen":24,"best":0.89,"mean":0.34,"valid":0.89},{"gen":25,"best":0.89,"mean":0.33,"valid":0.89},{"gen":26,"best":0.89,"mean":0.32,"valid":0.89},{"gen":27,"best":0.89,"mean":0.29,"valid":0.89},{"gen":28,"best":1.32,"mean":0.43,"valid":1.32},{"gen":29,"best":1.32,"mean":0.27,"valid":1.32},{"gen":30,"best":1.32,"mean":0.26,"valid":1.32},{"gen":31,"best":1.32,"mean":0.22,"valid":1.32},{"gen":32,"best":1.32,"mean":0.28,"valid":1.32},{"gen":33,"best":1.32,"mean":0.36,"valid":1.32},{"gen":34,"best":4.08,"mean":0.58,"valid":4.08},{"gen":35,"best":4.15,"mean":0.75,"valid":4.15},{"gen":36,"best":4.15,"mean":1.18,"valid":4.15},{"gen":37,"best":4.15,"mean":1.13,"valid":4.15},{"gen":38,"best":4.15,"mean":1.67,"valid":4.15},{"gen":39,"best":4.32,"mean":1.7,"valid":4.32},{"gen":40,"best":4.32,"mean":1.59,"valid":4.32},{"gen":41,"best":4.32,"mean":1.57,"valid":4.32},{"gen":42,"best":4.32,"mean":1.92,"valid":4.32},{"gen":43,"best":4.32,"mean":1.32,"valid":4.32},{"gen":44,"best":4.32,"mean":1.6,"valid":4.32},{"gen":45,"best":4.32,"mean":1.67,"valid":4.32},{"gen":46,"best":4.32,"mean":1.72,"valid":4.32},{"gen":47,"best":4.55,"mean":1.3,"valid":4.55},{"gen":48,"best":4.55,"mean":1.21,"valid":4.55},{"gen":49,"best":4.55,"mean":1.25,"valid":4.55},{"gen":50,"best":4.55,"mean":1.62,"valid":4.55},{"gen":51,"best":4.55,"mean":1.89,"valid":4.55},{"gen":52,"best":4.55,"mean":2.44,"valid":4.55},{"gen":53,"best":4.55,"mean":1.92,"valid":4.55},{"gen":54,"best":4.55,"mean":1.92,"valid":4.55},{"gen":55,"best":4.55,"mean":1.55,"valid":4.55},{"gen":56,"best":4.55,"mean":1.74,"valid":4.55},{"gen":57,"best":4.85,"mean":1.87,"valid":4.85},{"gen":58,"best":4.85,"mean":1.59,"valid":4.85},{"gen":59,"best":4.85,"mean":1.74,"valid":4.85},{"gen":60,"best":5.55,"mean":1.99,"valid":5.55},{"gen":61,"best":5.55,"mean":1.86,"valid":5.55},{"gen":62,"best":5.55,"mean":1.99,"valid":5.55},{"gen":63,"best":5.55,"mean":2.38,"valid":5.55},{"gen":64,"best":5.55,"mean":1.51,"valid":5.55},{"gen":65,"best":5.55,"mean":1.46,"valid":5.55},{"gen":66,"best":5.55,"mean":1.64,"valid":5.55},{"gen":67,"best":5.55,"mean":1.8,"valid":5.55},{"gen":68,"best":5.55,"mean":1.98,"valid":5.55},{"gen":69,"best":5.55,"mean":1.65,"valid":5.55},{"gen":70,"best":5.55,"mean":1.03,"valid":5.55},{"gen":71,"best":5.55,"mean":1.36,"valid":5.55},{"gen":72,"best":5.55,"mean":1.29,"valid":5.55},{"gen":73,"best":5.55,"mean":1.16,"valid":5.55},{"gen":74,"best":5.55,"mean":1.61,"valid":5.55},{"gen":75,"best":5.55,"mean":1.89,"valid":5.55},{"gen":76,"best":5.55,"mean":1.99,"valid":5.55},{"gen":77,"best":5.55,"mean":2.35,"valid":5.55},{"gen":78,"best":5.55,"mean":1.96,"valid":5.55},{"gen":79,"best":5.55,"mean":1.72,"valid":5.55},{"gen":80,"best":5.55,"mean":1.82,"valid":5.55},{"gen":81,"best":5.55,"mean":1.92,"valid":5.55},{"gen":82,"best":5.55,"mean":1.54,"valid":5.55},{"gen":83,"best":5.55,"mean":1.4,"valid":5.55},{"gen":84,"best":5.94,"mean":1.47,"valid":5.94},{"gen":85,"best":5.94,"mean":1.58,"valid":5.94},{"gen":86,"best":5.94,"mean":1.39,"valid":5.94},{"gen":87,"best":5.94,"mean":1.88,"valid":5.94},{"gen":88,"best":5.94,"mean":1.01,"valid":5.94},{"gen":89,"best":5.94,"mean":1.41,"valid":5.94},{"gen":90,"best":5.94,"mean":1.43,"valid":5.94},{"gen":91,"best":5.94,"mean":2.01,"valid":5.94},{"gen":92,"best":5.94,"mean":2.2,"valid":5.94},{"gen":93,"best":5.94,"mean":1.92,"valid":5.94},{"gen":94,"best":5.94,"mean":2.09,"valid":5.94},{"gen":95,"best":5.94,"mean":1.41,"valid":5.94},{"gen":96,"best":5.94,"mean":1.45,"valid":5.94},{"gen":97,"best":5.94,"mean":1.49,"valid":5.94},{"gen":98,"best":5.94,"mean":1.59,"valid":5.94},{"gen":99,"best":5.94,"mean":1.84,"valid":5.94},{"gen":100,"best":5.94,"mean":1.61,"valid":5.94},{"gen":101,"best":5.94,"mean":1.78,"valid":5.94},{"gen":102,"best":5.94,"mean":2.46,"valid":5.94},{"gen":103,"best":5.94,"mean":2.01,"valid":5.94},{"gen":104,"best":5.94,"mean":1.76,"valid":5.94},{"gen":105,"best":5.94,"mean":1.62,"valid":5.94},{"gen":106,"best":5.94,"mean":1.93,"valid":5.94},{"gen":107,"best":5.94,"mean":1.98,"valid":5.94},{"gen":108,"best":5.94,"mean":1.43,"valid":5.94},{"gen":109,"best":5.94,"mean":1.49,"valid":5.94},{"gen":110,"best":5.94,"mean":2.25,"valid":5.94},{"gen":111,"best":5.94,"mean":2.21,"valid":5.94},{"gen":112,"best":5.94,"mean":2.1,"valid":5.94},{"gen":113,"best":5.94,"mean":1.98,"valid":5.94},{"gen":114,"best":5.94,"mean":1.61,"valid":5.94},{"gen":115,"best":5.94,"mean":2.0,"valid":5.94},{"gen":116,"best":5.94,"mean":1.54,"valid":5.94},{"gen":117,"best":5.94,"mean":1.9,"valid":5.94},{"gen":118,"best":5.94,"mean":1.58,"valid":5.94},{"gen":119,"best":5.94,"mean":1.9,"valid":5.94},{"gen":120,"best":5.94,"mean":1.73,"valid":5.94},{"gen":121,"best":5.94,"mean":2.12,"valid":5.94},{"gen":122,"best":5.94,"mean":2.26,"valid":5.94},{"gen":123,"best":5.94,"mean":2.04,"valid":5.94},{"gen":124,"best":5.94,"mean":2.68,"valid":5.94},{"gen":125,"best":5.94,"mean":1.68,"valid":5.94},{"gen":126,"best":5.94,"mean":1.76,"valid":5.94},{"gen":127,"best":5.94,"mean":1.92,"valid":5.94},{"gen":128,"best":5.94,"mean":1.56,"valid":5.94},{"gen":129,"best":5.94,"mean":1.9,"valid":5.94},{"gen":130,"best":5.94,"mean":1.63,"valid":5.94},{"gen":131,"best":5.94,"mean":1.67,"valid":5.94},{"gen":132,"best":5.94,"mean":1.8,"valid":5.94},{"gen":133,"best":5.94,"mean":2.04,"valid":5.94},{"gen":134,"best":5.94,"mean":1.4,"valid":5.94},{"gen":135,"best":5.94,"mean":1.62,"valid":5.94},{"gen":136,"best":5.94,"mean":1.65,"valid":5.94},{"gen":137,"best":5.94,"mean":2.13,"valid":5.94},{"gen":138,"best":5.94,"mean":1.12,"valid":5.94},{"gen":139,"best":5.94,"mean":1.04,"valid":5.94},{"gen":140,"best":5.94,"mean":1.19,"valid":5.94},{"gen":141,"best":5.94,"mean":1.68,"valid":5.94},{"gen":142,"best":5.94,"mean":1.61,"valid":5.94},{"gen":143,"best":5.94,"mean":2.4,"valid":5.94},{"gen":144,"best":5.94,"mean":1.89,"valid":5.94},{"gen":145,"best":5.94,"mean":1.78,"valid":5.94},{"gen":146,"best":5.94,"mean":1.65,"valid":5.94},{"gen":147,"best":5.94,"mean":1.5,"valid":5.94},{"gen":148,"best":5.94,"mean":1.97,"valid":5.94},{"gen":149,"best":5.94,"mean":2.38,"valid":5.94},{"gen":150,"best":5.94,"mean":2.46,"valid":5.94},{"gen":151,"best":5.94,"mean":1.57,"valid":5.94},{"gen":152,"best":5.94,"mean":1.53,"valid":5.94},{"gen":153,"best":5.94,"mean":1.65,"valid":5.94},{"gen":154,"best":5.94,"mean":1.67,"valid":5.94},{"gen":155,"best":5.94,"mean":1.95,"valid":5.94},{"gen":156,"best":5.94,"mean":1.85,"valid":5.94},{"gen":157,"best":5.94,"mean":1.9,"valid":5.94},{"gen":158,"best":5.94,"mean":1.43,"valid":5.94},{"gen":159,"best":5.94,"mean":1.68,"valid":5.94},{"gen":160,"best":5.94,"mean":1.52,"valid":5.94},{"gen":161,"best":5.94,"mean":1.31,"valid":5.94},{"gen":162,"best":5.94,"mean":1.34,"valid":5.94},{"gen":163,"best":5.94,"mean":1.64,"valid":5.94},{"gen":164,"best":5.94,"mean":1.95,"valid":5.94},{"gen":165,"best":5.94,"mean":2.38,"valid":5.94},{"gen":166,"best":5.94,"mean":1.87,"valid":5.94},{"gen":167,"best":5.94,"mean":1.53,"valid":5.94},{"gen":168,"best":5.94,"mean":1.72,"valid":5.94},{"gen":169,"best":5.94,"mean":1.76,"valid":5.94},{"gen":170,"best":5.94,"mean":2.16,"valid":5.94},{"gen":171,"best":5.94,"mean":1.51,"valid":5.94},{"gen":172,"best":5.94,"mean":2.14,"valid":5.94},{"gen":173,"best":5.94,"mean":2.04,"valid":5.94},{"gen":174,"best":5.94,"mean":1.79,"valid":5.94},{"gen":175,"best":5.94,"mean":1.78,"valid":5.94},{"gen":176,"best":5.94,"mean":2.11,"valid":5.94},{"gen":177,"best":5.94,"mean":2.42,"valid":5.94},{"gen":178,"best":5.94,"mean":2.31,"valid":5.94},{"gen":179,"best":5.94,"mean":2.1,"valid":5.94},{"gen":180,"best":5.94,"mean":2.2,"valid":5.94},{"gen":181,"best":5.94,"mean":2.22,"valid":5.94},{"gen":182,"best":5.94,"mean":1.29,"valid":5.94},{"gen":183,"best":5.94,"mean":2.32,"valid":5.94},{"gen":184,"best":5.94,"mean":2.01,"valid":5.94},{"gen":185,"best":5.94,"mean":1.9,"valid":5.94},{"gen":186,"best":5.94,"mean":2.23,"valid":5.94},{"gen":187,"best":5.94,"mean":1.68,"valid":5.94},{"gen":188,"best":5.94,"mean":1.41,"valid":5.94},{"gen":189,"best":5.94,"mean":1.25,"valid":5.94},{"gen":190,"best":5.94,"mean":1.86,"valid":5.94},{"gen":191,"best":5.94,"mean":1.31,"valid":5.94},{"gen":192,"best":5.94,"mean":1.81,"valid":5.94},{"gen":193,"best":5.94,"mean":1.63,"valid":5.94},{"gen":194,"best":5.94,"mean":2.05,"valid":5.94},{"gen":195,"best":5.94,"mean":1.32,"valid":5.94},{"gen":196,"best":5.94,"mean":1.15,"valid":5.94},{"gen":197,"best":5.94,"mean":1.43,"valid":5.94},{"gen":198,"best":5.94,"mean":1.41,"valid":5.94},{"gen":199,"best":5.94,"mean":1.52,"valid":5.94},{"gen":200,"best":5.94,"mean":2.1,"valid":5.94},{"gen":201,"best":5.94,"mean":2.34,"valid":5.94},{"gen":202,"best":5.94,"mean":2.05,"valid":5.94},{"gen":203,"best":5.94,"mean":2.2,"valid":5.94},{"gen":204,"best":5.94,"mean":2.13,"valid":5.94},{"gen":205,"best":5.94,"mean":1.54,"valid":5.94},{"gen":206,"best":5.94,"mean":1.88,"valid":5.94},{"gen":207,"best":5.94,"mean":1.44,"valid":5.94},{"gen":208,"best":5.94,"mean":1.27,"valid":5.94},{"gen":209,"best":5.94,"mean":1.34,"valid":5.94},{"gen":210,"best":5.94,"mean":1.34,"valid":5.94},{"gen":211,"best":5.94,"mean":1.27,"valid":5.94},{"gen":212,"best":5.94,"mean":1.13,"valid":5.94},{"gen":213,"best":5.94,"mean":1.33,"valid":5.94},{"gen":214,"best":5.94,"mean":1.54,"valid":5.94},{"gen":215,"best":5.94,"mean":1.7,"valid":5.94},{"gen":216,"best":5.94,"mean":1.9,"valid":5.94},{"gen":217,"best":5.94,"mean":1.9,"valid":5.94},{"gen":218,"best":5.94,"mean":2.14,"valid":5.94},{"gen":219,"best":5.94,"mean":1.48,"valid":5.94},{"gen":220,"best":5.94,"mean":1.5,"valid":5.94},{"gen":221,"best":5.94,"mean":1.36,"valid":5.94},{"gen":222,"best":5.94,"mean":2.1,"valid":5.94},{"gen":223,"best":5.94,"mean":2.16,"valid":5.94},{"gen":224,"best":5.94,"mean":1.4,"valid":5.94},{"gen":225,"best":5.94,"mean":1.54,"valid":5.94},{"gen":226,"best":5.94,"mean":1.62,"valid":5.94},{"gen":227,"best":5.94,"mean":2.16,"valid":5.94},{"gen":228,"best":5.94,"mean":1.81,"valid":5.94},{"gen":229,"best":5.94,"mean":2.0,"valid":5.94},{"gen":230,"best":5.94,"mean":1.44,"valid":5.94},{"gen":231,"best":5.94,"mean":1.34,"valid":5.94},{"gen":232,"best":5.94,"mean":2.31,"valid":5.94},{"gen":233,"best":5.94,"mean":1.75,"valid":5.94},{"gen":234,"best":5.94,"mean":1.76,"valid":5.94},{"gen":235,"best":5.94,"mean":1.47,"valid":5.94},{"gen":236,"best":5.94,"mean":1.48,"valid":5.94},{"gen":237,"best":5.94,"mean":2.36,"valid":5.94},{"gen":238,"best":5.94,"mean":2.65,"valid":5.94},{"gen":239,"best":5.94,"mean":2.88,"valid":5.94},{"gen":240,"best":5.94,"mean":1.79,"valid":5.94},{"gen":241,"best":5.94,"mean":1.24,"valid":5.94},{"gen":242,"best":5.94,"mean":1.76,"valid":5.94},{"gen":243,"best":5.94,"mean":1.64,"valid":5.94},{"gen":244,"best":5.94,"mean":1.74,"valid":5.94},{"gen":245,"best":5.94,"mean":1.86,"valid":5.94},{"gen":246,"best":5.94,"mean":1.99,"valid":5.94},{"gen":247,"best":5.94,"mean":2.42,"valid":5.94},{"gen":248,"best":5.94,"mean":1.35,"valid":5.94},{"gen":249,"best":5.94,"mean":1.27,"valid":5.94},{"gen":250,"best":5.94,"mean":1.19,"valid":5.94},{"gen":251,"best":5.94,"mean":1.34,"valid":5.94},{"gen":252,"best":5.94,"mean":1.41,"valid":5.94},{"gen":253,"best":6.15,"mean":1.91,"valid":6.15},{"gen":254,"best":6.15,"mean":1.78,"valid":6.15},{"gen":255,"best":6.15,"mean":2.2,"valid":6.15},{"gen":256,"best":6.15,"mean":2.21,"valid":6.15},{"gen":257,"best":6.15,"mean":2.45,"valid":6.15},{"gen":258,"best":6.15,"mean":2.89,"valid":6.15},{"gen":259,"best":6.15,"mean":3.35,"valid":6.15},{"gen":260,"best":6.15,"mean":2.44,"valid":6.15},{"gen":261,"best":6.15,"mean":2.35,"valid":6.15},{"gen":262,"best":6.15,"mean":2.99,"valid":6.15},{"gen":263,"best":6.15,"mean":2.41,"valid":6.15},{"gen":264,"best":6.15,"mean":2.9,"valid":6.15},{"gen":265,"best":6.15,"mean":2.46,"valid":6.15},{"gen":266,"best":6.15,"mean":2.54,"valid":6.15},{"gen":267,"best":6.15,"mean":2.46,"valid":6.15},{"gen":268,"best":6.15,"mean":2.32,"valid":6.15},{"gen":269,"best":6.15,"mean":3.01,"valid":6.15},{"gen":270,"best":6.15,"mean":2.64,"valid":6.15},{"gen":271,"best":6.15,"mean":2.76,"valid":6.15},{"gen":272,"best":6.15,"mean":2.8,"valid":6.15},{"gen":273,"best":6.15,"mean":2.59,"valid":6.15},{"gen":274,"best":6.15,"mean":2.71,"valid":6.15},{"gen":275,"best":6.15,"mean":2.41,"valid":6.15},{"gen":276,"best":6.15,"mean":2.45,"valid":6.15},{"gen":277,"best":6.15,"mean":2.43,"valid":6.15},{"gen":278,"best":6.15,"mean":2.94,"valid":6.15},{"gen":279,"best":6.15,"mean":3.36,"valid":6.15},{"gen":280,"best":6.15,"mean":2.63,"valid":6.15},{"gen":281,"best":6.15,"mean":2.08,"valid":6.15},{"gen":282,"best":6.15,"mean":2.74,"valid":6.15},{"gen":283,"best":6.15,"mean":2.64,"valid":6.15},{"gen":284,"best":6.15,"mean":2.94,"valid":6.15},{"gen":285,"best":6.15,"mean":2.49,"valid":6.15},{"gen":286,"best":6.15,"mean":2.28,"valid":6.15},{"gen":287,"best":6.15,"mean":2.8,"valid":6.15},{"gen":288,"best":6.15,"mean":2.83,"valid":6.15},{"gen":289,"best":6.15,"mean":2.62,"valid":6.15},{"gen":290,"best":6.15,"mean":2.49,"valid":6.15},{"gen":291,"best":6.15,"mean":2.17,"valid":6.15},{"gen":292,"best":6.15,"mean":2.34,"valid":6.15},{"gen":293,"best":6.15,"mean":1.79,"valid":6.15},{"gen":294,"best":6.15,"mean":2.73,"valid":6.15},{"gen":295,"best":6.15,"mean":2.64,"valid":6.15},{"gen":296,"best":6.15,"mean":2.72,"valid":6.15},{"gen":297,"best":6.15,"mean":2.92,"valid":6.15},{"gen":298,"best":6.15,"mean":3.31,"valid":6.15},{"gen":299,"best":6.15,"mean":2.81,"valid":6.15},{"gen":300,"best":6.15,"mean":2.59,"valid":6.15},{"gen":301,"best":6.15,"mean":2.32,"valid":6.15},{"gen":302,"best":6.15,"mean":2.61,"valid":6.15},{"gen":303,"best":6.15,"mean":2.75,"valid":6.15},{"gen":304,"best":6.15,"mean":2.57,"valid":6.15},{"gen":305,"best":6.15,"mean":2.36,"valid":6.15},{"gen":306,"best":6.15,"mean":2.49,"valid":6.15},{"gen":307,"best":6.15,"mean":2.68,"valid":6.15},{"gen":308,"best":6.15,"mean":2.82,"valid":6.15},{"gen":309,"best":6.15,"mean":2.99,"valid":6.15},{"gen":310,"best":6.15,"mean":2.98,"valid":6.15},{"gen":311,"best":6.15,"mean":3.12,"valid":6.15},{"gen":312,"best":6.15,"mean":3.43,"valid":6.15},{"gen":313,"best":6.15,"mean":3.18,"valid":6.15},{"gen":314,"best":6.15,"mean":3.21,"valid":6.15},{"gen":315,"best":6.15,"mean":2.98,"valid":6.15},{"gen":316,"best":6.15,"mean":2.88,"valid":6.15},{"gen":317,"best":6.15,"mean":2.2,"valid":6.15},{"gen":318,"best":6.15,"mean":2.75,"valid":6.15},{"gen":319,"best":6.15,"mean":2.43,"valid":6.15},{"gen":320,"best":6.15,"mean":2.52,"valid":6.15},{"gen":321,"best":6.15,"mean":2.9,"valid":6.15},{"gen":322,"best":6.15,"mean":2.79,"valid":6.15},{"gen":323,"best":6.15,"mean":2.74,"valid":6.15},{"gen":324,"best":6.15,"mean":2.75,"valid":6.15},{"gen":325,"best":6.15,"mean":2.39,"valid":6.15},{"gen":326,"best":6.15,"mean":2.19,"valid":6.15},{"gen":327,"best":6.15,"mean":2.64,"valid":6.15},{"gen":328,"best":6.15,"mean":2.17,"valid":6.15},{"gen":329,"best":6.15,"mean":2.49,"valid":6.15},{"gen":330,"best":6.15,"mean":2.17,"valid":6.15},{"gen":331,"best":6.15,"mean":2.56,"valid":6.15},{"gen":332,"best":6.15,"mean":2.68,"valid":6.15},{"gen":333,"best":6.15,"mean":2.77,"valid":6.15},{"gen":334,"best":6.15,"mean":1.49,"valid":6.15},{"gen":335,"best":6.15,"mean":1.96,"valid":6.15},{"gen":336,"best":6.15,"mean":2.07,"valid":6.15},{"gen":337,"best":6.15,"mean":2.77,"valid":6.15},{"gen":338,"best":6.15,"mean":2.16,"valid":6.15},{"gen":339,"best":6.15,"mean":2.39,"valid":6.15},{"gen":340,"best":6.15,"mean":3.18,"valid":6.15},{"gen":341,"best":6.15,"mean":2.44,"valid":6.15},{"gen":342,"best":6.15,"mean":2.95,"valid":6.15},{"gen":343,"best":6.15,"mean":3.06,"valid":6.15},{"gen":344,"best":6.15,"mean":2.71,"valid":6.15},{"gen":345,"best":6.15,"mean":2.23,"valid":6.15},{"gen":346,"best":6.15,"mean":2.44,"valid":6.15},{"gen":347,"best":6.15,"mean":2.9,"valid":6.15},{"gen":348,"best":6.15,"mean":2.45,"valid":6.15},{"gen":349,"best":6.15,"mean":2.93,"valid":6.15},{"gen":350,"best":6.15,"mean":2.94,"valid":6.15},{"gen":351,"best":6.15,"mean":2.34,"valid":6.15},{"gen":352,"best":6.15,"mean":2.5,"valid":6.15},{"gen":353,"best":6.15,"mean":2.6,"valid":6.15},{"gen":354,"best":6.15,"mean":2.99,"valid":6.15},{"gen":355,"best":6.15,"mean":2.88,"valid":6.15},{"gen":356,"best":6.15,"mean":2.92,"valid":6.15},{"gen":357,"best":6.15,"mean":2.14,"valid":6.15},{"gen":358,"best":6.15,"mean":2.49,"valid":6.15},{"gen":359,"best":6.15,"mean":2.69,"valid":6.15},{"gen":360,"best":6.15,"mean":2.5,"valid":6.15},{"gen":361,"best":6.15,"mean":2.24,"valid":6.15},{"gen":362,"best":6.15,"mean":2.77,"valid":6.15},{"gen":363,"best":6.15,"mean":2.19,"valid":6.15},{"gen":364,"best":6.15,"mean":2.75,"valid":6.15},{"gen":365,"best":6.15,"mean":2.44,"valid":6.15},{"gen":366,"best":6.15,"mean":2.48,"valid":6.15},{"gen":367,"best":6.15,"mean":2.18,"valid":6.15},{"gen":368,"best":6.15,"mean":2.53,"valid":6.15},{"gen":369,"best":6.15,"mean":3.18,"valid":6.15},{"gen":370,"best":6.15,"mean":2.71,"valid":6.15},{"gen":371,"best":6.15,"mean":2.9,"valid":6.15},{"gen":372,"best":6.15,"mean":3.46,"valid":6.15},{"gen":373,"best":6.15,"mean":2.69,"valid":6.15},{"gen":374,"best":6.15,"mean":2.05,"valid":6.15},{"gen":375,"best":6.15,"mean":2.23,"valid":6.15},{"gen":376,"best":6.15,"mean":2.18,"valid":6.15},{"gen":377,"best":6.15,"mean":2.49,"valid":6.15},{"gen":378,"best":6.15,"mean":2.34,"valid":6.15},{"gen":379,"best":6.15,"mean":1.88,"valid":6.15},{"gen":380,"best":6.15,"mean":3.27,"valid":6.15},{"gen":381,"best":6.15,"mean":3.17,"valid":6.15},{"gen":382,"best":6.15,"mean":3.25,"valid":6.15},{"gen":383,"best":6.15,"mean":2.7,"valid":6.15},{"gen":384,"best":6.15,"mean":2.88,"valid":6.15},{"gen":385,"best":6.15,"mean":2.96,"valid":6.15},{"gen":386,"best":6.15,"mean":2.95,"valid":6.15},{"gen":387,"best":6.15,"mean":2.26,"valid":6.15},{"gen":388,"best":6.15,"mean":2.7,"valid":6.15},{"gen":389,"best":6.15,"mean":2.29,"valid":6.15},{"gen":390,"best":6.15,"mean":2.47,"valid":6.15},{"gen":391,"best":6.15,"mean":2.31,"valid":6.15},{"gen":392,"best":6.15,"mean":2.84,"valid":6.15},{"gen":393,"best":6.15,"mean":2.97,"valid":6.15},{"gen":394,"best":6.15,"mean":2.81,"valid":6.15},{"gen":395,"best":6.15,"mean":2.39,"valid":6.15},{"gen":396,"best":6.15,"mean":3.17,"valid":6.15},{"gen":397,"best":6.15,"mean":2.55,"valid":6.15},{"gen":398,"best":6.15,"mean":2.75,"valid":6.15},{"gen":399,"best":6.15,"mean":3.31,"valid":6.15},{"gen":400,"best":6.15,"mean":1.95,"valid":6.15},{"gen":401,"best":6.15,"mean":2.74,"valid":6.15},{"gen":402,"best":6.15,"mean":2.18,"valid":6.15},{"gen":403,"best":6.15,"mean":2.26,"valid":6.15},{"gen":404,"best":6.15,"mean":2.83,"valid":6.15},{"gen":405,"best":6.15,"mean":3.04,"valid":6.15},{"gen":406,"best":6.15,"mean":2.79,"valid":6.15},{"gen":407,"best":6.15,"mean":2.56,"valid":6.15},{"gen":408,"best":6.15,"mean":2.25,"valid":6.15},{"gen":409,"best":6.15,"mean":2.66,"valid":6.15},{"gen":410,"best":6.15,"mean":2.73,"valid":6.15},{"gen":411,"best":6.15,"mean":3.09,"valid":6.15},{"gen":412,"best":6.15,"mean":3.01,"valid":6.15},{"gen":413,"best":6.15,"mean":2.87,"valid":6.15},{"gen":414,"best":6.15,"mean":3.07,"valid":6.15},{"gen":415,"best":6.15,"mean":2.92,"valid":6.15},{"gen":416,"best":6.15,"mean":2.83,"valid":6.15},{"gen":417,"best":6.15,"mean":2.93,"valid":6.15},{"gen":418,"best":6.15,"mean":3.46,"valid":6.15},{"gen":419,"best":6.15,"mean":3.45,"valid":6.15},{"gen":420,"best":6.15,"mean":2.55,"valid":6.15},{"gen":421,"best":6.15,"mean":2.52,"valid":6.15},{"gen":422,"best":6.15,"mean":3.05,"valid":6.15},{"gen":423,"best":6.15,"mean":2.66,"valid":6.15},{"gen":424,"best":6.15,"mean":2.88,"valid":6.15},{"gen":425,"best":6.15,"mean":2.52,"valid":6.15},{"gen":426,"best":6.15,"mean":2.64,"valid":6.15},{"gen":427,"best":6.15,"mean":2.86,"valid":6.15},{"gen":428,"best":6.15,"mean":2.86,"valid":6.15},{"gen":429,"best":6.15,"mean":2.8,"valid":6.15},{"gen":430,"best":6.15,"mean":2.84,"valid":6.15},{"gen":431,"best":6.15,"mean":3.1,"valid":6.15},{"gen":432,"best":6.15,"mean":2.8,"valid":6.15},{"gen":433,"best":6.15,"mean":2.9,"valid":6.15},{"gen":434,"best":6.15,"mean":2.94,"valid":6.15},{"gen":435,"best":6.15,"mean":2.63,"valid":6.15},{"gen":436,"best":6.15,"mean":2.26,"valid":6.15},{"gen":437,"best":6.15,"mean":2.13,"valid":6.15},{"gen":438,"best":6.15,"mean":2.75,"valid":6.15},{"gen":439,"best":6.15,"mean":2.48,"valid":6.15},{"gen":440,"best":6.15,"mean":3.13,"valid":6.15},{"gen":441,"best":6.15,"mean":3.08,"valid":6.15},{"gen":442,"best":6.15,"mean":2.6,"valid":6.15},{"gen":443,"best":6.15,"mean":2.96,"valid":6.15},{"gen":444,"best":6.15,"mean":2.81,"valid":6.15},{"gen":445,"best":6.15,"mean":3.19,"valid":6.15},{"gen":446,"best":6.15,"mean":3.28,"valid":6.15},{"gen":447,"best":6.15,"mean":3.12,"valid":6.15},{"gen":448,"best":6.15,"mean":2.5,"valid":6.15},{"gen":449,"best":6.15,"mean":2.95,"valid":6.15},{"gen":450,"best":6.15,"mean":3.31,"valid":6.15},{"gen":451,"best":6.15,"mean":3.06,"valid":6.15},{"gen":452,"best":6.15,"mean":2.79,"valid":6.15},{"gen":453,"best":6.15,"mean":2.46,"valid":6.15},{"gen":454,"best":6.15,"mean":2.55,"valid":6.15},{"gen":455,"best":6.15,"mean":2.8,"valid":6.15},{"gen":456,"best":6.15,"mean":2.75,"valid":6.15},{"gen":457,"best":6.15,"mean":2.76,"valid":6.15},{"gen":458,"best":6.15,"mean":2.64,"valid":6.15},{"gen":459,"best":6.15,"mean":1.86,"valid":6.15},{"gen":460,"best":6.15,"mean":2.26,"valid":6.15},{"gen":461,"best":6.15,"mean":2.34,"valid":6.15},{"gen":462,"best":6.15,"mean":2.42,"valid":6.15},{"gen":463,"best":6.15,"mean":2.6,"valid":6.15},{"gen":464,"best":6.15,"mean":2.56,"valid":6.15},{"gen":465,"best":6.15,"mean":2.34,"valid":6.15},{"gen":466,"best":6.15,"mean":2.4,"valid":6.15},{"gen":467,"best":6.15,"mean":3.24,"valid":6.15},{"gen":468,"best":6.15,"mean":2.2,"valid":6.15},{"gen":469,"best":6.15,"mean":3.38,"valid":6.15},{"gen":470,"best":6.15,"mean":3.44,"valid":6.15},{"gen":471,"best":6.15,"mean":3.08,"valid":6.15},{"gen":472,"best":6.15,"mean":2.63,"valid":6.15},{"gen":473,"best":6.15,"mean":2.33,"valid":6.15},{"gen":474,"best":6.15,"mean":2.54,"valid":6.15},{"gen":475,"best":6.15,"mean":2.45,"valid":6.15},{"gen":476,"best":6.15,"mean":2.4,"valid":6.15},{"gen":477,"best":6.15,"mean":2.91,"valid":6.15},{"gen":478,"best":6.15,"mean":3.12,"valid":6.15},{"gen":479,"best":6.15,"mean":2.92,"valid":6.15},{"gen":480,"best":6.15,"mean":2.77,"valid":6.15},{"gen":481,"best":6.15,"mean":2.83,"valid":6.15},{"gen":482,"best":6.15,"mean":2.39,"valid":6.15},{"gen":483,"best":6.15,"mean":2.54,"valid":6.15},{"gen":484,"best":6.15,"mean":2.92,"valid":6.15},{"gen":485,"best":6.15,"mean":2.4,"valid":6.15},{"gen":486,"best":6.15,"mean":2.41,"valid":6.15},{"gen":487,"best":6.15,"mean":2.17,"valid":6.15},{"gen":488,"best":6.15,"mean":2.48,"valid":6.15},{"gen":489,"best":6.15,"mean":2.68,"valid":6.15},{"gen":490,"best":6.15,"mean":1.94,"valid":6.15},{"gen":491,"best":6.15,"mean":2.8,"valid":6.15},{"gen":492,"best":6.15,"mean":3.03,"valid":6.15},{"gen":493,"best":6.15,"mean":2.8,"valid":6.15},{"gen":494,"best":6.15,"mean":2.56,"valid":6.15},{"gen":495,"best":6.15,"mean":2.68,"valid":6.15},{"gen":496,"best":6.15,"mean":2.77,"valid":6.15},{"gen":497,"best":6.15,"mean":3.33,"valid":6.15},{"gen":498,"best":6.15,"mean":2.96,"valid":6.15},{"gen":499,"best":6.15,"mean":1.69,"valid":6.15}];
+const RECORDED_RUN = [{"gen":0,"best":6.07,"mean":0.18,"valid":6.07},{"gen":1,"best":6.07,"mean":0.61,"valid":6.07},{"gen":2,"best":6.07,"mean":1.61,"valid":6.07},{"gen":3,"best":6.07,"mean":3.74,"valid":6.07},{"gen":4,"best":6.07,"mean":4.2,"valid":6.07},{"gen":5,"best":6.07,"mean":4.74,"valid":6.07},{"gen":6,"best":6.07,"mean":4.95,"valid":6.07},{"gen":7,"best":6.07,"mean":5.1,"valid":6.07},{"gen":8,"best":6.07,"mean":4.9,"valid":6.07},{"gen":9,"best":6.42,"mean":4.84,"valid":6.42},{"gen":10,"best":6.42,"mean":5.24,"valid":6.42},{"gen":11,"best":6.42,"mean":5.63,"valid":6.42},{"gen":12,"best":6.42,"mean":5.08,"valid":6.42},{"gen":13,"best":6.42,"mean":5.39,"valid":6.42},{"gen":14,"best":6.42,"mean":5.8,"valid":6.42},{"gen":15,"best":6.42,"mean":4.73,"valid":6.42},{"gen":16,"best":6.42,"mean":4.83,"valid":6.42},{"gen":17,"best":6.42,"mean":5.63,"valid":6.42},{"gen":18,"best":6.42,"mean":5.11,"valid":6.42},{"gen":19,"best":6.42,"mean":5.35,"valid":6.42},{"gen":20,"best":6.42,"mean":4.88,"valid":6.42},{"gen":21,"best":6.42,"mean":5.16,"valid":6.42},{"gen":22,"best":6.42,"mean":5.36,"valid":6.42},{"gen":23,"best":6.42,"mean":4.59,"valid":6.42},{"gen":24,"best":6.42,"mean":4.55,"valid":6.42},{"gen":25,"best":6.42,"mean":4.78,"valid":6.42},{"gen":26,"best":6.46,"mean":4.92,"valid":6.46},{"gen":27,"best":6.46,"mean":5.5,"valid":6.46},{"gen":28,"best":6.46,"mean":4.79,"valid":6.46},{"gen":29,"best":6.46,"mean":5.5,"valid":6.46},{"gen":30,"best":6.46,"mean":5.29,"valid":6.46},{"gen":31,"best":6.46,"mean":5.09,"valid":6.46},{"gen":32,"best":6.46,"mean":5.12,"valid":6.46},{"gen":33,"best":6.46,"mean":4.63,"valid":6.46},{"gen":34,"best":6.46,"mean":5.51,"valid":6.46},{"gen":35,"best":6.46,"mean":5.39,"valid":6.46},{"gen":36,"best":6.46,"mean":5.21,"valid":6.46},{"gen":37,"best":6.46,"mean":5.26,"valid":6.46},{"gen":38,"best":6.46,"mean":5.29,"valid":6.46},{"gen":39,"best":6.46,"mean":5.24,"valid":6.46},{"gen":40,"best":6.46,"mean":5.93,"valid":6.46},{"gen":41,"best":6.46,"mean":5.35,"valid":6.46},{"gen":42,"best":6.46,"mean":5.57,"valid":6.46},{"gen":43,"best":6.46,"mean":5.45,"valid":6.46},{"gen":44,"best":6.46,"mean":5.75,"valid":6.46},{"gen":45,"best":6.46,"mean":6.1,"valid":6.46},{"gen":46,"best":6.46,"mean":5.28,"valid":6.46},{"gen":47,"best":6.46,"mean":5.15,"valid":6.46},{"gen":48,"best":6.46,"mean":5.54,"valid":6.46},{"gen":49,"best":6.46,"mean":5.1,"valid":6.46},{"gen":50,"best":6.46,"mean":4.67,"valid":6.46},{"gen":51,"best":6.46,"mean":5.34,"valid":6.46},{"gen":52,"best":6.46,"mean":5.29,"valid":6.46},{"gen":53,"best":6.46,"mean":5.04,"valid":6.46},{"gen":54,"best":6.46,"mean":5.01,"valid":6.46},{"gen":55,"best":6.46,"mean":4.65,"valid":6.46},{"gen":56,"best":6.46,"mean":5.11,"valid":6.46},{"gen":57,"best":6.46,"mean":5.27,"valid":6.46},{"gen":58,"best":6.46,"mean":4.85,"valid":6.46},{"gen":59,"best":6.46,"mean":5.32,"valid":6.46},{"gen":60,"best":6.46,"mean":5.39,"valid":6.46},{"gen":61,"best":6.46,"mean":4.98,"valid":6.46},{"gen":62,"best":6.46,"mean":5.17,"valid":6.46},{"gen":63,"best":6.46,"mean":5.9,"valid":6.46},{"gen":64,"best":6.46,"mean":5.69,"valid":6.46},{"gen":65,"best":6.46,"mean":5.62,"valid":6.46},{"gen":66,"best":6.46,"mean":5.14,"valid":6.46},{"gen":67,"best":6.46,"mean":5.39,"valid":6.46},{"gen":68,"best":6.46,"mean":5.38,"valid":6.46},{"gen":69,"best":6.46,"mean":5.45,"valid":6.46},{"gen":70,"best":6.46,"mean":4.92,"valid":6.46},{"gen":71,"best":6.46,"mean":5.44,"valid":6.46},{"gen":72,"best":6.46,"mean":4.75,"valid":6.46},{"gen":73,"best":6.46,"mean":5.66,"valid":6.46},{"gen":74,"best":6.46,"mean":5.14,"valid":6.46},{"gen":75,"best":6.46,"mean":5.19,"valid":6.46},{"gen":76,"best":6.46,"mean":5.65,"valid":6.46},{"gen":77,"best":6.46,"mean":5.58,"valid":6.46},{"gen":78,"best":6.46,"mean":5.15,"valid":6.46},{"gen":79,"best":6.46,"mean":5.29,"valid":6.46},{"gen":80,"best":6.46,"mean":5.13,"valid":6.46},{"gen":81,"best":6.46,"mean":5.26,"valid":6.46},{"gen":82,"best":6.46,"mean":5.05,"valid":6.46},{"gen":83,"best":6.46,"mean":5.38,"valid":6.46},{"gen":84,"best":6.46,"mean":5.68,"valid":6.46},{"gen":85,"best":6.46,"mean":5.25,"valid":6.46},{"gen":86,"best":6.46,"mean":5.24,"valid":6.46},{"gen":87,"best":6.46,"mean":4.9,"valid":6.46},{"gen":88,"best":6.46,"mean":5.06,"valid":6.46},{"gen":89,"best":6.46,"mean":4.98,"valid":6.46},{"gen":90,"best":6.53,"mean":5.42,"valid":6.53},{"gen":91,"best":6.53,"mean":5.03,"valid":6.53},{"gen":92,"best":6.53,"mean":4.87,"valid":6.53},{"gen":93,"best":6.53,"mean":5.22,"valid":6.53},{"gen":94,"best":6.53,"mean":5.46,"valid":6.53},{"gen":95,"best":6.53,"mean":5.76,"valid":6.53},{"gen":96,"best":6.53,"mean":5.44,"valid":6.53},{"gen":97,"best":6.53,"mean":5.34,"valid":6.53},{"gen":98,"best":6.53,"mean":5.21,"valid":6.53},{"gen":99,"best":6.53,"mean":5.19,"valid":6.53},{"gen":100,"best":6.53,"mean":5.2,"valid":6.53},{"gen":101,"best":6.53,"mean":5.66,"valid":6.53},{"gen":102,"best":6.53,"mean":5.04,"valid":6.53},{"gen":103,"best":6.53,"mean":5.29,"valid":6.53},{"gen":104,"best":6.53,"mean":5.39,"valid":6.53},{"gen":105,"best":6.53,"mean":5.63,"valid":6.53},{"gen":106,"best":6.53,"mean":4.67,"valid":6.53},{"gen":107,"best":6.53,"mean":5.15,"valid":6.53},{"gen":108,"best":6.53,"mean":5.87,"valid":6.53},{"gen":109,"best":6.53,"mean":5.84,"valid":6.53},{"gen":110,"best":6.53,"mean":5.08,"valid":6.53},{"gen":111,"best":6.53,"mean":5.71,"valid":6.53},{"gen":112,"best":6.53,"mean":5.44,"valid":6.53},{"gen":113,"best":6.53,"mean":5.29,"valid":6.53},{"gen":114,"best":6.53,"mean":4.83,"valid":6.53},{"gen":115,"best":6.53,"mean":5.07,"valid":6.53},{"gen":116,"best":6.56,"mean":5.99,"valid":6.56},{"gen":117,"best":6.56,"mean":5.42,"valid":6.56},{"gen":118,"best":6.56,"mean":5.86,"valid":6.56},{"gen":119,"best":6.56,"mean":5.63,"valid":6.56},{"gen":120,"best":6.63,"mean":4.72,"valid":6.63},{"gen":121,"best":6.63,"mean":5.6,"valid":6.63},{"gen":122,"best":6.63,"mean":5.76,"valid":6.63},{"gen":123,"best":6.63,"mean":5.18,"valid":6.63},{"gen":124,"best":6.63,"mean":5.21,"valid":6.63},{"gen":125,"best":6.63,"mean":5.6,"valid":6.63},{"gen":126,"best":6.63,"mean":5.54,"valid":6.63},{"gen":127,"best":6.63,"mean":5.38,"valid":6.63},{"gen":128,"best":6.63,"mean":5.02,"valid":6.63},{"gen":129,"best":6.63,"mean":4.66,"valid":6.63},{"gen":130,"best":6.92,"mean":5.45,"valid":6.92},{"gen":131,"best":6.92,"mean":5.66,"valid":6.92},{"gen":132,"best":6.92,"mean":5.19,"valid":6.92},{"gen":133,"best":6.92,"mean":5.33,"valid":6.92},{"gen":134,"best":6.92,"mean":5.66,"valid":6.92},{"gen":135,"best":6.92,"mean":5.63,"valid":6.92},{"gen":136,"best":6.92,"mean":4.46,"valid":6.92},{"gen":137,"best":6.92,"mean":5.15,"valid":6.92},{"gen":138,"best":7.07,"mean":5.4,"valid":7.07},{"gen":139,"best":7.07,"mean":4.76,"valid":7.07},{"gen":140,"best":7.07,"mean":5.02,"valid":7.07},{"gen":141,"best":7.07,"mean":4.92,"valid":7.07},{"gen":142,"best":7.07,"mean":5.25,"valid":7.07},{"gen":143,"best":7.07,"mean":5.62,"valid":7.07},{"gen":144,"best":7.07,"mean":5.61,"valid":7.07},{"gen":145,"best":7.07,"mean":5.55,"valid":7.07},{"gen":146,"best":7.07,"mean":5.88,"valid":7.07},{"gen":147,"best":7.07,"mean":5.64,"valid":7.07},{"gen":148,"best":7.07,"mean":5.76,"valid":7.07},{"gen":149,"best":7.07,"mean":5.87,"valid":7.07},{"gen":150,"best":7.13,"mean":5.04,"valid":7.13},{"gen":151,"best":7.13,"mean":5.29,"valid":7.13},{"gen":152,"best":7.13,"mean":6.15,"valid":7.13},{"gen":153,"best":7.13,"mean":5.73,"valid":7.13},{"gen":154,"best":7.13,"mean":6.19,"valid":7.13},{"gen":155,"best":7.13,"mean":5.0,"valid":7.13},{"gen":156,"best":7.13,"mean":5.07,"valid":7.13},{"gen":157,"best":7.13,"mean":5.3,"valid":7.13},{"gen":158,"best":7.13,"mean":6.47,"valid":7.13},{"gen":159,"best":7.13,"mean":5.41,"valid":7.13},{"gen":160,"best":7.21,"mean":5.28,"valid":7.21},{"gen":161,"best":7.21,"mean":5.13,"valid":7.21},{"gen":162,"best":7.21,"mean":4.39,"valid":7.21},{"gen":163,"best":7.21,"mean":4.82,"valid":7.21},{"gen":164,"best":7.21,"mean":5.12,"valid":7.21},{"gen":165,"best":7.21,"mean":5.63,"valid":7.21},{"gen":166,"best":7.21,"mean":5.77,"valid":7.21},{"gen":167,"best":7.21,"mean":4.77,"valid":7.21},{"gen":168,"best":7.21,"mean":6.4,"valid":7.21},{"gen":169,"best":7.21,"mean":5.58,"valid":7.21},{"gen":170,"best":7.21,"mean":6.06,"valid":7.21},{"gen":171,"best":7.21,"mean":4.85,"valid":7.21},{"gen":172,"best":7.21,"mean":6.21,"valid":7.21},{"gen":173,"best":7.21,"mean":5.96,"valid":7.21},{"gen":174,"best":7.21,"mean":4.9,"valid":7.21},{"gen":175,"best":7.21,"mean":4.72,"valid":7.21},{"gen":176,"best":7.21,"mean":5.18,"valid":7.21},{"gen":177,"best":7.21,"mean":4.27,"valid":7.21},{"gen":178,"best":7.21,"mean":5.64,"valid":7.21},{"gen":179,"best":7.21,"mean":5.86,"valid":7.21},{"gen":180,"best":7.21,"mean":5.65,"valid":7.21},{"gen":181,"best":7.21,"mean":5.77,"valid":7.21},{"gen":182,"best":7.21,"mean":4.85,"valid":7.21},{"gen":183,"best":7.21,"mean":5.25,"valid":7.21},{"gen":184,"best":7.21,"mean":5.85,"valid":7.21},{"gen":185,"best":7.21,"mean":5.08,"valid":7.21},{"gen":186,"best":7.21,"mean":5.35,"valid":7.21},{"gen":187,"best":7.21,"mean":5.33,"valid":7.21},{"gen":188,"best":7.21,"mean":5.18,"valid":7.21},{"gen":189,"best":7.21,"mean":5.02,"valid":7.21},{"gen":190,"best":7.21,"mean":5.41,"valid":7.21},{"gen":191,"best":7.21,"mean":6.09,"valid":7.21},{"gen":192,"best":7.21,"mean":5.81,"valid":7.21},{"gen":193,"best":7.21,"mean":5.94,"valid":7.21},{"gen":194,"best":7.21,"mean":5.67,"valid":7.21},{"gen":195,"best":7.21,"mean":5.05,"valid":7.21},{"gen":196,"best":7.21,"mean":4.59,"valid":7.21},{"gen":197,"best":7.21,"mean":4.75,"valid":7.21},{"gen":198,"best":7.21,"mean":4.68,"valid":7.21},{"gen":199,"best":7.21,"mean":5.88,"valid":7.21},{"gen":200,"best":7.21,"mean":5.49,"valid":7.21},{"gen":201,"best":7.21,"mean":6.04,"valid":7.21},{"gen":202,"best":7.21,"mean":4.35,"valid":7.21},{"gen":203,"best":7.21,"mean":5.68,"valid":7.21},{"gen":204,"best":7.21,"mean":6.74,"valid":7.21},{"gen":205,"best":7.21,"mean":6.15,"valid":7.21},{"gen":206,"best":7.21,"mean":5.06,"valid":7.21},{"gen":207,"best":7.21,"mean":5.54,"valid":7.21},{"gen":208,"best":7.21,"mean":4.9,"valid":7.21},{"gen":209,"best":7.21,"mean":4.41,"valid":7.21},{"gen":210,"best":7.21,"mean":5.28,"valid":7.21},{"gen":211,"best":7.21,"mean":5.09,"valid":7.21},{"gen":212,"best":7.21,"mean":5.93,"valid":7.21},{"gen":213,"best":7.21,"mean":4.55,"valid":7.21},{"gen":214,"best":7.21,"mean":5.51,"valid":7.21},{"gen":215,"best":7.21,"mean":5.45,"valid":7.21},{"gen":216,"best":7.21,"mean":5.1,"valid":7.21},{"gen":217,"best":7.21,"mean":5.28,"valid":7.21},{"gen":218,"best":7.21,"mean":5.45,"valid":7.21},{"gen":219,"best":7.21,"mean":5.13,"valid":7.21},{"gen":220,"best":7.21,"mean":5.47,"valid":7.21},{"gen":221,"best":7.21,"mean":5.52,"valid":7.21},{"gen":222,"best":7.21,"mean":5.24,"valid":7.21},{"gen":223,"best":7.21,"mean":5.53,"valid":7.21},{"gen":224,"best":7.21,"mean":5.04,"valid":7.21},{"gen":225,"best":7.21,"mean":5.44,"valid":7.21},{"gen":226,"best":7.21,"mean":4.98,"valid":7.21},{"gen":227,"best":7.21,"mean":5.27,"valid":7.21},{"gen":228,"best":7.21,"mean":5.66,"valid":7.21},{"gen":229,"best":7.21,"mean":5.14,"valid":7.21},{"gen":230,"best":7.21,"mean":3.98,"valid":7.21},{"gen":231,"best":7.21,"mean":5.39,"valid":7.21},{"gen":232,"best":8.25,"mean":5.74,"valid":8.25},{"gen":233,"best":8.25,"mean":5.82,"valid":8.25},{"gen":234,"best":8.25,"mean":5.22,"valid":8.25},{"gen":235,"best":8.25,"mean":5.11,"valid":8.25},{"gen":236,"best":8.25,"mean":5.96,"valid":8.25},{"gen":237,"best":8.25,"mean":6.48,"valid":8.25},{"gen":238,"best":8.25,"mean":5.83,"valid":8.25},{"gen":239,"best":8.25,"mean":6.77,"valid":8.25},{"gen":240,"best":8.25,"mean":5.45,"valid":8.25},{"gen":241,"best":8.25,"mean":6.09,"valid":8.25},{"gen":242,"best":8.25,"mean":5.79,"valid":8.25},{"gen":243,"best":8.25,"mean":7.4,"valid":8.25},{"gen":244,"best":8.25,"mean":6.14,"valid":8.25},{"gen":245,"best":8.25,"mean":6.55,"valid":8.25},{"gen":246,"best":8.25,"mean":6.5,"valid":8.25},{"gen":247,"best":8.25,"mean":6.29,"valid":8.25},{"gen":248,"best":8.25,"mean":6.64,"valid":8.25},{"gen":249,"best":8.25,"mean":6.93,"valid":8.25},{"gen":250,"best":8.25,"mean":6.66,"valid":8.25},{"gen":251,"best":8.25,"mean":6.87,"valid":8.25},{"gen":252,"best":8.25,"mean":6.16,"valid":8.25},{"gen":253,"best":8.25,"mean":6.35,"valid":8.25},{"gen":254,"best":8.25,"mean":6.02,"valid":8.25},{"gen":255,"best":8.25,"mean":6.78,"valid":8.25},{"gen":256,"best":8.25,"mean":6.4,"valid":8.25},{"gen":257,"best":8.25,"mean":6.96,"valid":8.25},{"gen":258,"best":8.25,"mean":6.26,"valid":8.25},{"gen":259,"best":8.25,"mean":6.81,"valid":8.25},{"gen":260,"best":8.25,"mean":6.16,"valid":8.25},{"gen":261,"best":8.25,"mean":6.73,"valid":8.25},{"gen":262,"best":8.25,"mean":6.69,"valid":8.25},{"gen":263,"best":8.25,"mean":6.67,"valid":8.25},{"gen":264,"best":8.25,"mean":6.52,"valid":8.25},{"gen":265,"best":8.25,"mean":6.0,"valid":8.25},{"gen":266,"best":8.25,"mean":6.19,"valid":8.25},{"gen":267,"best":8.25,"mean":7.04,"valid":8.25},{"gen":268,"best":8.25,"mean":6.69,"valid":8.25},{"gen":269,"best":8.25,"mean":6.3,"valid":8.25},{"gen":270,"best":8.25,"mean":6.08,"valid":8.25},{"gen":271,"best":8.25,"mean":6.17,"valid":8.25},{"gen":272,"best":8.25,"mean":6.69,"valid":8.25},{"gen":273,"best":8.25,"mean":7.07,"valid":8.25},{"gen":274,"best":8.25,"mean":7.39,"valid":8.25},{"gen":275,"best":8.25,"mean":7.04,"valid":8.25},{"gen":276,"best":8.25,"mean":6.49,"valid":8.25},{"gen":277,"best":8.25,"mean":5.81,"valid":8.25},{"gen":278,"best":8.25,"mean":6.65,"valid":8.25},{"gen":279,"best":8.25,"mean":6.15,"valid":8.25},{"gen":280,"best":8.25,"mean":6.4,"valid":8.25},{"gen":281,"best":8.25,"mean":6.8,"valid":8.25},{"gen":282,"best":8.25,"mean":4.87,"valid":8.25},{"gen":283,"best":8.25,"mean":6.72,"valid":8.25},{"gen":284,"best":8.25,"mean":7.2,"valid":8.25},{"gen":285,"best":8.25,"mean":6.33,"valid":8.25},{"gen":286,"best":8.25,"mean":6.63,"valid":8.25},{"gen":287,"best":8.25,"mean":5.94,"valid":8.25},{"gen":288,"best":8.25,"mean":6.08,"valid":8.25},{"gen":289,"best":8.25,"mean":7.06,"valid":8.25},{"gen":290,"best":8.25,"mean":5.92,"valid":8.25},{"gen":291,"best":8.25,"mean":6.44,"valid":8.25},{"gen":292,"best":8.25,"mean":6.23,"valid":8.25},{"gen":293,"best":8.25,"mean":7.05,"valid":8.25},{"gen":294,"best":8.25,"mean":6.01,"valid":8.25},{"gen":295,"best":8.25,"mean":6.17,"valid":8.25},{"gen":296,"best":8.25,"mean":6.71,"valid":8.25},{"gen":297,"best":8.25,"mean":6.74,"valid":8.25},{"gen":298,"best":8.28,"mean":6.51,"valid":8.28},{"gen":299,"best":8.28,"mean":6.31,"valid":8.28},{"gen":300,"best":8.28,"mean":6.87,"valid":8.28},{"gen":301,"best":8.28,"mean":5.64,"valid":8.28},{"gen":302,"best":8.28,"mean":6.69,"valid":8.28},{"gen":303,"best":8.36,"mean":6.69,"valid":8.36},{"gen":304,"best":8.36,"mean":7.19,"valid":8.36},{"gen":305,"best":8.38,"mean":6.66,"valid":8.38},{"gen":306,"best":8.38,"mean":6.29,"valid":8.38},{"gen":307,"best":8.43,"mean":5.98,"valid":8.43},{"gen":308,"best":8.43,"mean":6.5,"valid":8.43},{"gen":309,"best":8.59,"mean":5.19,"valid":8.59},{"gen":310,"best":8.59,"mean":6.23,"valid":8.59},{"gen":311,"best":8.59,"mean":6.35,"valid":8.59},{"gen":312,"best":8.59,"mean":7.46,"valid":8.59},{"gen":313,"best":8.59,"mean":6.94,"valid":8.59},{"gen":314,"best":8.59,"mean":6.84,"valid":8.59},{"gen":315,"best":8.59,"mean":6.26,"valid":8.59},{"gen":316,"best":8.6,"mean":7.04,"valid":8.6},{"gen":317,"best":8.6,"mean":6.86,"valid":8.6},{"gen":318,"best":8.6,"mean":7.47,"valid":8.6},{"gen":319,"best":8.6,"mean":6.21,"valid":8.6},{"gen":320,"best":8.6,"mean":6.72,"valid":8.6},{"gen":321,"best":8.6,"mean":6.96,"valid":8.6},{"gen":322,"best":8.63,"mean":6.44,"valid":8.63},{"gen":323,"best":8.63,"mean":6.62,"valid":8.63},{"gen":324,"best":8.63,"mean":6.92,"valid":8.63},{"gen":325,"best":8.63,"mean":5.36,"valid":8.63},{"gen":326,"best":8.63,"mean":6.1,"valid":8.63},{"gen":327,"best":8.63,"mean":6.66,"valid":8.63},{"gen":328,"best":8.65,"mean":6.77,"valid":8.65},{"gen":329,"best":8.65,"mean":5.78,"valid":8.65},{"gen":330,"best":8.65,"mean":6.32,"valid":8.65},{"gen":331,"best":8.65,"mean":6.39,"valid":8.65},{"gen":332,"best":8.65,"mean":6.87,"valid":8.65},{"gen":333,"best":8.65,"mean":6.56,"valid":8.65},{"gen":334,"best":8.65,"mean":6.8,"valid":8.65},{"gen":335,"best":8.65,"mean":6.75,"valid":8.65},{"gen":336,"best":8.65,"mean":6.99,"valid":8.65},{"gen":337,"best":8.65,"mean":6.78,"valid":8.65},{"gen":338,"best":8.65,"mean":5.88,"valid":8.65},{"gen":339,"best":8.65,"mean":6.16,"valid":8.65},{"gen":340,"best":8.65,"mean":6.52,"valid":8.65},{"gen":341,"best":8.65,"mean":6.39,"valid":8.65},{"gen":342,"best":8.66,"mean":5.61,"valid":8.66},{"gen":343,"best":8.7,"mean":6.14,"valid":8.7},{"gen":344,"best":8.7,"mean":6.72,"valid":8.7},{"gen":345,"best":8.7,"mean":6.88,"valid":8.7},{"gen":346,"best":8.7,"mean":7.59,"valid":8.7},{"gen":347,"best":8.7,"mean":6.41,"valid":8.7},{"gen":348,"best":8.7,"mean":6.72,"valid":8.7},{"gen":349,"best":8.7,"mean":6.06,"valid":8.7},{"gen":350,"best":8.7,"mean":6.64,"valid":8.7},{"gen":351,"best":8.7,"mean":7.14,"valid":8.7},{"gen":352,"best":8.7,"mean":6.14,"valid":8.7},{"gen":353,"best":8.7,"mean":5.97,"valid":8.7},{"gen":354,"best":8.7,"mean":6.65,"valid":8.7},{"gen":355,"best":8.7,"mean":5.91,"valid":8.7},{"gen":356,"best":8.7,"mean":6.85,"valid":8.7},{"gen":357,"best":8.7,"mean":6.7,"valid":8.7},{"gen":358,"best":8.7,"mean":6.39,"valid":8.7},{"gen":359,"best":8.7,"mean":5.86,"valid":8.7},{"gen":360,"best":8.7,"mean":5.58,"valid":8.7},{"gen":361,"best":8.7,"mean":6.33,"valid":8.7},{"gen":362,"best":8.7,"mean":6.38,"valid":8.7},{"gen":363,"best":8.7,"mean":5.13,"valid":8.7},{"gen":364,"best":8.7,"mean":5.13,"valid":8.7},{"gen":365,"best":8.7,"mean":6.17,"valid":8.7},{"gen":366,"best":8.7,"mean":7.07,"valid":8.7},{"gen":367,"best":8.7,"mean":6.76,"valid":8.7},{"gen":368,"best":8.7,"mean":6.19,"valid":8.7},{"gen":369,"best":8.7,"mean":6.51,"valid":8.7},{"gen":370,"best":8.7,"mean":6.63,"valid":8.7},{"gen":371,"best":8.7,"mean":6.02,"valid":8.7},{"gen":372,"best":8.7,"mean":7.32,"valid":8.7},{"gen":373,"best":8.8,"mean":6.17,"valid":8.8},{"gen":374,"best":8.8,"mean":6.86,"valid":8.8},{"gen":375,"best":8.8,"mean":6.89,"valid":8.8},{"gen":376,"best":8.8,"mean":6.12,"valid":8.8},{"gen":377,"best":8.8,"mean":6.06,"valid":8.8},{"gen":378,"best":8.8,"mean":6.69,"valid":8.8},{"gen":379,"best":8.8,"mean":6.58,"valid":8.8},{"gen":380,"best":8.8,"mean":7.31,"valid":8.8},{"gen":381,"best":8.8,"mean":6.43,"valid":8.8},{"gen":382,"best":8.8,"mean":6.96,"valid":8.8},{"gen":383,"best":8.8,"mean":5.56,"valid":8.8},{"gen":384,"best":8.8,"mean":6.91,"valid":8.8},{"gen":385,"best":8.8,"mean":6.72,"valid":8.8},{"gen":386,"best":8.8,"mean":5.92,"valid":8.8},{"gen":387,"best":8.8,"mean":6.12,"valid":8.8},{"gen":388,"best":8.8,"mean":6.24,"valid":8.8},{"gen":389,"best":8.8,"mean":6.5,"valid":8.8},{"gen":390,"best":8.8,"mean":7.11,"valid":8.8},{"gen":391,"best":8.8,"mean":7.38,"valid":8.8},{"gen":392,"best":8.8,"mean":5.45,"valid":8.8},{"gen":393,"best":8.8,"mean":5.98,"valid":8.8},{"gen":394,"best":8.8,"mean":6.89,"valid":8.8},{"gen":395,"best":8.8,"mean":5.96,"valid":8.8},{"gen":396,"best":8.8,"mean":6.87,"valid":8.8},{"gen":397,"best":8.8,"mean":6.89,"valid":8.8},{"gen":398,"best":8.8,"mean":6.23,"valid":8.8},{"gen":399,"best":8.8,"mean":6.19,"valid":8.8},{"gen":400,"best":8.8,"mean":5.83,"valid":8.8},{"gen":401,"best":8.8,"mean":6.02,"valid":8.8},{"gen":402,"best":8.8,"mean":6.74,"valid":8.8},{"gen":403,"best":8.8,"mean":6.75,"valid":8.8},{"gen":404,"best":8.8,"mean":6.6,"valid":8.8},{"gen":405,"best":8.8,"mean":6.73,"valid":8.8},{"gen":406,"best":8.8,"mean":6.03,"valid":8.8},{"gen":407,"best":8.8,"mean":6.61,"valid":8.8},{"gen":408,"best":8.8,"mean":6.79,"valid":8.8},{"gen":409,"best":8.8,"mean":6.9,"valid":8.8},{"gen":410,"best":8.8,"mean":6.12,"valid":8.8},{"gen":411,"best":8.8,"mean":6.18,"valid":8.8},{"gen":412,"best":8.8,"mean":6.08,"valid":8.8},{"gen":413,"best":8.8,"mean":6.04,"valid":8.8},{"gen":414,"best":8.8,"mean":6.2,"valid":8.8},{"gen":415,"best":8.8,"mean":7.06,"valid":8.8},{"gen":416,"best":8.8,"mean":7.05,"valid":8.8},{"gen":417,"best":8.8,"mean":7.13,"valid":8.8},{"gen":418,"best":8.8,"mean":7.52,"valid":8.8},{"gen":419,"best":8.8,"mean":6.15,"valid":8.8},{"gen":420,"best":8.8,"mean":6.03,"valid":8.8},{"gen":421,"best":8.8,"mean":6.75,"valid":8.8},{"gen":422,"best":8.8,"mean":5.71,"valid":8.8},{"gen":423,"best":8.8,"mean":6.22,"valid":8.8},{"gen":424,"best":8.8,"mean":7.64,"valid":8.8},{"gen":425,"best":8.8,"mean":6.59,"valid":8.8},{"gen":426,"best":8.8,"mean":6.19,"valid":8.8},{"gen":427,"best":8.8,"mean":5.95,"valid":8.8},{"gen":428,"best":8.8,"mean":6.43,"valid":8.8},{"gen":429,"best":8.8,"mean":6.46,"valid":8.8},{"gen":430,"best":8.8,"mean":7.01,"valid":8.8},{"gen":431,"best":8.8,"mean":6.85,"valid":8.8},{"gen":432,"best":8.8,"mean":6.67,"valid":8.8},{"gen":433,"best":8.8,"mean":7.11,"valid":8.8},{"gen":434,"best":8.8,"mean":6.73,"valid":8.8},{"gen":435,"best":8.8,"mean":6.75,"valid":8.8},{"gen":436,"best":8.8,"mean":6.74,"valid":8.8},{"gen":437,"best":8.8,"mean":6.95,"valid":8.8},{"gen":438,"best":8.8,"mean":7.41,"valid":8.8},{"gen":439,"best":8.8,"mean":6.66,"valid":8.8},{"gen":440,"best":8.8,"mean":7.35,"valid":8.8},{"gen":441,"best":8.8,"mean":7.55,"valid":8.8},{"gen":442,"best":8.8,"mean":6.51,"valid":8.8},{"gen":443,"best":8.8,"mean":6.14,"valid":8.8},{"gen":444,"best":8.8,"mean":6.42,"valid":8.8},{"gen":445,"best":8.8,"mean":7.51,"valid":8.8},{"gen":446,"best":8.8,"mean":6.71,"valid":8.8},{"gen":447,"best":8.8,"mean":5.89,"valid":8.8},{"gen":448,"best":8.8,"mean":6.03,"valid":8.8},{"gen":449,"best":8.8,"mean":5.97,"valid":8.8},{"gen":450,"best":8.8,"mean":6.31,"valid":8.8},{"gen":451,"best":8.8,"mean":5.71,"valid":8.8},{"gen":452,"best":8.8,"mean":6.2,"valid":8.8},{"gen":453,"best":8.8,"mean":6.65,"valid":8.8},{"gen":454,"best":8.8,"mean":6.92,"valid":8.8},{"gen":455,"best":8.8,"mean":6.42,"valid":8.8},{"gen":456,"best":8.8,"mean":7.24,"valid":8.8},{"gen":457,"best":8.8,"mean":6.22,"valid":8.8},{"gen":458,"best":8.8,"mean":7.84,"valid":8.8},{"gen":459,"best":8.8,"mean":6.62,"valid":8.8},{"gen":460,"best":8.8,"mean":6.51,"valid":8.8},{"gen":461,"best":8.8,"mean":6.36,"valid":8.8},{"gen":462,"best":8.8,"mean":7.34,"valid":8.8},{"gen":463,"best":8.8,"mean":6.27,"valid":8.8},{"gen":464,"best":8.8,"mean":6.78,"valid":8.8},{"gen":465,"best":8.8,"mean":6.36,"valid":8.8},{"gen":466,"best":8.8,"mean":7.35,"valid":8.8},{"gen":467,"best":8.8,"mean":6.78,"valid":8.8},{"gen":468,"best":8.8,"mean":7.16,"valid":8.8},{"gen":469,"best":8.8,"mean":7.01,"valid":8.8},{"gen":470,"best":8.8,"mean":6.85,"valid":8.8},{"gen":471,"best":8.8,"mean":6.13,"valid":8.8},{"gen":472,"best":8.8,"mean":5.81,"valid":8.8},{"gen":473,"best":8.8,"mean":6.49,"valid":8.8},{"gen":474,"best":8.8,"mean":5.91,"valid":8.8},{"gen":475,"best":8.8,"mean":6.19,"valid":8.8},{"gen":476,"best":8.8,"mean":5.45,"valid":8.8},{"gen":477,"best":8.8,"mean":6.46,"valid":8.8},{"gen":478,"best":8.8,"mean":6.77,"valid":8.8},{"gen":479,"best":8.8,"mean":4.98,"valid":8.8},{"gen":480,"best":8.8,"mean":6.49,"valid":8.8},{"gen":481,"best":8.8,"mean":6.44,"valid":8.8},{"gen":482,"best":8.8,"mean":6.69,"valid":8.8},{"gen":483,"best":8.8,"mean":7.11,"valid":8.8},{"gen":484,"best":8.8,"mean":7.49,"valid":8.8},{"gen":485,"best":8.8,"mean":6.07,"valid":8.8},{"gen":486,"best":8.8,"mean":6.01,"valid":8.8},{"gen":487,"best":8.8,"mean":6.38,"valid":8.8},{"gen":488,"best":8.8,"mean":6.81,"valid":8.8},{"gen":489,"best":8.8,"mean":6.87,"valid":8.8},{"gen":490,"best":8.8,"mean":6.79,"valid":8.8},{"gen":491,"best":8.8,"mean":6.39,"valid":8.8},{"gen":492,"best":8.8,"mean":7.38,"valid":8.8},{"gen":493,"best":8.8,"mean":6.2,"valid":8.8},{"gen":494,"best":8.8,"mean":5.74,"valid":8.8},{"gen":495,"best":8.8,"mean":6.9,"valid":8.8},{"gen":496,"best":8.8,"mean":6.82,"valid":8.8},{"gen":497,"best":8.8,"mean":7.4,"valid":8.8},{"gen":498,"best":8.8,"mean":5.94,"valid":8.8},{"gen":499,"best":8.8,"mean":6.27,"valid":8.8}];
 
 const C = Core;
 const $ = id => document.getElementById(id);
@@ -1230,7 +1325,11 @@ function synapseCurve(s) {
 function drawSynapses(ctx, t, focus) {
   const running = live.mode === 'run';
   ctx.lineCap = 'round';
+  let k = -1;
   for (const s of live.sim.synapses) {
+    k++;
+    // while walking, show each synapse's weight as learning (if any) has left it
+    const weight = running && live.st ? live.st.w[live.brain.edgeOf[k]] : s.weight;
     const g = synapseCurve(s);
     const col = palette.types[live.sim.neurons[s.from].type];
     const related = focus < 0 || s.from === focus || s.to === focus;
@@ -1240,12 +1339,12 @@ function drawSynapses(ctx, t, focus) {
     ctx.globalAlpha = base * born;
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
-    ctx.lineWidth = 0.6 + 0.9 * Math.min(1.6, Math.abs(s.weight));
+    ctx.lineWidth = 0.6 + 0.9 * Math.min(1.6, Math.abs(weight));
     ctx.beginPath();
     ctx.moveTo(g.sx, g.sy);
     ctx.quadraticCurveTo(g.cx, g.cy, g.ex, g.ey);
     ctx.stroke();
-    if (s.weight >= 0) {
+    if (weight >= 0) {
       ctx.beginPath();
       ctx.arc(g.ex, g.ey, 2.2, 0, Math.PI * 2);
       ctx.fill();
@@ -1690,6 +1789,7 @@ function describeRules(T, nTypes) {
   const strength = Math.abs(T.taxis) > 0.6 ? 'strongly ' : '';
   const tonic = T.bias / (1 - T.leak) >= T.threshold;
   const rows = [];
+  if (T.role === 'sensor') rows.push(['Beat', C.config.dnaBeat ? `${T.beatHz.toFixed(2)} times a second` : 'once a second (switch on "DNA sets the beat" to let this gene choose)']);
   if (T.role === 'inter') {
     const gens = T.maxGen === 1 ? 'generation 0 only' : `generations 0–${T.maxGen - 1}`;
     const turn = T.divTurn === 0 ? 'always in the same direction' : `turning ${T.divTurn}° each time`;
@@ -1700,7 +1800,15 @@ function describeRules(T, nTypes) {
     rows.push(['Axons', `${T.axonCount} per neuron, sprouting after ${plural(T.axonDelay, 'step')}, up to ${T.axonLen} cells long`]);
   }
   rows.push(['Targets', targets.length ? `${targets.map(typeChip).join(' ')} · ${strength}${steer}, ${path}` : 'none yet: add an interneuron gene']);
-  rows.push(['Weights', targets.length ? targets.map(t => `<span class="w">${typeName(t)} ${signed(T.weights[t])}</span>`).join(' ') : '–']);
+  rows.push(['Base weights', targets.length ? targets.map(t => `<span class="w">${typeName(t)} ${signed(T.weights[t])}</span>`).join(' ') : '–']);
+  if (C.config.weightMap) {
+    rows.push(['Weight map', [['front targets', T.mapTarget], ['front sources', T.mapSource], ['same side', T.mapSide], ['long reach', T.mapReach]]
+      .map(([name, x]) => `<span class="w">${name} ${signed(x)}</span>`).join(' ')]);
+  }
+  if (C.config.learning) {
+    rows.push(['Learning', T.learnRate === 0 ? 'its synapses stay fixed while walking'
+      : `strengthens its synapses that fire just before the walker speeds up (rate ${T.learnRate.toFixed(4)})`]);
+  }
   rows.push(['Spiking', `threshold ${T.threshold.toFixed(2)}, keeps ${Math.round(T.leak * 100)}% of its charge each tick, bias ${signed(T.bias)}${tonic ? ' (fires on its own)' : ''}`]);
   if (T.role !== 'sensor') rows.push(['Signal', `releases ${T.emit.toFixed(2)} per substep while growing`]);
   return rows;
@@ -1877,6 +1985,7 @@ function renderTrainStats() {
   $('train').textContent = running ? 'Pause training' : training.state === 'paused' ? 'Resume training' : 'Start training';
   $('resetTrain').disabled = training.state === 'idle';
   $('startFrom').disabled = training.state !== 'idle';
+  for (const id of ['optMap', 'optBeat', 'optLearn']) $(id).disabled = training.state !== 'idle';
   if (training.state === 'idle') {
     ['statGen', 'statChamp', 'statBest', 'statMean'].forEach(id => { $(id).textContent = '–'; });
     return;
@@ -1896,7 +2005,7 @@ function startOrPauseTraining() {
     training.champion = null;
     training.progress = null;
     training.state = 'running';
-    trainer.post({ cmd: 'start', seed: (Date.now() % 1e9) | 0, start: fromShown ? live.dna : null });
+    trainer.post({ cmd: 'start', seed: (Date.now() % 1e9) | 0, start: fromShown ? live.dna : null, config: { ...C.config } });
     $('follow').checked = true;
     setTrainNote(fromShown ? 'Training from mutants of the genome shown.' : 'Training from 48 random genomes. Most random brains stand still or twitch, so expect a slow start and then jumps when a rhythm reaches the legs.');
   } else if (training.state === 'running') {
@@ -2117,6 +2226,17 @@ dnaInput.addEventListener('input', () => {
 });
 $('train').addEventListener('click', startOrPauseTraining);
 $('resetTrain').addEventListener('click', resetTraining);
+// Changing the encoding rereads the same DNA, so the walker shown is regrown and rescored.
+const ENCODING_OPTIONS = [['optMap', 'weightMap', 'the weight map'], ['optBeat', 'dnaBeat', 'the DNA-set beat'], ['optLearn', 'learning', 'learning synapses']];
+for (const [id, key, name] of ENCODING_OPTIONS) {
+  $(id).addEventListener('change', e => {
+    C.config[key] = e.target.checked;
+    const before = live.score;
+    show(live.dna, { source: live.source, animate: false });
+    setNote(`<strong>${e.target.checked ? 'Switched on' : 'Switched off'} ${name}.</strong> The same DNA now walks ${fmtMetres(live.score)} (was ${fmtMetres(before)}). The examples were evolved with the default switches.`);
+  });
+}
+
 $('follow').addEventListener('change', e => {
   if (e.target.checked && training.champion) training.pending = training.champion;
 });
@@ -2152,6 +2272,7 @@ fitCanvas(brainView);
 readPalette();
 fitChart();
 training.recorded = RECORDED_RUN;
+for (const [id, key] of ENCODING_OPTIONS) $(id).checked = C.config[key];
 renderTrainStats();
 drawChart();
 dnaInput.value = EXAMPLES[0].dna;
