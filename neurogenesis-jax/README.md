@@ -274,7 +274,7 @@ Five-ball task (runs of 64 creatures per generation, 60 generations, 30 s lives)
   and touch 2–4 of the four ground balls, still flinging the ball on their back. One briefly got two
   ground balls up (0.13 s each, a couple of centimetres) at generation 45, then traded it away. None yet
   reliably gets a ball up off the ground: that's the gap a GPU-sized run has to close. A run starting
-  from the thrower lost even its crawl and reached at most one ball.
+  from the thrower moved only about 0.5 m and reached at most one ground ball by generation 45.
 - The best: 140 joints (116 muscle, 24 eyes), crawling (its body turns less than 30°) with a rhythm
   from the pacemaker (without it, it crawls 0.5 m instead of 2.3 m). It's `examples/ball_chaser.npy`
   (`python render.py examples/ball_chaser.npy --task balls`), and the browser page can load it.
