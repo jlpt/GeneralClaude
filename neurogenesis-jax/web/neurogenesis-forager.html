@@ -1,0 +1,1789 @@
+<title>Neurogenesis Forager</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: the specimen stage on the left with the run's controls and readings in a side column, the score
+   chart below, then the genome bench (body preview, channel dials, the whole growth network with an
+   inspector), short field notes last. One column on phones. */
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --stage: #fafbfc;
+  --line: #d6dce4;
+  --ink: #1a2230;
+  --muted: #5b6676;
+  --accent: #5a3db0;        /* haematoxylin violet: nerves, and the best-so-far line */
+  --fire: #12b553;          /* calcium-imaging green: a nerve cell firing */
+  --bone: #e8dfcd;
+  --bone-edge: #6a5d4d;
+  --muscle: #c4392f;
+  --muscle-idle: #dcb3ab;
+  --eye: #ffffff;
+  --pupil: #1a2230;
+  --fruit: #e07a1f;
+  --leaf: #3f8f3f;
+  --energy: #2f9a5a;
+  --ground: #8b8072;
+  --grid: #e3e7ec;
+  --neg: #2e6db4;           /* the weight heatmap: negative numbers */
+  --pos: #c25a1c;           /* and positive ones */
+  --display: "Newsreader", Georgia, "Times New Roman", serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1016; --panel: #141a23; --stage: #0f141b; --line: #263040; --ink: #e4e9f0; --muted: #94a1b3;
+    --accent: #a88ff3; --fire: #4cf08a; --bone: #cbc1ae; --bone-edge: #1d1914; --muscle: #e65a4d;
+    --muscle-idle: #6d4642; --eye: #e8ecf2; --pupil: #0c1016; --fruit: #f39a45; --leaf: #5fbf5f;
+    --energy: #4cc27a; --ground: #6f675c; --grid: #19212c; --neg: #6ea8f0; --pos: #f0965a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c1016; --panel: #141a23; --stage: #0f141b; --line: #263040; --ink: #e4e9f0; --muted: #94a1b3;
+  --accent: #a88ff3; --fire: #4cf08a; --bone: #cbc1ae; --bone-edge: #1d1914; --muscle: #e65a4d;
+  --muscle-idle: #6d4642; --eye: #e8ecf2; --pupil: #0c1016; --fruit: #f39a45; --leaf: #5fbf5f;
+  --energy: #4cc27a; --ground: #6f675c; --grid: #19212c; --neg: #6ea8f0; --pos: #f0965a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.top { padding-block: 28px 18px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(30px, 4.6vw, 44px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 10px 0 0; max-width: 64ch; color: var(--muted); font-size: 16px; }
+.lede strong { color: var(--ink); font-weight: 700; }
+main.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; padding-block: 0 40px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.stage-card { padding: 0; overflow: hidden; }
+.stage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.stage-head .what { font-family: var(--display); font-size: 19px; font-weight: 500; }
+.stage-head .phase { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+#stage { display: block; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; background: var(--stage); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 18px; height: 8px; border-radius: 4px; display: inline-block; }
+.sw.bone { background: var(--bone); border: 1px solid var(--bone-edge); }
+.sw.muscle { background: var(--muscle); }
+.sw.idle { background: var(--muscle-idle); }
+.sw.eye { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 70% 50%, var(--pupil) 0 30%, var(--eye) 32%); border: 1px solid var(--bone-edge); }
+.sw.nerve { height: 2px; background: var(--accent); border-radius: 1px; }
+.sw.fire { width: 10px; height: 10px; border-radius: 50%; background: var(--fire); box-shadow: 0 0 6px var(--fire); }
+.sw.fruit { width: 11px; height: 11px; border-radius: 50%; background: var(--fruit); }
+.side { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  font: 600 15px/1 var(--body); border-radius: 8px; padding: 11px 16px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.side button.primary { flex: 1; }
+button.small { font-size: 13px; padding: 8px 12px; }
+button.warn { border-color: var(--muscle); color: var(--muscle); }
+button:hover { filter: brightness(1.06); }
+button:focus-visible, select:focus-visible, input:focus-visible, canvas:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
+.field label { color: var(--muted); }
+select, input[type="number"] { font: 14px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[type="number"] { font-family: var(--mono); font-size: 13px; width: 88px; }
+input[type="range"] { accent-color: var(--accent); width: 100%; min-width: 0; }
+.readings { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.readings dt { color: var(--muted); font-size: 13px; }
+.readings dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.readings dd.big { font-size: 20px; font-weight: 600; color: var(--accent); }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.chart-card { grid-column: 1 / -1; padding: 14px 16px 12px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 21px; margin: 0; }
+h3 { font-family: var(--display); font-size: 18px; font-weight: 600; margin: 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.keys i { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+#chart { display: block; width: 100%; height: 220px; margin-top: 8px; cursor: crosshair; }
+
+/* the genome bench */
+.lab { grid-column: 1 / -1; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+.lab-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; }
+.lab-head > div:first-child { min-width: 0; max-width: 62ch; }
+.lab-head .note { margin-top: 4px; }
+.lab-top { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.preview { display: flex; flex-direction: column; gap: 8px; }
+#preview { display: block; width: 100%; aspect-ratio: 14 / 10; max-width: 100%; background: var(--stage); border: 1px solid var(--line); border-radius: 8px; }
+#previewInfo { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.dials-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.dials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 18px; }
+.dial { display: grid; grid-template-columns: 66px minmax(0, 1fr) 42px; align-items: center; gap: 8px; font-size: 13px; }
+.dial label { color: var(--ink); white-space: nowrap; }
+.dial output { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.dial.changed output { color: var(--accent); font-weight: 600; }
+.matrix-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px 16px; flex-wrap: wrap; }
+.scale { display: inline-flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--muted); }
+.scale i { display: inline-block; width: 120px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, var(--neg), var(--panel), var(--pos)); border: 1px solid var(--line); }
+.matrix-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--stage); }
+#matrix { display: block; cursor: pointer; }
+#hoverInfo { font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 1.5em; margin: 0; }
+.bench { display: flex; flex-direction: column; gap: 12px; }
+.inspector { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 28px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.inspector > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#insLabel { font-size: 14px; }
+#insLabel b { font-family: var(--mono); font-weight: 600; }
+.ins-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ins-row input[type="range"] { flex: 1 1 160px; }
+.compass { display: grid; grid-template-columns: repeat(3, 70px); gap: 6px; justify-content: start; }
+.compass input { width: 70px; }
+.compass span { display: grid; place-items: center; font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; }
+.numbers textarea { width: 100%; min-height: 120px; font: 12px/1.5 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical; }
+.numbers .buttons { margin-bottom: 10px; align-items: center; }
+#numbersStatus { font-size: 13px; color: var(--muted); }
+
+.notes { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.notes section { padding: 16px; }
+.notes h3 { margin: 0 0 6px; }
+.notes p { margin: 0 0 8px; font-size: 14px; color: var(--muted); max-width: 65ch; }
+.notes p:last-child { margin-bottom: 0; }
+details.python { grid-column: 1 / -1; padding: 12px 16px; }
+details.python summary { cursor: pointer; font-weight: 700; }
+details.python pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); }
+@media (max-width: 960px) {
+  .dials { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inspector { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  main.grid { grid-template-columns: minmax(0, 1fr); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
+  .lab-top { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .dials { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Neurogenesis Forager</h1>
+    <p class="lede">One cell and a random growth rule grow a jointed body with a nervous system inside it. To stay alive it has to <strong>find fruit</strong>: eyes see fruit ahead, every nerve cell can feel hunger, and moving costs energy. Evolution keeps the growth rules whose creatures eat the most, and the genome bench below lets you change the numbers yourself and grow the result.</p>
+  </div>
+</header>
+
+<main class="wrap grid">
+  <section class="card stage-card" aria-label="The creature being watched">
+    <div class="stage-head">
+      <span class="what" id="what">Generation 0</span>
+      <span class="phase" id="phase">growing</span>
+    </div>
+    <canvas id="stage" role="img" aria-label="A jointed creature growing from one cell and then looking for fruit"></canvas>
+    <div class="legend">
+      <span><i class="sw bone"></i>bone</span>
+      <span><i class="sw muscle"></i>muscle joint, pulling</span>
+      <span><i class="sw idle"></i>muscle no nerve reaches</span>
+      <span><i class="sw eye"></i>eye</span>
+      <span><i class="sw nerve"></i>nerve</span>
+      <span><i class="sw fire"></i>nerve cell firing</span>
+      <span><i class="sw fruit"></i>fruit</span>
+    </div>
+  </section>
+
+  <aside class="card side" aria-label="Evolution controls">
+    <div class="buttons">
+      <button class="primary" id="run" type="button">Evolve</button>
+      <button id="reset" type="button">Start over</button>
+    </div>
+    <div class="field"><label for="pop">Creatures per generation</label>
+      <select id="pop"><option>32</option><option selected>64</option><option>128</option><option>256</option></select></div>
+    <div class="field"><label for="sigma">Mutation size</label>
+      <select id="sigma"><option value="0.005">small</option><option value="0.01">medium</option><option value="0.02" selected>large</option></select></div>
+    <div class="field"><label for="speed">Playback</label>
+      <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></div>
+    <div class="field"><label for="follow">Watch</label>
+      <select id="follow"><option value="best" selected>best so far</option><option value="latest">latest generation</option></select></div>
+    <dl class="readings">
+      <dt>Generation</dt><dd id="gen">0</dd>
+      <dt>Best score</dt><dd class="big" id="best">–</dd>
+      <dt>Population average</dt><dd id="avg">–</dd>
+      <dt>Creatures tested</dt><dd id="tested">0</dd>
+      <dt>Testing speed</dt><dd id="rate">–</dd>
+      <dt>Watched body</dt><dd id="body">–</dd>
+      <dt>Its nervous system</dt><dd id="nerves">–</dd>
+      <dt>Synapses</dt><dd id="synapses">–</dd>
+    </dl>
+    <p class="note" id="status">This is a random growth rule. Press Evolve: each generation, every creature grows from one cell and gets 20 seconds in a world with four fruit.</p>
+  </aside>
+
+  <section class="card chart-card" aria-label="Score by generation">
+    <div class="chart-head">
+      <h2>Score per generation</h2>
+      <div class="keys">
+        <span><i style="background: var(--accent)"></i>best so far</span>
+        <span><i style="background: var(--accent); opacity: .4"></i>each generation's best</span>
+        <span><i style="background: var(--muted)"></i>population average</span>
+      </div>
+    </div>
+    <canvas id="chart" tabindex="0" aria-label="Chart of score per generation. Click a generation to watch its best creature."></canvas>
+    <p class="note">Score = fruit eaten + the fraction of the 20 seconds it stayed alive + 0.25 per metre travelled (at most 1). Each generation's best is re-tested in the same four worlds. Click a generation to watch its best creature.</p>
+  </section>
+
+  <section class="card lab" aria-label="The genome bench">
+    <div class="lab-head">
+      <div>
+        <h2>Genome</h2>
+        <p class="note">2,344 numbers: one small neural network that every cell runs while the body grows. Change them here, then press Grow to watch the result grow and live.</p>
+      </div>
+      <div class="buttons">
+        <button class="primary" id="grow" type="button">Grow</button>
+        <button id="randomize" type="button">Randomize</button>
+        <button id="loadBest" type="button">Load best so far</button>
+        <button id="evolveFrom" type="button">Evolve from this genome</button>
+      </div>
+    </div>
+
+    <div class="lab-top">
+      <div class="preview">
+        <canvas id="preview" role="img" aria-label="The body this genome grows"></canvas>
+        <div id="previewInfo">–</div>
+        <div class="field"><label for="world">World for Grow (where the fruit lie)</label><input type="number" id="world" value="1000" min="0" max="999999" step="1"></div>
+      </div>
+      <div>
+        <div class="dials-head">
+          <h3>Channel dials</h3>
+          <button class="small" id="resetDials" type="button">Reset dials</button>
+        </div>
+        <p class="note" style="margin-bottom: 10px">Each cell carries 18 numbers. A dial scales how hard every cell writes that number as it grows: turn up muscle for more muscle, turn up alive for a bigger body. 1 leaves the genome as it is.</p>
+        <div class="dials" id="dials"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="matrix-head">
+        <h3>The growth network</h3>
+        <span class="scale"><span id="scaleLo">−0.30</span><i></i><span id="scaleHi">+0.30</span></span>
+      </div>
+      <p class="note" style="margin: 4px 0 10px">Each row is one of the 32 hidden units. Reading left to right: what it listens to (each of a cell's 18 numbers, and how they change left to right and top to bottom across its neighbours), its bias, then how much it adds to each number. Click a square to edit it. Click a row's number to switch that unit off.</p>
+      <div class="bench">
+        <div style="min-width: 0">
+          <div class="matrix-scroll"><canvas id="matrix" tabindex="0" aria-label="The growth network's weights. Click a square to edit it."></canvas></div>
+          <p id="hoverInfo">Point at a square to see what it connects.</p>
+        </div>
+        <div class="inspector">
+          <div>
+            <h3 style="font-size: 16px">Selected number</h3>
+            <div id="insLabel">Click a square in the network to edit it.</div>
+            <div class="ins-row">
+              <input type="range" id="insRange" min="-1.5" max="1.5" step="0.005" value="0" disabled aria-label="Value of the selected number">
+              <input type="number" id="insNum" step="0.01" value="0" disabled aria-label="Value of the selected number">
+              <button class="small" id="insZero" type="button" disabled>Set to 0</button>
+            </div>
+          </div>
+          <div>
+            <h3 style="font-size: 16px">Wiring bias</h3>
+            <p class="note">How readily a nerve cell wires to the one beside it in each direction.</p>
+            <div class="compass" id="compass"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="numbers">
+      <h3 style="margin-bottom: 8px">All the numbers</h3>
+      <div class="buttons">
+        <button class="small" id="showList" type="button">Show as a list</button>
+        <button class="small" id="copyNumbers" type="button">Copy as text for Python</button>
+        <button class="small" id="applyNumbers" type="button">Use the numbers in the box</button>
+        <span id="numbersStatus" aria-live="polite"></span>
+      </div>
+      <textarea id="genomeText" spellcheck="false" aria-label="The genome as numbers" placeholder="Show as a list puts the 2,344 numbers here. Edit them or paste others (a list of numbers, or copied genome text), then press Use the numbers in the box."></textarea>
+    </div>
+  </section>
+
+  <div class="notes">
+    <section class="card">
+      <h3>Growth</h3>
+      <p>Over 40 steps, every cell reads its neighbours and updates its 18 numbers with the same small network, starting from a single cell on a 30 × 42 grid. Every 3 × 3 patch with enough living cells becomes a joint, joined by a bone to the patch it grew from.</p>
+      <p>A joint becomes bone, muscle or eye, whichever of those numbers its cells hold most of. Muscle joints are hinges; eyes are rigid and see.</p>
+    </section>
+    <section class="card">
+      <h3>Senses and nerves</h3>
+      <p>Any small cell may grow a nerve cell. They form a spiking recurrent network: each has a charge that leaks, fires at a threshold, and sends weighted spikes only to nerve cells touching it. A muscle joint bends when the nerve cells in its patch fire.</p>
+      <p>Nerve cells can feel four things: touch (in joints on the ground), a slow pacemaker rhythm, sight (in an eye, brighter the nearer the fruit ahead of it) and hunger. Each eye looks away from the body's middle.</p>
+    </section>
+    <section class="card">
+      <h3>Food and evolution</h3>
+      <p>Four fruit lie beyond the creature's ends, farther away than it is tall, so falling over doesn't reach them. A joint touching one eats it, and a new one appears farther off. Energy drains with time, faster for big bodies and busy muscles; a full stomach lasts about 12 seconds.</p>
+      <p>Each generation adds small random changes to the genome, tests every copy in parallel workers, and moves toward the changes that scored best. When a copy beats the best so far on the re-test, the search jumps to it.</p>
+    </section>
+  </div>
+
+  <details class="card python">
+    <summary>Take a genome to the Python version</summary>
+    <p class="note">Press Copy as text for Python, save it as <code>best.txt</code> in the project folder, and turn it into a file <code>render.py</code> can draw:</p>
+    <pre>python -c "import base64, numpy as np; np.save('best.npy', np.frombuffer(base64.b64decode(open('best.txt').read()), np.float32))"
+python render.py best.npy --out best.gif --world 1000</pre>
+  </details>
+</main>
+
+<script id="core">
+// Neurogenesis core: growth, skeleton, nervous system and physics. A port of creature.py and sim.py.
+// Runs both on the page (to show a creature) and in the workers (to score the population).
+
+// The body is a 10 x 14 grid of joints; growth runs on a grid three times finer, so each joint is a 3 x 3
+// patch of fine cells, and any fine cell can grow a nerve cell.
+const H = 10, W = 14, N = H * W, FINE = 3, HF = H * FINE, WF = W * FINE, NF = HF * WF;
+const C = 18, HID = 32, GROW_STEPS = 40, SEED_R = 4, SEED_C = 7;
+const ROOT = SEED_R * W + SEED_C, SEED_FINE = (SEED_R * FINE + 1) * WF + SEED_C * FINE + 1;
+const ALIVE = 0, BONE = 1, MUSCLE = 2, NERVE = 3, THRESH = 4, BIAS = 5, PACE = 6, TOUCH = 7,
+  SEND = 8, RECV = 9, JUNCTION = 10, BEND = 11, EYE = 12, SIGHT = 13, HUNGER = 14, FREE = 15;
+// genome layout (as JAX flattens the parameter dict): K, W1 (54x32), W2 (32x18), b1
+const OFF_K = 0, OFF_W1 = 8, OFF_W2 = 8 + 3 * C * HID, OFF_B1 = OFF_W2 + HID * C;
+const GENOME = OFF_B1 + HID;
+const OFFSETS = [];
+for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dy || dx) OFFSETS.push([dy, dx]);
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];   // up, down, left, right: the order a cell picks its parent in
+
+// physics and nervous system settings
+const CELL = 0.1, RADIUS = 0.04, DT = 1 / 30, GRAVITY = 9.8, DAMPING = 0.99, SUBSTEPS = 6, ITERATIONS = 2;
+const BEND_RANGE = 1.2, MUSCLE_RESPONSE = 0.15, STATIC_FRICTION = 1.2, KINETIC_FRICTION = 0.8;
+const FIBRE = 3;   // firing nerve cells in a joint's patch needed to drive it fully
+const BONE_DAMPING = 0.3;   // fraction of the relative motion of a bone's two ends removed each substep
+const LEAK = 0.8, PACE_HZ = 1.5, SIGHT_RANGE = 1.5;
+const SETTLE_TICKS = 90, NUDGE = 0.09, LIFE_TICKS = 600;
+// the world: fruit, energy and the score (see sim.py)
+const FRUIT = 4, FRUIT_ENERGY = 0.4, EAT_REACH = 0.08, IDLE_LIFE = 12, SIZE_REF = 20, MOVE_COST = 0.25;
+const TRAVEL_CREDIT = 0.25, TRAVEL_MAX = 4, NUDGE_DRAW = 1000000;
+
+// A number in [0, 1) for draw n of a world: the same 32-bit integer hash as sim.chance, so a world number
+// gives the same fruit and nudge in both versions.
+function chance(world, n) {
+  let h = (Math.imul(world, 2654435761 | 0) + Math.imul(n, 2246822519 | 0) + 374761393) | 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x7FEB352D);
+  h ^= h >>> 15; h = Math.imul(h, 0x846CA68B | 0);
+  h ^= h >>> 16;
+  return (h >>> 8) / 16777216;
+}
+const TAU = 2 * Math.PI;
+const inside = (r, c) => r >= 0 && r < H && c >= 0 && c < W;
+const patchOf = new Int32Array(NF);      // which joint each fine cell belongs to
+for (let r = 0; r < HF; r++) for (let c = 0; c < WF; c++) patchOf[r * WF + c] = ((r / FINE) | 0) * W + ((c / FINE) | 0);
+
+const sigmoid = v => 1 / (1 + Math.exp(-v));
+
+// ---------- growth ----------
+
+function seedState() {
+  const s = new Float64Array(NF * C);
+  const i = SEED_FINE * C;
+  s[i + ALIVE] = 1;
+  for (let k = FREE; k < C; k++) s[i + k] = 1;
+  return s;
+}
+
+function aliveNearby(s, r, c) {
+  let m = 0;                                   // cells beyond the edge count as 0
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const rr = r + dy, cc = c + dx;
+    if (rr >= 0 && rr < HF && cc >= 0 && cc < WF) m = Math.max(m, s[(rr * WF + cc) * C + ALIVE]);
+  }
+  return m > 0.1;
+}
+
+function growStep(g, s, empty) {
+  // empty: the change for a cell whose whole neighbourhood is zero (the same for every such cell)
+  const out = new Float64Array(NF * C);
+  const sensed = new Float64Array(3 * C), hid = new Float64Array(HID);
+  const WP = WF + 2, pad = new Float64Array((HF + 2) * WP * C), busy = new Uint8Array((HF + 2) * WP);
+  for (let r = 0; r < HF; r++) for (let c = 0; c < WF; c++) {
+    const i = (r * WF + c) * C, q = ((r + 1) * WP + c + 1);
+    for (let k = 0; k < C; k++) { pad[q * C + k] = s[i + k]; if (s[i + k] !== 0) busy[q] = 1; }
+  }
+  for (let r = 0; r < HF; r++) for (let c = 0; c < WF; c++) {
+    const i = r * WF + c, q = (r + 1) * WP + c + 1;
+    let near = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) near |= busy[q + dy * WP + dx];
+    if (!near) {
+      for (let k = 0; k < C; k++) out[i * C + k] = Math.min(3, Math.max(-3, empty[k]));
+      continue;
+    }
+    const nw = (q - WP - 1) * C, n = (q - WP) * C, ne = (q - WP + 1) * C, w = (q - 1) * C, e = (q + 1) * C,
+      sw = (q + WP - 1) * C, so = (q + WP) * C, se = (q + WP + 1) * C;
+    for (let k = 0; k < C; k++) {
+      sensed[k] = pad[q * C + k];
+      sensed[C + k] = (pad[ne + k] + 2 * pad[e + k] + pad[se + k] - pad[nw + k] - 2 * pad[w + k] - pad[sw + k]) / 8;
+      sensed[2 * C + k] = (pad[sw + k] + 2 * pad[so + k] + pad[se + k] - pad[nw + k] - 2 * pad[n + k] - pad[ne + k]) / 8;
+    }
+    for (let h = 0; h < HID; h++) hid[h] = g[OFF_B1 + h];
+    for (let a = 0; a < 3 * C; a++) {
+      const v = sensed[a];
+      if (v === 0) continue;
+      const row = OFF_W1 + a * HID;
+      for (let h = 0; h < HID; h++) hid[h] += v * g[row + h];
+    }
+    for (let k = 0; k < C; k++) out[i * C + k] = s[i * C + k];
+    for (let h = 0; h < HID; h++) {
+      const v = hid[h];
+      if (v <= 0) continue;
+      const row = OFF_W2 + h * C;
+      for (let k = 0; k < C; k++) out[i * C + k] += v * g[row + k];
+    }
+    for (let k = 0; k < C; k++) out[i * C + k] = Math.min(3, Math.max(-3, out[i * C + k]));
+  }
+  const keep = new Uint8Array(NF);
+  for (let r = 0; r < HF; r++) for (let c = 0; c < WF; c++) keep[r * WF + c] = aliveNearby(s, r, c) && aliveNearby(out, r, c);
+  for (let i = 0; i < NF; i++) if (!keep[i]) out.fill(0, i * C, (i + 1) * C);
+  return out;
+}
+
+function emptyChange(g) {
+  const empty = new Float64Array(C);
+  for (let h = 0; h < HID; h++) {
+    const v = Math.max(0, g[OFF_B1 + h]);
+    for (let k = 0; k < C; k++) empty[k] += v * g[OFF_W2 + h * C + k];
+  }
+  return empty;
+}
+
+function grow(g, keepHistory) {
+  let s = seedState();
+  const history = [], empty = emptyChange(g);
+  for (let t = 0; t < GROW_STEPS; t++) {
+    s = growStep(g, s, empty);
+    if (keepHistory) history.push(s);
+  }
+  return keepHistory ? history : s;
+}
+
+// ---------- reading off the body and the nervous system ----------
+
+function readBody(s) {
+  // a joint is part of the body if at least 5 of the 9 fine cells in its patch are alive
+  const count = new Int32Array(N), sums = new Float64Array(3 * N), bendSum = new Float64Array(N);
+  for (let f = 0; f < NF; f++) {
+    const p = patchOf[f];
+    if (s[f * C + ALIVE] > 0.1) count[p]++;
+    sums[3 * p] += s[f * C + BONE]; sums[3 * p + 1] += s[f * C + MUSCLE]; sums[3 * p + 2] += s[f * C + EYE];
+    bendSum[p] += s[f * C + BEND];
+  }
+  const alive = new Uint8Array(N), steps = new Int32Array(N).fill(-1);
+  for (let i = 0; i < N; i++) alive[i] = count[i] >= 5 ? 1 : 0;
+  // steps from the seed, moving side by side; joints that can't be reached are not part of the creature
+  const queue = [];
+  if (alive[ROOT]) { steps[ROOT] = 0; queue.push(ROOT); }
+  for (let q = 0; q < queue.length; q++) {
+    const i = queue[q], r = (i / W) | 0, c = i % W;
+    for (const [dr, dc] of DIRS) {
+      const rr = r + dr, cc = c + dc;
+      if (!inside(rr, cc)) continue;
+      const j = rr * W + cc;
+      if (alive[j] && steps[j] < 0) { steps[j] = steps[i] + 1; queue.push(j); }
+    }
+  }
+  const part = new Uint8Array(N), parent = new Int32Array(N), tissue = new Uint8Array(N), bend = new Float64Array(N);
+  let cells = 0;
+  for (let i = 0; i < N; i++) {
+    const r = (i / W) | 0, c = i % W;
+    part[i] = steps[i] >= 0 ? 1 : 0;
+    parent[i] = i;
+    if (steps[i] > 0) {     // the first neighbour (up, down, left, right) one step nearer the seed
+      for (const [dr, dc] of DIRS) {
+        const rr = r + dr, cc = c + dc;
+        if (inside(rr, cc) && steps[rr * W + cc] === steps[i] - 1) { parent[i] = rr * W + cc; break; }
+      }
+    }
+    const b = sums[3 * i], m = sums[3 * i + 1], e = sums[3 * i + 2];   // the largest wins (bone first on ties)
+    tissue[i] = m > b && m >= e ? 1 : (e > b && e > m ? 2 : 0);
+    bend[i] = Math.tanh(bendSum[i] / (FINE * FINE));
+    cells += part[i];
+  }
+  const nerve = new Uint8Array(NF);
+  let nerves = 0;
+  for (let f = 0; f < NF; f++) {
+    nerve[f] = part[patchOf[f]] && s[f * C + ALIVE] > 0.1 && s[f * C + NERVE] > 0 ? 1 : 0;
+    nerves += nerve[f];
+  }
+  return { alive: part, tissue, parent, bend, nerve, cells, nerves };
+}
+
+function readBrain(s, body, g) {
+  const threshold = new Float64Array(NF), bias = new Float64Array(NF), gPace = new Float64Array(NF),
+    gTouch = new Float64Array(NF), gSight = new Float64Array(NF), gHunger = new Float64Array(NF), junction = new Float64Array(NF);
+  const from = [], to = [], weight = [];
+  for (let i = 0; i < NF; i++) {
+    threshold[i] = 0.5 + sigmoid(s[i * C + THRESH]);
+    if (!body.nerve[i]) continue;
+    bias[i] = 0.3 * Math.tanh(s[i * C + BIAS]);
+    gPace[i] = 1.5 * Math.tanh(s[i * C + PACE]);
+    gTouch[i] = 1.5 * Math.tanh(s[i * C + TOUCH]);
+    gSight[i] = 1.5 * Math.tanh(s[i * C + SIGHT]);
+    gHunger[i] = 1.5 * Math.tanh(s[i * C + HUNGER]);
+    junction[i] = sigmoid(2 * s[i * C + JUNCTION]);
+    const r = (i / WF) | 0, c = i % WF;
+    OFFSETS.forEach(([dy, dx], o) => {        // synapses only join nerve cells that touch
+      const rr = r + dy, cc = c + dx;
+      if (rr < 0 || rr >= HF || cc < 0 || cc >= WF) return;
+      const j = rr * WF + cc;
+      if (!body.nerve[j]) return;
+      from.push(i); to.push(j);
+      weight.push(1.5 * Math.tanh(s[i * C + SEND] * s[j * C + RECV] + g[OFF_K + o]));
+    });
+  }
+  return { threshold, bias, gPace, gTouch, gSight, gHunger, junction, from: Int32Array.from(from), to: Int32Array.from(to),
+    weight: Float64Array.from(weight) };
+}
+
+function develop(g) {
+  const s = grow(g, false);
+  const body = readBody(s);
+  return { body, brain: readBrain(s, body, g) };
+}
+
+// ---------- the skeleton ----------
+
+const HOME = new Float64Array(2 * N);
+for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { HOME[2 * (r * W + c)] = c * CELL; HOME[2 * (r * W + c) + 1] = (H - 1 - r) * CELL; }
+const TABLES = (() => {
+  const linkA = [], linkB = [], linkBatch = [], jointP = [], jointC = [], jointBatch = [];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W - 1; c++) { linkA.push(r * W + c); linkB.push(r * W + c + 1); linkBatch.push(c % 2); }
+  for (let r = 0; r < H - 1; r++) for (let c = 0; c < W; c++) { linkA.push(r * W + c); linkB.push((r + 1) * W + c); linkBatch.push(2 + r % 2); }
+  // a joint is a cell p and one of its children; it only touches the plus shape around p, and plus
+  // shapes around cells with the same (row + 2·column) mod 5 never overlap
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) DIRS.forEach(([dy, dx], d) => {
+    if (!inside(r + dy, c + dx)) return;
+    jointP.push(r * W + c); jointC.push((r + dy) * W + c + dx); jointBatch.push(5 * d + (r + 2 * c) % 5);
+  });
+  const rootKids = DIRS.filter(([dy, dx]) => inside(SEED_R + dy, SEED_C + dx)).map(([dy, dx]) => (SEED_R + dy) * W + SEED_C + dx);
+  return { linkA, linkB, linkBatch, jointP, jointC, jointBatch, rootKids };
+})();
+
+function skeleton(body) {
+  const { alive, parent, tissue } = body, T = TABLES;
+  const muscle = i => alive[i] && tissue[i] === 1;
+  const links = [], joints = [];
+  for (let b = 0; b < 4; b++) T.linkA.forEach((i, k) => {
+    if (T.linkBatch[k] !== b) return;
+    const j = T.linkB[k], family = parent[i] === j || parent[j] === i;
+    if (alive[i] && alive[j] && (family || (!muscle(i) && !muscle(j)))) links.push([i, j]);
+  });
+  // the seed has no parent, so its children's angles are held relative to its first child
+  let first = T.rootKids[0];
+  for (const k of T.rootKids) if (alive[k] && parent[k] === ROOT) { first = k; break; }
+  for (let b = 0; b < 20; b++) T.jointP.forEach((p, k) => {
+    if (T.jointBatch[k] !== b) return;
+    const c = T.jointC[k];
+    if (!(alive[p] && alive[c] && parent[c] === p) || (p === ROOT && c === first)) return;
+    const a = p === ROOT ? first : parent[p];
+    const ux = HOME[2 * a] - HOME[2 * p], uy = HOME[2 * a + 1] - HOME[2 * p + 1];
+    const vx = HOME[2 * c] - HOME[2 * p], vy = HOME[2 * c + 1] - HOME[2 * p + 1];
+    const rest = ((Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy) % TAU) + TAU) % TAU;
+    joints.push({ a, p, c, rest, bend: muscle(p) ? BEND_RANGE * body.bend[p] : 0 });
+  });
+  return { links, joints };
+}
+
+class Life {
+  constructor(body, brain, world) {
+    const sign = chance(world, NUDGE_DRAW) < 0.5 ? 1 : -1;
+    this.world = world;
+    this.body = body; this.brain = brain;
+    const sk = skeleton(body);
+    this.links = sk.links; this.joints = sk.joints;
+    this.la = Int32Array.from(sk.links, l => 2 * l[0]); this.lb = Int32Array.from(sk.links, l => 2 * l[1]);
+    this.ja = Int32Array.from(sk.joints, j => 2 * j.a); this.jp = Int32Array.from(sk.joints, j => 2 * j.p);
+    this.jc = Int32Array.from(sk.joints, j => 2 * j.c);
+    this.jmotor = Int32Array.from(sk.joints, j => j.p);
+    this.jrest = Float64Array.from(sk.joints, j => j.rest); this.jbend = Float64Array.from(sk.joints, j => j.bend);
+    this.jk = new Float64Array(sk.joints.length);
+    this.points = [];
+    for (let i = 0; i < N; i++) if (body.alive[i]) this.points.push(i);
+    this.x = new Float64Array(2 * N); this.px = new Float64Array(2 * N);
+    let lowest = 1e3;
+    for (const i of this.points) lowest = Math.min(lowest, HOME[2 * i + 1]);
+    for (let i = 0; i < N; i++) { this.x[2 * i] = HOME[2 * i]; this.x[2 * i + 1] = HOME[2 * i + 1] - (lowest - RADIUS); }
+    const cx = this.centreX();
+    for (let i = 0; i < N; i++) this.x[2 * i] -= cx;
+    let grown = 0;
+    for (const i of this.points) grown = Math.max(grown, this.x[2 * i + 1]);
+    this.px.set(this.x);
+    const push = sign * NUDGE * DT / SUBSTEPS;      // x − px is one substep
+    for (let i = 0; i < N; i++) this.px[2 * i] -= push;
+    this.charge = new Float64Array(NF); this.spikes = new Float64Array(NF); this.rate = new Float64Array(NF);
+    this.input = new Float64Array(NF); this.drive = new Float64Array(N); this.touch = new Uint8Array(N);
+    this.act = new Float64Array(N); this.sight = new Float64Array(N);
+    this.muscles = this.points.filter(i => body.tissue[i] === 1);
+    this.depth = new Float64Array(N);
+    const relaxed = new Float64Array(N);
+    for (let t = 0; t < SETTLE_TICKS; t++) this.physics(relaxed);
+    this.startX = this.centreX();
+    const [mx, my] = this.middle();
+    this.pose = new Float64Array(2 * N);
+    for (const i of this.points) { this.pose[2 * i] = this.x[2 * i] - mx; this.pose[2 * i + 1] = this.x[2 * i + 1] - my; }
+    let settled = 0;
+    for (const i of this.points) settled = Math.max(settled, this.x[2 * i + 1]);
+    this.height = Math.max(grown, settled);      // how far it could reach just by falling over
+    this.fruit = new Float64Array(FRUIT);
+    for (let k = 0; k < FRUIT; k++) this.fruit[k] = this.place(k, 0.2, 1.2);
+    this.placed = FRUIT; this.energy = 1; this.eaten = 0; this.aliveTicks = 0;
+    this.walked = 0; this.tick = 0;
+  }
+
+  // fruit number k: beyond the left or right end, farther away than the creature is tall
+  place(k, near, far) {
+    let left = Infinity, right = -Infinity;
+    for (const i of this.points) { left = Math.min(left, this.x[2 * i]); right = Math.max(right, this.x[2 * i]); }
+    const gap = this.height + near + (far - near) * chance(this.world, 2 * k + 1);
+    return chance(this.world, 2 * k) < 0.5 ? right + gap : left - gap;
+  }
+
+  centreX() {
+    let s = 0;
+    for (const i of this.points) s += this.x[2 * i];
+    return this.points.length ? s / this.points.length : 0;
+  }
+
+  middle() {
+    let sx = 0, sy = 0;
+    for (const i of this.points) { sx += this.x[2 * i]; sy += this.x[2 * i + 1]; }
+    const n = Math.max(this.points.length, 1);
+    return [sx / n, sy / n];
+  }
+
+  tilt() {   // how far the body has turned from its settled pose
+    const [mx, my] = this.middle();
+    let cross = 0, dot = 0;
+    for (const i of this.points) {
+      const nx = this.x[2 * i] - mx, ny = this.x[2 * i + 1] - my, tx = this.pose[2 * i], ty = this.pose[2 * i + 1];
+      cross += tx * ny - ty * nx; dot += tx * nx + ty * ny;
+    }
+    return Math.atan2(cross, dot);
+  }
+
+  physics(act) {
+    const x = this.x, px = this.px, la = this.la, lb = this.lb, ja = this.ja, jp = this.jp, jc = this.jc, jk = this.jk;
+    const L = la.length, J = ja.length;
+    for (let n = 0; n < J; n++) {     // muscles bend their joints: k = cot(target / 2) / 2
+      const t = Math.min(TAU - 0.2, Math.max(0.2, this.jrest[n] + this.jbend[n] * act[this.jmotor[n]]));
+      jk[n] = 0.5 / Math.tan(t / 2);
+    }
+    const dt = DT / SUBSTEPS, damp = Math.pow(DAMPING, 1 / SUBSTEPS), fall = GRAVITY * dt * dt;
+    const depth = this.depth, points = this.points, before = this.before || (this.before = new Float64Array(2 * N));
+    for (let sub = 0; sub < SUBSTEPS; sub++) {
+      for (const i of points) {
+        const vx = (x[2 * i] - px[2 * i]) * damp, vy = (x[2 * i + 1] - px[2 * i + 1]) * damp;
+        px[2 * i] = x[2 * i]; px[2 * i + 1] = x[2 * i + 1];
+        x[2 * i] += vx; x[2 * i + 1] += vy - fall;
+      }
+      depth.fill(0);
+      for (let it = 0; it < ITERATIONS; it++) {
+        before.set(x);
+        for (let n = 0; n < L; n++) {   // bones keep their length
+          const a = la[n], b = lb[n];
+          const dx = x[b] - x[a], dy = x[b + 1] - x[a + 1];
+          const dist = Math.sqrt(dx * dx + dy * dy) + 1e-9;
+          const f = 0.5 * (dist - CELL) / dist;
+          x[a] += f * dx; x[a + 1] += f * dy; x[b] -= f * dx; x[b + 1] -= f * dy;
+        }
+        for (let n = 0; n < J; n++) {   // joints keep (or, for muscles, bend to) their angle
+          const a = ja[n], p = jp[n], c = jc[n], k = jk[n];
+          const ex = x[p] - (x[a] + x[c]) / 2 + k * (x[c + 1] - x[a + 1]);
+          const ey = x[p + 1] - (x[a + 1] + x[c + 1]) / 2 - k * (x[c] - x[a]);
+          const s = 1 / (1.5 + 2 * k * k), sx = ex * s, sy = ey * s;
+          x[a] += sx / 2 - k * sy; x[a + 1] += sy / 2 + k * sx;
+          x[p] -= sx; x[p + 1] -= sy;
+          x[c] += sx / 2 + k * sy; x[c + 1] += sy / 2 - k * sx;
+        }
+        // Bones and joints can't turn the body as a whole, but a joint the rest of the body won't let reach
+        // its angle makes each pass come back turned a little: a free motor. Take the pass's turn back out.
+        let mx = 0, my = 0, turned = 0, inertia = 0;
+        for (const i of points) { mx += before[2 * i]; my += before[2 * i + 1]; }
+        mx /= points.length; my /= points.length;
+        for (const i of points) {
+          const rx = before[2 * i] - mx, ry = before[2 * i + 1] - my;
+          turned += rx * (x[2 * i + 1] - before[2 * i + 1]) - ry * (x[2 * i] - before[2 * i]);
+          inertia += rx * rx + ry * ry;
+        }
+        turned /= inertia + 1e-12;
+        for (const i of points) { x[2 * i] += turned * (before[2 * i + 1] - my); x[2 * i + 1] -= turned * (before[2 * i] - mx); }
+        for (const i of points) if (x[2 * i + 1] < RADIUS) { depth[i] += RADIUS - x[2 * i + 1]; x[2 * i + 1] = RADIUS; }
+      }
+      // every bone damps how fast its two ends move relative to each other, which stops the jiggling that
+      // floppy bodies otherwise build up under their own weight (evolution found it and slid along on it)
+      for (let n = 0; n < L; n++) {
+        const a = la[n], b = lb[n];
+        const kx = BONE_DAMPING * ((x[b] - px[b]) - (x[a] - px[a])) / 2, ky = BONE_DAMPING * ((x[b + 1] - px[b + 1]) - (x[a + 1] - px[a + 1])) / 2;
+        px[a] -= kx; px[a + 1] -= ky; px[b] += kx; px[b + 1] += ky;
+      }
+      // Coulomb friction, with the body's weight shared among the joints touching the ground
+      let total = 0;
+      for (const i of points) total += depth[i];
+      const weight = points.length * fall;
+      for (const i of points) {
+        if (depth[i] <= 0) continue;
+        const load = weight * depth[i] / (total + 1e-12), slide = x[2 * i] - px[2 * i];
+        if (Math.abs(slide) < STATIC_FRICTION * load) x[2 * i] = px[2 * i];
+        else x[2 * i] -= Math.sign(slide) * KINETIC_FRICTION * load;
+      }
+    }
+  }
+
+  step() {
+    if (this.energy <= 0) { this.tick++; return; }           // a dead creature stays where it fell
+    const br = this.brain, body = this.body, x = this.x, input = this.input, drive = this.drive, touch = this.touch;
+    const pace = Math.sin(TAU * PACE_HZ * this.tick * DT), hunger = 1 - this.energy, sight = this.sight;
+    const middle = this.centreX();
+    input.fill(0); drive.fill(0); sight.fill(0);
+    for (let k = 0; k < br.from.length; k++) if (this.spikes[br.from[k]]) input[br.to[k]] += br.weight[k];
+    for (let i = 0; i < N; i++) {
+      touch[i] = body.alive[i] && x[2 * i + 1] < RADIUS + 0.01 ? 1 : 0;
+      if (!body.alive[i] || body.tissue[i] !== 2) continue;
+      // an eye looks away from the body's middle and sees fruit ahead, nearer fruit brighter
+      const facing = x[2 * i] >= middle ? 1 : -1;
+      let bright = 0;
+      for (let k = 0; k < FRUIT; k++) { const ahead = (this.fruit[k] - x[2 * i]) * facing; if (ahead > 0) bright += Math.exp(-ahead / SIGHT_RANGE); }
+      sight[i] = 1 - Math.exp(-2 * bright);
+    }
+    for (let f = 0; f < NF; f++) {
+      const p = patchOf[f];
+      const q = LEAK * this.charge[f] + br.bias[f] + br.gPace[f] * pace + br.gTouch[f] * touch[p] + br.gSight[f] * sight[p]
+        + br.gHunger[f] * hunger + input[f];
+      const fire = body.nerve[f] && q >= br.threshold[f] ? 1 : 0;
+      this.charge[f] = Math.max(fire ? 0 : q, -3);
+      this.spikes[f] = fire;
+      this.rate[f] = 0.7 * this.rate[f] + 0.3 * fire;
+      drive[p] += this.rate[f] * br.junction[f];             // junction is 0 where there's no nerve
+    }
+    // a muscle joint follows the nerve cells in its patch
+    for (let i = 0; i < N; i++) this.act[i] += (Math.min(drive[i] / FIBRE, 1) - this.act[i]) * MUSCLE_RESPONSE;
+    this.physics(this.act);
+    this.feed();
+    this.aliveTicks++;
+    this.walked = this.centreX() - this.startX;
+    this.tick++;
+  }
+
+  // eat fruit within reach, pay for living and moving, and put new fruit beyond a random end
+  feed() {
+    const x = this.x, middle = this.centreX();
+    let ate = 0, renewed = 0;
+    for (let k = 0; k < FRUIT; k++) {
+      let eaten = false;
+      for (const i of this.points) if (x[2 * i + 1] < RADIUS + 0.08 && Math.abs(x[2 * i] - this.fruit[k]) < EAT_REACH) { eaten = true; break; }
+      const lost = Math.abs(this.fruit[k] - middle) > 6;
+      if (eaten) ate++;
+      if (eaten || lost) this.fruit[k] = this.place(this.placed + renewed++, 0.5, 2.5);
+    }
+    this.placed += renewed;
+    let working = 0;
+    for (const i of this.muscles) working += this.act[i];
+    working /= Math.max(this.muscles.length, 1);
+    const size = this.points.length / SIZE_REF;
+    const drain = DT / IDLE_LIFE * (1 + 0.5 * Math.max(size - 1, 0) + MOVE_COST * working);
+    this.energy = Math.min(this.energy + FRUIT_ENERGY * ate - drain, 1);
+    this.eaten += ate;
+  }
+}
+
+// Fruit eaten + the fraction of the 20 s it stayed alive + a little for distance travelled. 0 for a body
+// of fewer than 3 joints.
+function score(g, world) {
+  const { body, brain } = develop(g);
+  if (body.cells < 3) return 0;
+  const life = new Life(body, brain, world);
+  for (let t = 0; t < LIFE_TICKS; t++) life.step();
+  return life.eaten + life.aliveTicks / LIFE_TICKS + TRAVEL_CREDIT * Math.min(Math.abs(life.centreX() - life.startX), TRAVEL_MAX);
+}
+
+if (typeof module !== 'undefined') module.exports = { chance, FRUIT, H, W, N, FINE, HF, WF, NF, C, GENOME, HOME, TABLES, patchOf, develop, grow, readBody, readBrain, skeleton, Life, score, LIFE_TICKS, DT, CELL, RADIUS };
+
+</script>
+<script>
+(() => {
+  addEventListener('error', e => { const st = document.getElementById('status'); if (st) st.textContent = `Something went wrong: ${e.message}`; });
+  addEventListener('unhandledrejection', e => { const st = document.getElementById('status'); if (st) st.textContent = `Something went wrong: ${e.reason && e.reason.message || e.reason}`; });
+  const $ = id => document.getElementById(id);
+  const TEST_WORLDS = [1000, 1001, 1002, 1003];
+  const NAMES = ['alive', 'bone', 'muscle', 'nerve', 'threshold', 'bias', 'pacemaker', 'touch', 'send', 'receive',
+    'junction', 'bend', 'eye', 'sight', 'hunger', 'free 1', 'free 2', 'free 3'];
+  const MEANING = ['the cell is alive (a joint needs 5 of its 9)', 'tissue: bone', 'tissue: muscle', 'above 0, the cell grows a nerve cell',
+    "the nerve cell's firing threshold", "the nerve cell's steady input", 'how strongly it feels the pacemaker rhythm',
+    'how strongly it feels touch', 'wiring: strength of its synapses out', 'wiring: strength of synapses in',
+    'how hard it drives the muscle it sits in', "a muscle's direction and size of bend", 'tissue: eye',
+    'how strongly it feels what the eye sees', 'how strongly it feels hunger',
+    'no fixed meaning: cells signal each other with it', 'no fixed meaning: cells signal each other with it',
+    'no fixed meaning: cells signal each other with it'];
+  const SHORT = ['alive', 'bone', 'musc', 'nerve', 'thr', 'bias', 'pace', 'touch', 'send', 'recv', 'junc', 'bend',
+    'eye', 'sight', 'hungr', 'f1', 'f2', 'f3'];
+
+  // ---------- numbers <-> text ----------
+  const toB64 = arr => {
+    const bytes = new Uint8Array(new Float32Array(arr).buffer);
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+  const fromB64 = b64 => {
+    const bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return Float64Array.from(new Float32Array(bytes.buffer));
+  };
+
+  // ---------- random numbers ----------
+  let seed = (crypto.getRandomValues(new Uint32Array(1))[0]) | 0;
+  const rand = () => {
+    seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const normal = () => { let u = 0; while (!u) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
+  // A random growth rule that grows a small body, 3 to 30 joints, from the single seed cell.
+  function randomRule() {
+    for (;;) {
+      const g = new Float64Array(GENOME);
+      for (let i = 0; i < GENOME; i++) g[i] = 0.1 * normal();
+      for (let i = OFF_B1; i < GENOME; i++) g[i] = 0;     // hidden-layer biases start at zero
+      const cells = develop(g).body.cells;
+      if (cells >= 3 && cells <= 30) return g;
+    }
+  }
+
+  // ---------- workers that test creatures ----------
+  const coreSource = $('core').textContent;
+  const workerSource = coreSource + `
+    onmessage = e => {
+      const { id, genomes, worlds } = e.data, n = worlds.length, out = new Float64Array(n);
+      for (let k = 0; k < n; k++) out[k] = score(genomes.subarray(k * GENOME, (k + 1) * GENOME), worlds[k]);
+      postMessage({ id, out }, [out.buffer]);
+    };`;
+  const pool = [];
+  try {
+    const url = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    const count = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+    for (let i = 0; i < count; i++) pool.push(new Worker(url));
+  } catch (err) { /* no workers: test on the page instead */ }
+  let jobId = 0;
+  function testOn(worker, genomes, worlds) {
+    return new Promise((resolve, reject) => {
+      const id = ++jobId;
+      const quiet = setTimeout(() => finish(new Error('a worker stopped answering')), 60000);
+      const finish = (err, out) => {
+        clearTimeout(quiet);
+        worker.removeEventListener('message', done); worker.removeEventListener('error', failed);
+        err ? reject(err) : resolve(out);
+      };
+      const done = e => { if (e.data.id === id) finish(null, e.data.out); };
+      const failed = e => { e.preventDefault(); finish(new Error(e.message || 'a worker failed to start')); };
+      worker.addEventListener('message', done);
+      worker.addEventListener('error', failed);
+      worker.postMessage({ id, genomes, worlds });
+    });
+  }
+  async function testAll(genomes, worlds) {   // genomes: Float64Array(n * GENOME), worlds: Int32Array(n)
+    const n = worlds.length;
+    if (!pool.length) {
+      const out = new Float64Array(n);
+      for (let k = 0; k < n; k++) {
+        out[k] = score(genomes.subarray(k * GENOME, (k + 1) * GENOME), worlds[k]);
+        if (k % 4 === 3) await new Promise(r => setTimeout(r, 0));
+      }
+      return out;
+    }
+    const per = Math.ceil(n / pool.length), jobs = [];
+    for (let w = 0; w < pool.length && w * per < n; w++) {
+      const a = w * per, b = Math.min(n, a + per);
+      jobs.push(testOn(pool[w], genomes.slice(a * GENOME, b * GENOME), worlds.slice(a, b)));
+    }
+    let parts;
+    try { parts = await Promise.all(jobs); }
+    catch (err) {      // workers aren't allowed or broke: carry on without them
+      pool.forEach(w => w.terminate()); pool.length = 0;
+      $('status').textContent = `Background workers aren't available here (${err.message}), so creatures are tested on the page. It's slower.`;
+      return testAll(genomes, worlds);
+    }
+    const out = new Float64Array(n);
+    let k = 0;
+    for (const p of parts) { out.set(p, k); k += p.length; }
+    return out;
+  }
+
+  // ---------- the evolution strategy ----------
+  const LR = 0.005, DECAY = 0.005, SAVE_KEY = 'neurogenesis-forager-v1';
+  let run;
+  function fresh(start) {
+    start = start ? Float64Array.from(start) : randomRule();
+    return { mean: start, m: new Float64Array(GENOME), v: new Float64Array(GENOME), gen: 0, tested: 0,
+      history: [], champions: [Float32Array.from(start)], best: { score: -Infinity, genome: Float64Array.from(start), gen: 0 } };
+  }
+  let running = false, busy = false;
+
+  async function generation() {
+    const pop = +$('pop').value, sigma = +$('sigma').value, half = pop / 2;
+    const t0 = performance.now();
+    const eps = new Float64Array(half * GENOME);
+    for (let i = 0; i < eps.length; i++) eps[i] = normal();
+    const genomes = new Float64Array(pop * GENOME);
+    for (let k = 0; k < half; k++) for (let i = 0; i < GENOME; i++) {
+      const e = sigma * eps[k * GENOME + i];
+      genomes[k * GENOME + i] = run.mean[i] + e;               // mirrored pairs: +ε and −ε
+      genomes[(k + half) * GENOME + i] = run.mean[i] - e;
+    }
+    const world = Math.floor(rand() * 1000000);                // every member lives in the same world
+    const scores = await testAll(genomes.slice(), new Int32Array(pop).fill(world));
+    // ranks instead of raw scores, centred on zero
+    const order = Array.from(scores.keys()).sort((a, b) => scores[a] - scores[b]);
+    const rank = new Float64Array(pop);
+    order.forEach((idx, r) => { rank[idx] = r / (pop - 1) - 0.5; });
+    run.gen++;
+    for (let i = 0; i < GENOME; i++) {
+      let g = 0;
+      for (let k = 0; k < half; k++) g += (rank[k] - rank[k + half]) * eps[k * GENOME + i];
+      g = -g / (pop * sigma) + DECAY * run.mean[i];
+      run.m[i] = 0.9 * run.m[i] + 0.1 * g;
+      run.v[i] = 0.999 * run.v[i] + 0.001 * g * g;
+      run.mean[i] -= LR * (run.m[i] / (1 - 0.9 ** run.gen)) / (Math.sqrt(run.v[i] / (1 - 0.999 ** run.gen)) + 1e-8);
+    }
+    let top = 0;
+    for (let k = 1; k < pop; k++) if (scores[k] > scores[top]) top = k;
+    const champion = genomes.slice(top * GENOME, (top + 1) * GENOME);
+    // re-test the generation's best in four fixed worlds, so one lucky world doesn't decide
+    const copies = new Float64Array(TEST_WORLDS.length * GENOME);
+    TEST_WORLDS.forEach((_, k) => copies.set(champion, k * GENOME));
+    const retest = await testAll(copies, Int32Array.from(TEST_WORLDS));
+    const test = retest.reduce((a, b) => a + b, 0) / retest.length;
+    run.tested += pop + TEST_WORLDS.length;
+    let avg = 0;
+    for (const s of scores) avg += s;
+    avg /= pop;
+    const better = test > run.best.score;
+    if (better) {
+      run.best = { score: test, genome: champion, gen: run.gen };
+      run.mean = Float64Array.from(champion);        // a new champion: carry on searching from it
+    }
+    run.champions[run.gen] = new Float32Array(champion);
+    run.history.push({ gen: run.gen, top: scores[top], avg, test, best: run.best.score });
+    const secs = (performance.now() - t0) / 1000;
+    $('rate').textContent = `${Math.round((pop + TEST_WORLDS.length) / secs)} per s`;
+    if ($('follow').value === 'latest') watch(champion, `Generation ${run.gen}'s best`, run.gen, false);
+    else if (better) watch(champion, `Best so far · generation ${run.gen}`, run.gen, false);
+    if (run.gen % 5 === 0) save();
+    showReadings();
+    drawChart();
+  }
+
+  async function loop() {
+    if (busy) return;
+    busy = true;
+    while (running) {
+      await generation();
+      await new Promise(r => setTimeout(r, 0));
+    }
+    busy = false;
+  }
+
+  function showReadings() {
+    const last = run.history[run.history.length - 1];
+    $('gen').textContent = run.gen;
+    $('best').textContent = run.history.length ? run.best.score.toFixed(2) : '–';
+    $('avg').textContent = last ? last.avg.toFixed(2) : '–';
+    $('tested').textContent = run.tested.toLocaleString();
+  }
+
+  const IDLE_TEXT = 'This is a random growth rule. Press Evolve: each generation, every creature grows from one cell and gets 20 seconds in a world with four fruit.';
+  function setRunning(on) {
+    running = on;
+    $('run').textContent = on ? 'Pause' : (run.gen ? 'Continue' : 'Evolve');
+    $('status').textContent = on
+      ? `Evolving with ${pool.length || 1} ${pool.length === 1 ? 'worker' : 'workers'}. The stage switches to each new best creature after the current life.`
+      : (run.gen ? 'Paused. Continue whenever you like; progress is kept in this browser.' : IDLE_TEXT);
+    if (on) loop(); else save();
+  }
+  function whenIdle(then) {
+    running = false;
+    const wait = () => busy ? setTimeout(wait, 50) : then();
+    wait();
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        gen: run.gen, tested: run.tested, mean: toB64(run.mean), m: toB64(run.m), v: toB64(run.v),
+        best: { score: run.best.score, gen: run.best.gen, genome: toB64(run.best.genome) },
+        history: run.history.map(h => [h.gen, h.top, h.avg, h.test, h.best]),
+        pop: $('pop').value, sigma: $('sigma').value,
+        lab: { base: toB64(lab.base), dials: Array.from(lab.dials), off: Array.from(lab.off), world: $('world').value },
+      }));
+    } catch (err) { /* storage unavailable: progress lasts until the page closes */ }
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!d) return null;
+      const r = fresh(fromB64(d.mean));
+      r.gen = d.gen; r.tested = d.tested; r.m = fromB64(d.m); r.v = fromB64(d.v);
+      r.best = { score: d.best.score === null ? -Infinity : d.best.score, gen: d.best.gen, genome: fromB64(d.best.genome) };   // JSON keeps −∞ as null
+      r.history = d.history.map(([gen, top, avg, test, best]) => ({ gen, top, avg, test, best }));
+      r.champions = [];
+      r.champions[r.best.gen] = new Float32Array(r.best.genome);
+      $('pop').value = d.pop; $('sigma').value = d.sigma;
+      return { run: r, lab: d.lab };
+    } catch (err) { return null; }
+  }
+
+  // ---------- colours ----------
+  let colours = {};
+  function readColours() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ['stage', 'ink', 'muted', 'accent', 'fire', 'bone', 'bone-edge', 'muscle', 'muscle-idle', 'eye', 'pupil',
+      'fruit', 'leaf', 'energy', 'ground', 'grid', 'line', 'panel', 'bg', 'neg', 'pos'])
+      colours[k] = cs.getPropertyValue('--' + k).trim();
+    colours.mono = cs.getPropertyValue('--mono').trim() || 'monospace';
+    colours.body = cs.getPropertyValue('--body').trim() || 'sans-serif';
+  }
+  readColours();
+  const redrawAll = () => { readColours(); drawChart(); drawMatrix(); drawPreview(); };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawAll);
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  function lerp(a, b, t) {
+    const hex = c => (/^#[0-9a-f]{6}$/i.test(c) ? c.slice(1).match(/../g) : ['88', '88', '88']).map(h => parseInt(h, 16));
+    const pa = hex(a), pb = hex(b);
+    return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * Math.min(1, Math.max(0, t)))).join(',')})`;
+  }
+
+  // ---------- the stage ----------
+  const stage = $('stage'), sctx = stage.getContext('2d');
+  const view = { genome: null, label: '', gen: 0, growth: [], body: null, brain: null, sk: null, life: null, world: 1000,
+    fixedWorld: null, round: 0, phase: 'grow', t: 0, acc: 0, glow: new Float64Array(NF), queued: null, cam: 0 };
+
+  // Show a genome on the stage: grow it, then let it live. A fixed world, or the four test worlds in turn.
+  function watch(genome, label, gen, now, world) {
+    view.queued = { genome: Float64Array.from(genome), label, gen, world: world === undefined ? null : world };
+    if (now || !view.genome) begin();
+  }
+  function begin() {
+    const { genome, label, gen, world } = view.queued;
+    view.queued = null;
+    view.genome = genome; view.label = label; view.gen = gen; view.fixedWorld = world; view.round = 0;
+    view.growth = grow(genome, true).map(s => {
+      const body = readBody(s);
+      return { body, sk: skeleton(body), brain: readBrain(s, body, genome) };
+    });
+    const last = view.growth[view.growth.length - 1];
+    view.body = last.body; view.brain = last.brain; view.sk = last.sk;
+    newLife();
+    view.phase = 'grow'; view.t = 0; view.acc = 0; view.glow.fill(0);
+    $('what').textContent = label;
+    let muscles = 0, eyes = 0;
+    for (let i = 0; i < N; i++) if (view.body.alive[i]) { if (view.body.tissue[i] === 1) muscles++; else if (view.body.tissue[i] === 2) eyes++; }
+    $('body').textContent = `${view.body.cells} joints · ${muscles} muscle · ${eyes} ${eyes === 1 ? 'eye' : 'eyes'}`;
+    $('nerves').textContent = `${view.body.nerves} nerve cells`;
+    $('synapses').textContent = view.brain.from.length.toLocaleString();
+  }
+  function newLife() {
+    view.world = view.fixedWorld !== null ? view.fixedWorld : TEST_WORLDS[view.round % TEST_WORLDS.length];
+    view.life = view.body.cells >= 3 ? new Life(view.body, view.brain, view.world) : null;
+    view.cam = view.life ? view.life.centreX() : 0;
+  }
+
+  // Where each small cell sits: its joint's position plus its place in the 3 x 3 patch, turned with the body.
+  function nervePositions(x, angle) {
+    const pos = new Float64Array(2 * NF), c = Math.cos(angle), s = Math.sin(angle), step = CELL / FINE;
+    for (let f = 0; f < NF; f++) {
+      const fr = (f / WF) | 0, fc = f % WF, p = patchOf[f];
+      const ox = (fc % FINE - 1) * step, oy = -(fr % FINE - 1) * step;
+      pos[2 * f] = x[2 * p] + c * ox - s * oy; pos[2 * f + 1] = x[2 * p + 1] + s * ox + c * oy;
+    }
+    return pos;
+  }
+
+  // Draw one creature: x is joint positions in metres (2 per joint), at(x, y) turns metres into pixels.
+  function drawCreature(ctx, x, at, scale, body, sk, brain, act, glow, angle) {
+    const R = RADIUS * scale, cell = CELL * scale;
+    const linked = new Set(sk.links.map(([i, j]) => i * N + j));
+    const squares = [];
+    for (let r = 0; r < H - 1; r++) for (let c = 0; c < W - 1; c++) {
+      const tl = r * W + c, tr = tl + 1, bl = tl + W, br = bl + 1;
+      if (linked.has(tl * N + tr) && linked.has(bl * N + br) && linked.has(tl * N + bl) && linked.has(tr * N + br)) squares.push([tl, tr, br, bl]);
+    }
+    const P = i => at(x[2 * i], x[2 * i + 1]);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [colour, extra] of [[colours['bone-edge'], 2.4], [colours.bone, 0]]) {   // outline, then fill
+      ctx.strokeStyle = colour; ctx.fillStyle = colour;
+      ctx.lineWidth = 2 * R + extra;
+      ctx.beginPath();
+      for (const [i, j] of sk.links) { const a = P(i), b = P(j); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      ctx.stroke();
+      for (const q of squares) {
+        ctx.beginPath();
+        q.forEach((i, n) => { const p = P(i); n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      for (let i = 0; i < N; i++) if (body.alive[i]) {
+        const p = P(i);
+        ctx.beginPath(); ctx.arc(p[0], p[1], R + extra / 2, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    const reached = new Uint8Array(N);
+    for (let f = 0; f < NF; f++) if (body.nerve[f]) reached[patchOf[f]] = 1;
+    // muscles: a band across each muscle joint, on the side that shortens as it pulls
+    for (const j of sk.joints) {
+      if (!j.bend) continue;
+      const ux = x[2 * j.a] - x[2 * j.p], uy = x[2 * j.a + 1] - x[2 * j.p + 1];
+      const vx = x[2 * j.c] - x[2 * j.p], vy = x[2 * j.c + 1] - x[2 * j.p + 1];
+      const lu = Math.hypot(ux, uy) || 1, lv = Math.hypot(vx, vy) || 1, side = Math.sign(j.bend), off = RADIUS * 0.75;
+      const m1 = [x[2 * j.p] + 0.55 * ux + off * side * uy / lu, x[2 * j.p + 1] + 0.55 * uy - off * side * ux / lu];
+      const m2 = [x[2 * j.p] + 0.55 * vx - off * side * vy / lv, x[2 * j.p + 1] + 0.55 * vy + off * side * vx / lv];
+      const k = act ? act[j.p] : 0, wired = reached[j.p];
+      ctx.strokeStyle = wired ? lerp(colours['muscle-idle'], colours.muscle, 0.35 + k * 1.6) : colours['muscle-idle'];
+      ctx.lineWidth = Math.max(R * (0.75 + 0.9 * k), 2);
+      const a = at(m1[0], m1[1]), b = at(m2[0], m2[1]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    // muscle joints, and eyes looking away from the body's middle (as they see)
+    let middle = 0, count = 0;
+    for (let i = 0; i < N; i++) if (body.alive[i]) { middle += x[2 * i]; count++; }
+    middle /= Math.max(count, 1);
+    for (let i = 0; i < N; i++) {
+      if (!body.alive[i]) continue;
+      const p = P(i);
+      if (body.tissue[i] === 1) {
+        ctx.fillStyle = colours['bone-edge'];
+        ctx.beginPath(); ctx.arc(p[0], p[1], R * 0.42, 0, 2 * Math.PI); ctx.fill();
+      } else if (body.tissue[i] === 2) {
+        const r = R * 0.95, look = x[2 * i] >= middle ? 1 : -1;
+        ctx.fillStyle = colours.eye; ctx.strokeStyle = colours['bone-edge']; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = colours.pupil;
+        ctx.beginPath(); ctx.arc(p[0] + look * r * 0.42, p[1], r * 0.45, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    // the nervous system on top: fibres, nerve cells, and a green flash for each one firing
+    const pos = nervePositions(x, angle || 0), Q = f => at(pos[2 * f], pos[2 * f + 1]), small = cell / FINE;
+    ctx.strokeStyle = colours.accent; ctx.lineWidth = Math.max(0.8, small * 0.09); ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    const near = (1.6 * CELL / FINE) ** 2;
+    for (let k = 0; k < brain.from.length; k++) {
+      const i = brain.from[k], j = brain.to[k];
+      if (i > j) continue;              // synapses come in pairs between touching cells: draw each pair once
+      // where a limb has folded away, two touching cells can end up far apart: leave that wire out
+      if ((pos[2 * i] - pos[2 * j]) ** 2 + (pos[2 * i + 1] - pos[2 * j + 1]) ** 2 > near) continue;
+      const a = Q(i), b = Q(j);
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (glow) {
+      ctx.save();
+      ctx.fillStyle = colours.fire; ctx.shadowColor = colours.fire; ctx.shadowBlur = small * 1.2;
+      for (let f = 0; f < NF; f++) {
+        if (!body.nerve[f] || glow[f] < 0.05) continue;
+        const p = Q(f);
+        ctx.globalAlpha = Math.min(1, glow[f]);
+        ctx.beginPath(); ctx.arc(p[0], p[1], small * (0.3 + 0.25 * glow[f]), 0, 2 * Math.PI); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.fillStyle = colours.accent;
+    for (let f = 0; f < NF; f++) {
+      if (!body.nerve[f]) continue;
+      const p = Q(f);
+      ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(1, small * 0.22), 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));   // a frame can be stamped before the script ran
+    lastFrame = now;
+    const dpr = window.devicePixelRatio || 1;
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (stage.width !== Math.round(w * dpr) || stage.height !== Math.round(h * dpr)) { stage.width = Math.round(w * dpr); stage.height = Math.round(h * dpr); }
+    const ctx = sctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = colours.stage; ctx.fillRect(0, 0, w, h);
+    try {
+      if (view.genome) step(dt * +$('speed').value, w, h, ctx);
+    } catch (err) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = colours.muscle || '#c4392f'; ctx.font = '13px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(`Drawing failed: ${err.message}`, 14, h - 14);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function drawFruit(ctx, life, at, scale, w, ground) {
+    const r = Math.max(4, 0.035 * scale);
+    ctx.font = `11px ${colours.mono}`; ctx.textBaseline = 'middle';
+    for (const f of life.fruit) {
+      const p = at(f, 0);
+      if (p[0] < -r || p[0] > w + r) {        // off screen: an arrow at the edge and how far
+        const side = p[0] > w ? 1 : -1, ex = side > 0 ? w - 12 : 12, y = ground - 18;
+        ctx.fillStyle = colours.fruit;
+        ctx.beginPath(); ctx.moveTo(ex + side * 7, y); ctx.lineTo(ex - side * 5, y - 7); ctx.lineTo(ex - side * 5, y + 7); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = colours.muted; ctx.textAlign = side > 0 ? 'right' : 'left';
+        ctx.fillText(`${Math.abs(f - life.centreX()).toFixed(1)} m`, ex - side * 10, y - 16);
+        continue;
+      }
+      ctx.fillStyle = colours.fruit;
+      ctx.beginPath(); ctx.arc(p[0], ground - r, r, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = colours.leaf;
+      ctx.beginPath(); ctx.ellipse(p[0] + r * 0.45, ground - 2 * r - r * 0.25, r * 0.5, r * 0.25, -0.5, 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  function step(dt, w, h, ctx) {
+    const scale = Math.min(w / 2.6, h / 1.25);
+    for (let f = 0; f < NF; f++) view.glow[f] = Math.max(0, view.glow[f] - dt * 5);
+    if (view.phase === 'grow') {
+      view.t += dt;
+      const k = Math.max(0, Math.min(GROW_STEPS - 1, Math.floor(view.t / 0.07)));
+      const g = view.growth[k];
+      const cx = w / 2 - (W - 1) * CELL * scale / 2, top = h / 2 - (H - 1) * CELL * scale / 2;
+      const at = (X, Y) => [cx + X * scale, top + ((H - 1) * CELL - Y) * scale];
+      ctx.strokeStyle = colours.grid; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let r = 0; r < H; r++) { const a = at(0, r * CELL), b = at((W - 1) * CELL, r * CELL); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      for (let c = 0; c < W; c++) { const a = at(c * CELL, 0), b = at(c * CELL, (H - 1) * CELL); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      ctx.stroke();
+      drawCreature(ctx, HOME, at, scale, g.body, g.sk, g.brain, null, null, 0);
+      $('phase').textContent = `growing · step ${k + 1} of ${GROW_STEPS}`;
+      if (view.t > GROW_STEPS * 0.07 + 0.7) { view.phase = view.life ? 'live' : 'rest'; view.t = 0; }
+      return;
+    }
+    const life = view.life;
+    if (view.phase === 'live') {
+      view.acc += dt / DT;
+      while (view.acc >= 1 && life.tick < LIFE_TICKS) {
+        life.step();
+        for (let f = 0; f < NF; f++) if (life.spikes[f]) view.glow[f] = 1;
+        view.acc -= 1;
+      }
+      if (life.tick >= LIFE_TICKS) { view.phase = 'rest'; view.t = 0; }
+    } else {
+      view.t += dt;
+      if (view.t > 2) {
+        if (view.queued) begin();
+        else if (view.life) { view.round++; newLife(); view.phase = 'live'; view.acc = 0; }
+        return;
+      }
+    }
+    if (!life) {
+      $('phase').textContent = view.body.cells ? 'too small to live: fewer than 3 joints' : 'this growth rule grew no body';
+      return;
+    }
+    view.cam += (life.centreX() - view.cam) * Math.min(1, dt * 3);
+    const ground = h - Math.max(34, h * 0.12);
+    const at = (X, Y) => [w / 2 + (X - view.cam) * scale, ground - Y * scale];
+    // ground, with a mark every half metre from where it started
+    ctx.strokeStyle = colours.ground; ctx.fillStyle = colours.muted; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, ground); ctx.lineTo(w, ground); ctx.stroke();
+    ctx.lineWidth = 1; ctx.font = `11px ${colours.mono}`;
+    ctx.textAlign = 'center';
+    const left = view.cam - w / 2 / scale, right = view.cam + w / 2 / scale;
+    for (let m = Math.floor((left - life.startX) * 2); m <= Math.ceil((right - life.startX) * 2); m++) {
+      const X = life.startX + m / 2, px = at(X, 0)[0];
+      ctx.beginPath(); ctx.moveTo(px, ground); ctx.lineTo(px, ground + (m % 2 ? 4 : 8)); ctx.stroke();
+      if (m % 2 === 0) ctx.fillText(`${m / 2} m`, px, ground + 20);
+    }
+    drawFruit(ctx, life, at, scale, w, ground);
+    drawCreature(ctx, life.x, at, scale, view.body, view.sk, view.brain, life.act, view.glow, life.tilt());
+    // fruit eaten, time, energy
+    ctx.textAlign = 'left'; ctx.fillStyle = colours.ink;
+    ctx.font = `600 15px ${colours.mono}`;
+    ctx.fillText(`${life.eaten} fruit eaten`, 14, 24);
+    ctx.font = `12px ${colours.mono}`;
+    ctx.fillStyle = colours.muted;
+    ctx.fillText(`${(life.tick * DT).toFixed(1)} s of 20 · world ${view.world}`, 14, 42);
+    const dead = life.energy <= 0;
+    if (dead) { ctx.fillStyle = colours.muscle; ctx.fillText(`ran out of energy at ${(life.aliveTicks * DT).toFixed(1)} s`, 14, 60); }
+    const bw = Math.min(140, w * 0.25), bx = w - bw - 14, e = Math.max(0, Math.min(1, life.energy));
+    ctx.fillStyle = colours.muted; ctx.textAlign = 'right';
+    ctx.fillText('energy', bx - 8, 24);
+    ctx.strokeStyle = colours.line; ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, 15.5, bw, 10);
+    ctx.fillStyle = e < 0.25 ? colours.muscle : colours.energy;
+    ctx.fillRect(bx + 1.5, 16.5, (bw - 2) * e, 8);
+    $('phase').textContent = view.phase === 'live' ? (dead ? 'out of energy' : 'looking for fruit') : 'life finished';
+  }
+
+  // ---------- the chart ----------
+  const chart = $('chart'), cctx = chart.getContext('2d');
+  let hover = null, selected = null;
+  function chartLayout() {
+    const w = chart.clientWidth, h = chart.clientHeight, pad = { l: 40, r: 14, t: 10, b: 26 };
+    const hist = run.history, n = Math.max(10, hist.length);
+    let lo = 0, hi = 1;
+    for (const p of hist) { lo = Math.min(lo, p.avg, p.test, p.best); hi = Math.max(hi, p.top, p.test, p.best); }
+    hi *= 1.08;
+    const X = g => pad.l + (g - 1) / Math.max(1, n - 1) * (w - pad.l - pad.r);
+    const Y = v => pad.t + (hi - v) / (hi - lo) * (h - pad.t - pad.b);
+    return { w, h, pad, n, lo, hi, X, Y };
+  }
+  function niceStep(span) {
+    const raw = span / 4, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
+    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * mag;
+  }
+  function drawChart() {
+    if (!run) return;
+    const dpr = window.devicePixelRatio || 1;
+    const L = chartLayout();
+    if (chart.width !== Math.round(L.w * dpr) || chart.height !== Math.round(L.h * dpr)) { chart.width = Math.round(L.w * dpr); chart.height = Math.round(L.h * dpr); }
+    const ctx = cctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L.w, L.h);
+    const mono = colours.mono;
+    ctx.font = `11px ${mono}`; ctx.fillStyle = colours.muted; ctx.strokeStyle = colours.grid; ctx.lineWidth = 1;
+    const st = niceStep(L.hi - L.lo);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let v = Math.ceil(L.lo / st) * st; v <= L.hi + 1e-9; v += st) {
+      const y = L.Y(v);
+      ctx.beginPath(); ctx.moveTo(L.pad.l, y); ctx.lineTo(L.w - L.pad.r, y); ctx.stroke();
+      ctx.fillText(`${+v.toFixed(3)}`, L.pad.l - 6, y);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const gs = Math.max(1, niceStep(L.n - 1));
+    for (let g = 1; g <= L.n; g += (g === 1 ? gs - 1 || 1 : gs)) ctx.fillText(g, L.X(g), L.h - L.pad.b + 6);
+    const hist = run.history;
+    if (!hist.length) {
+      ctx.fillStyle = colours.muted; ctx.font = `14px ${colours.body}`; ctx.textBaseline = 'middle';
+      ctx.fillText('Each generation will add a point here.', (L.pad.l + L.w - L.pad.r) / 2, L.h / 2 - 8);
+      return;
+    }
+    const line = (key, colour, width, alpha) => {
+      ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      hist.forEach((p, n) => { const x = L.X(p.gen), y = L.Y(p[key]); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.globalAlpha = 1;
+    };
+    // area under best-so-far
+    ctx.fillStyle = colours.accent; ctx.globalAlpha = 0.09;
+    ctx.beginPath(); ctx.moveTo(L.X(hist[0].gen), L.Y(Math.max(L.lo, 0)));
+    hist.forEach(p => ctx.lineTo(L.X(p.gen), L.Y(p.best)));
+    ctx.lineTo(L.X(hist[hist.length - 1].gen), L.Y(Math.max(L.lo, 0))); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    line('avg', colours.muted, 1.5, 1);
+    line('test', colours.accent, 1, 0.45);
+    line('best', colours.accent, 2.5, 1);
+    const end = hist[hist.length - 1];
+    ctx.fillStyle = colours.accent;
+    ctx.beginPath(); ctx.arc(L.X(end.gen), L.Y(end.best), 3.5, 0, 2 * Math.PI); ctx.fill();
+    for (const [g, strong] of [[selected, true], [hover, false]]) {
+      if (!g || !hist[g - 1]) continue;
+      const p = hist[g - 1], x = L.X(g);
+      ctx.strokeStyle = strong ? colours.accent : colours.muted; ctx.lineWidth = 1; ctx.setLineDash(strong ? [] : [3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, L.pad.t); ctx.lineTo(x, L.h - L.pad.b); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = colours.accent;
+      ctx.beginPath(); ctx.arc(x, L.Y(p.test), 3, 0, 2 * Math.PI); ctx.fill();
+      if (!strong || g === hover) {
+        const label = `gen ${g} · best ${p.test.toFixed(2)} · average ${p.avg.toFixed(2)}`;
+        ctx.font = `12px ${mono}`;
+        const tw = ctx.measureText(label).width + 12, tx = Math.min(Math.max(x - tw / 2, L.pad.l), L.w - L.pad.r - tw);
+        ctx.fillStyle = colours.panel; ctx.strokeStyle = colours.line;
+        ctx.fillRect(tx, L.pad.t, tw, 20); ctx.strokeRect(tx, L.pad.t, tw, 20);
+        ctx.fillStyle = colours.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, tx + 6, L.pad.t + 10);
+      }
+    }
+  }
+  const genAt = e => {
+    const L = chartLayout(), r = chart.getBoundingClientRect();
+    const g = Math.round(1 + (e.clientX - r.left - L.pad.l) / (L.w - L.pad.l - L.pad.r) * (L.n - 1));
+    return g >= 1 && g <= run.history.length ? g : null;
+  };
+  chart.addEventListener('mousemove', e => { hover = genAt(e); drawChart(); });
+  chart.addEventListener('mouseleave', () => { hover = null; drawChart(); });
+  chart.addEventListener('click', e => {
+    const g = genAt(e);
+    if (!g) return;
+    selected = g;
+    const genome = run.champions[g];
+    if (genome) watch(genome, `Generation ${g}'s best`, g, true);
+    else $('status').textContent = `Generation ${g} is from an earlier visit, and only its scores were kept. The best creature was kept.`;
+    drawChart();
+  });
+  chart.addEventListener('keydown', e => {
+    if (!run.history.length) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      selected = Math.min(run.history.length, Math.max(1, (selected || run.history.length) + (e.key === 'ArrowLeft' ? -1 : 1)));
+      drawChart(); e.preventDefault();
+    } else if (e.key === 'Enter' && selected && run.champions[selected]) watch(run.champions[selected], `Generation ${selected}'s best`, selected, true);
+  });
+  new ResizeObserver(() => drawChart()).observe(chart);
+
+  // ---------- the genome bench ----------
+  // The bench edits a base genome; the dials scale each channel's column of the output weights, and a
+  // switched-off hidden unit writes nothing. labGenome() is what actually grows.
+  const lab = { base: new Float64Array(GENOME), dials: new Float64Array(C).fill(1), off: new Uint8Array(HID), sel: null, hover: null };
+  const unitScale = h => lab.off[h] ? 0 : 1;
+  function labGenome() {
+    const g = Float64Array.from(lab.base);
+    for (let h = 0; h < HID; h++) for (let c = 0; c < C; c++) g[OFF_W2 + h * C + c] *= lab.dials[c] * unitScale(h);
+    return g;
+  }
+  function setLab(genome) {
+    lab.base = Float64Array.from(genome); lab.dials.fill(1); lab.off.fill(0); lab.sel = null;
+    syncDials(); syncCompass(); syncInspector(); drawMatrix(); schedulePreview();
+  }
+
+  // the dials
+  const dialsBox = $('dials');
+  NAMES.forEach((name, c) => {
+    const row = document.createElement('div');
+    row.className = 'dial'; row.title = MEANING[c];
+    row.innerHTML = `<label for="dial${c}">${name}</label><input type="range" id="dial${c}" min="0" max="3" step="0.05" value="1"><output for="dial${c}" id="dialOut${c}">×1.00</output>`;
+    dialsBox.appendChild(row);
+    row.querySelector('input').addEventListener('input', e => {
+      lab.dials[c] = +e.target.value;
+      syncDials(); drawMatrix(); syncInspector(); schedulePreview(); saveSoon();
+    });
+  });
+  function syncDials() {
+    for (let c = 0; c < C; c++) {
+      $(`dial${c}`).value = lab.dials[c];
+      $(`dialOut${c}`).textContent = `×${lab.dials[c].toFixed(2)}`;
+      $(`dial${c}`).parentElement.classList.toggle('changed', lab.dials[c] !== 1);
+    }
+  }
+  $('resetDials').addEventListener('click', () => { lab.dials.fill(1); syncDials(); drawMatrix(); syncInspector(); schedulePreview(); saveSoon(); });
+
+  // the wiring compass: K, one number per neighbour direction (OFFSETS order)
+  const compass = $('compass');
+  const DIRNAMES = { '-1,-1': 'up-left', '-1,0': 'up', '-1,1': 'up-right', '0,-1': 'left', '0,1': 'right', '1,-1': 'down-left', '1,0': 'down', '1,1': 'down-right' };
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dy && !dx) { const s = document.createElement('span'); s.textContent = 'cell'; compass.appendChild(s); continue; }
+    const o = OFFSETS.findIndex(([a, b]) => a === dy && b === dx);
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.step = '0.05'; inp.id = `k${o}`; inp.title = `wiring bias toward the nerve cell ${DIRNAMES[dy + ',' + dx]}`;
+    inp.setAttribute('aria-label', inp.title);
+    inp.addEventListener('change', () => {
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v)) { lab.base[OFF_K + o] = v; drawMatrix(); schedulePreview(); saveSoon(); }
+      syncCompass();
+    });
+    compass.appendChild(inp);
+  }
+  function syncCompass() { for (let o = 0; o < 8; o++) $(`k${o}`).value = lab.base[OFF_K + o].toFixed(3); }
+
+  // the matrix: 32 rows (hidden units) × [54 inputs | bias | 18 outputs]
+  const matrix = $('matrix'), mctx = matrix.getContext('2d');
+  const M = { cell: 11, left: 34, top: 78, gap: 10 };
+  const groups = [
+    { name: 'own value', kind: 'w1', from: 0 },
+    { name: 'change left → right', kind: 'w1', from: C },
+    { name: 'change top → bottom', kind: 'w1', from: 2 * C },
+  ];
+  // column layout: x position of each column and what it is
+  const columns = [];
+  (() => {
+    let x = M.left;
+    groups.forEach((g, gi) => {
+      for (let c = 0; c < C; c++) { columns.push({ x, kind: 'w1', input: g.from + c, channel: c, group: gi }); x += M.cell; }
+      x += gi < 2 ? 4 : M.gap;
+    });
+    columns.push({ x, kind: 'b1' }); x += M.cell + M.gap;
+    for (let c = 0; c < C; c++) { columns.push({ x, kind: 'w2', channel: c }); x += M.cell; }
+    M.width = x + 6;
+    M.height = M.top + HID * M.cell + 6;
+  })();
+  function indexOf(col, h) {
+    if (col.kind === 'w1') return OFF_W1 + col.input * HID + h;
+    if (col.kind === 'b1') return OFF_B1 + h;
+    return OFF_W2 + h * C + col.channel;
+  }
+  function effective(col, h) {      // the number that actually grows
+    const v = lab.base[indexOf(col, h)];
+    return col.kind === 'w2' ? v * lab.dials[col.channel] * unitScale(h) : v;
+  }
+  function describe(col, h) {
+    const unit = `hidden unit ${h + 1}`;
+    if (col.kind === 'w1') {
+      const how = ['its own', 'the left-to-right change in', 'the top-to-bottom change in'][col.group];
+      return `${unit} listens to ${how} ${NAMES[col.channel]}`;
+    }
+    if (col.kind === 'b1') return `${unit}: bias`;
+    return `${unit} adds to ${NAMES[col.channel]} (${MEANING[col.channel]})`;
+  }
+  let matrixRange = 0.3;
+  function drawMatrix() {
+    const dpr = window.devicePixelRatio || 1;
+    if (matrix.width !== Math.round(M.width * dpr)) { matrix.width = Math.round(M.width * dpr); matrix.height = Math.round(M.height * dpr); }
+    matrix.style.width = `${M.width}px`; matrix.style.height = `${M.height}px`;
+    const ctx = mctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = colours.stage; ctx.fillRect(0, 0, M.width, M.height);
+    // a shared colour range: the largest number shown, at least 0.1
+    let big = 0.1;
+    const all = [];
+    for (const col of columns) for (let h = 0; h < HID; h++) all.push(Math.abs(effective(col, h)));
+    all.sort((a, b) => a - b);
+    big = Math.max(0.1, all[Math.floor(all.length * 0.99)]);
+    matrixRange = big;
+    $('scaleLo').textContent = `−${big.toFixed(2)}`; $('scaleHi').textContent = `+${big.toFixed(2)}`;
+    for (const col of columns) for (let h = 0; h < HID; h++) {
+      const v = effective(col, h), t = Math.max(-1, Math.min(1, v / big));
+      ctx.fillStyle = t >= 0 ? lerp(colours.panel, colours.pos, t) : lerp(colours.panel, colours.neg, -t);
+      ctx.fillRect(col.x, M.top + h * M.cell, M.cell - 1, M.cell - 1);
+    }
+    // switched-off units: hatch their output squares
+    ctx.strokeStyle = colours.muted; ctx.lineWidth = 1;
+    for (let h = 0; h < HID; h++) if (lab.off[h]) {
+      const w2 = columns.filter(c => c.kind === 'w2'), x0 = w2[0].x, x1 = w2[w2.length - 1].x + M.cell - 1, y = M.top + h * M.cell + M.cell / 2 - 0.5;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    // row numbers (click to switch a unit off)
+    ctx.font = `10px ${colours.mono}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let h = 0; h < HID; h++) {
+      ctx.fillStyle = lab.off[h] ? colours.muscle : colours.muted;
+      ctx.fillText(lab.off[h] ? `off` : `${h + 1}`, M.left - 6, M.top + h * M.cell + M.cell / 2);
+    }
+    // column labels, turned on their side, and group names above them
+    ctx.save();
+    ctx.textAlign = 'left';
+    for (const col of columns) {
+      const label = col.kind === 'b1' ? 'bias' : SHORT[col.channel];
+      ctx.save();
+      ctx.translate(col.x + M.cell / 2, M.top - 5);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = col.kind === 'w2' && lab.dials[col.channel] !== 1 ? colours.accent : colours.muted;
+      ctx.font = `9px ${colours.mono}`;
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.font = `600 11px ${colours.body}`; ctx.fillStyle = colours.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    const firstOf = gi => columns.find(c => c.kind === 'w1' && c.group === gi).x;
+    ctx.fillText('listens to', M.left, 12);
+    ctx.font = `10px ${colours.body}`; ctx.fillStyle = colours.muted;
+    groups.forEach((g, gi) => ctx.fillText(g.name, firstOf(gi), 26));
+    const w2x = columns.find(c => c.kind === 'w2').x;
+    ctx.font = `600 11px ${colours.body}`; ctx.fillStyle = colours.ink;
+    ctx.fillText('adds to', w2x, 12);
+    // selection and hover outlines
+    for (const [s, colour, width] of [[lab.hover, colours.muted, 1], [lab.sel, colours.ink, 2]]) {
+      if (!s) continue;
+      const col = columns[s.col];
+      ctx.strokeStyle = colour; ctx.lineWidth = width;
+      ctx.strokeRect(col.x - 1, M.top + s.h * M.cell - 1, M.cell + 1, M.cell + 1);
+    }
+  }
+  function hitMatrix(e) {
+    const r = matrix.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const h = Math.floor((y - M.top) / M.cell);
+    if (h < 0 || h >= HID) return null;
+    if (x < M.left - 2) return { row: h };
+    const col = columns.findIndex(c => x >= c.x && x < c.x + M.cell);
+    return col >= 0 ? { col, h } : null;
+  }
+  matrix.addEventListener('mousemove', e => {
+    const hit = hitMatrix(e);
+    lab.hover = hit && hit.col !== undefined ? hit : null;
+    if (hit && hit.row !== undefined) $('hoverInfo').textContent = `hidden unit ${hit.row + 1}: click to switch it ${lab.off[hit.row] ? 'back on' : 'off'}`;
+    else if (lab.hover) { const col = columns[hit.col]; $('hoverInfo').textContent = `${describe(col, hit.h)}: ${effective(col, hit.h).toFixed(4)}`; }
+    else $('hoverInfo').textContent = 'Point at a square to see what it connects.';
+    drawMatrix();
+  });
+  matrix.addEventListener('mouseleave', () => { lab.hover = null; drawMatrix(); });
+  matrix.addEventListener('click', e => {
+    const hit = hitMatrix(e);
+    if (!hit) return;
+    if (hit.row !== undefined) {
+      lab.off[hit.row] ^= 1;
+      drawMatrix(); syncInspector(); schedulePreview(); saveSoon();
+      return;
+    }
+    lab.sel = hit; syncInspector(); drawMatrix();
+  });
+  matrix.addEventListener('keydown', e => {
+    const moves = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    if (!moves[e.key]) return;
+    const s = lab.sel || { col: 0, h: 0 }, [dc, dh] = moves[e.key];
+    lab.sel = { col: Math.max(0, Math.min(columns.length - 1, s.col + dc)), h: Math.max(0, Math.min(HID - 1, s.h + dh)) };
+    syncInspector(); drawMatrix(); e.preventDefault();
+  });
+  function editable() {
+    if (!lab.sel) return false;
+    const col = columns[lab.sel.col];
+    return !(col.kind === 'w2' && (lab.dials[col.channel] === 0 || lab.off[lab.sel.h]));
+  }
+  function syncInspector() {
+    const on = !!lab.sel && editable();
+    for (const id of ['insRange', 'insNum', 'insZero']) $(id).disabled = !on;
+    if (!lab.sel) { $('insLabel').textContent = 'Click a square in the network to edit it.'; return; }
+    const col = columns[lab.sel.col], v = effective(col, lab.sel.h);
+    const why = !on ? (lab.off[lab.sel.h] ? ' This unit is switched off.' : ' Its dial is at 0.') : '';
+    $('insLabel').innerHTML = '';
+    const b = document.createElement('b'); b.textContent = v.toFixed(4);
+    $('insLabel').append(`${describe(col, lab.sel.h)}: `, b, why);
+    $('insRange').value = v; $('insNum').value = v.toFixed(4);
+  }
+  function setSelected(v) {
+    if (!editable() || !Number.isFinite(v)) return;
+    const col = columns[lab.sel.col], i = indexOf(col, lab.sel.h);
+    lab.base[i] = col.kind === 'w2' ? v / lab.dials[col.channel] : v;
+    syncInspector(); drawMatrix(); schedulePreview(); saveSoon();
+  }
+  $('insRange').addEventListener('input', e => setSelected(+e.target.value));
+  $('insNum').addEventListener('change', e => setSelected(parseFloat(e.target.value)));
+  $('insZero').addEventListener('click', () => setSelected(0));
+  new ResizeObserver(() => drawMatrix()).observe(matrix.parentElement);
+
+  // the body preview: what this genome grows, drawn as its grid of joints with the nerve cells inside
+  const preview = $('preview'), pctx = preview.getContext('2d');
+  let previewBody = null, previewTimer = 0, saveTimer = 0;
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      const { body, brain } = develop(labGenome());
+      previewBody = body;
+      let muscles = 0, eyes = 0;
+      for (let i = 0; i < N; i++) if (body.alive[i]) { if (body.tissue[i] === 1) muscles++; else if (body.tissue[i] === 2) eyes++; }
+      $('previewInfo').textContent = body.cells
+        ? `${body.cells} joints · ${muscles} muscle · ${eyes} ${eyes === 1 ? 'eye' : 'eyes'} · ${body.nerves} nerve cells · ${brain.from.length} synapses`
+        : 'grows nothing: the seed cell dies';
+      drawPreview();
+    }, 120);
+  }
+  function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 800); }
+  function drawPreview() {
+    const dpr = window.devicePixelRatio || 1, w = preview.clientWidth, h = preview.clientHeight;
+    if (!w) return;
+    if (preview.width !== Math.round(w * dpr)) { preview.width = Math.round(w * dpr); preview.height = Math.round(h * dpr); }
+    const ctx = pctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = colours.stage; ctx.fillRect(0, 0, w, h);
+    const cell = Math.min(w / W, h / H), ox = (w - cell * W) / 2, oy = (h - cell * H) / 2;
+    ctx.strokeStyle = colours.grid; ctx.lineWidth = 1;
+    for (let r = 0; r <= H; r++) { ctx.beginPath(); ctx.moveTo(ox, oy + r * cell); ctx.lineTo(ox + W * cell, oy + r * cell); ctx.stroke(); }
+    for (let c = 0; c <= W; c++) { ctx.beginPath(); ctx.moveTo(ox + c * cell, oy); ctx.lineTo(ox + c * cell, oy + H * cell); ctx.stroke(); }
+    if (!previewBody) return;
+    const body = previewBody;
+    for (let i = 0; i < N; i++) {
+      if (!body.alive[i]) continue;
+      const r = (i / W) | 0, c = i % W, x = ox + c * cell, y = oy + r * cell;
+      ctx.fillStyle = body.tissue[i] === 1 ? lerp(colours['muscle-idle'], colours.muscle, 0.6) : body.tissue[i] === 2 ? colours.eye : colours.bone;
+      ctx.fillRect(x + 1, y + 1, cell - 2, cell - 2);
+      ctx.strokeStyle = colours['bone-edge']; ctx.strokeRect(x + 1.5, y + 1.5, cell - 3, cell - 3);
+      if (body.tissue[i] === 2) {
+        ctx.fillStyle = colours.pupil;
+        ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.16, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    ctx.fillStyle = colours.accent;
+    for (let f = 0; f < NF; f++) {
+      if (!body.nerve[f]) continue;
+      const fr = (f / WF) | 0, fc = f % WF;
+      ctx.beginPath(); ctx.arc(ox + (fc + 0.5) * cell / FINE, oy + (fr + 0.5) * cell / FINE, Math.max(1, cell * 0.06), 0, 2 * Math.PI); ctx.fill();
+    }
+    // the seed
+    ctx.strokeStyle = colours.fire; ctx.lineWidth = 2;
+    ctx.strokeRect(ox + SEED_C * cell + 0.5, oy + SEED_R * cell + 0.5, cell - 1, cell - 1);
+  }
+  new ResizeObserver(() => drawPreview()).observe(preview);
+
+  // bench buttons
+  const worldValue = () => Math.max(0, Math.min(999999, Math.floor(+$('world').value || 0)));
+  $('grow').addEventListener('click', () => {
+    watch(labGenome(), 'Your genome', 0, true, worldValue());
+    $('stage').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  });
+  $('randomize').addEventListener('click', () => {
+    setLab(randomRule());
+    watch(labGenome(), 'A random growth rule', 0, true, worldValue());
+    saveSoon();
+  });
+  $('loadBest').addEventListener('click', () => { setLab(run.best.genome); saveSoon(); });
+  let confirmTimer = 0;
+  $('evolveFrom').addEventListener('click', () => {
+    const btn = $('evolveFrom');
+    if (run.gen && !btn.classList.contains('warn')) {     // this replaces the current run: ask once, on the button
+      btn.classList.add('warn'); btn.textContent = 'Replace the current run? Click again';
+      clearTimeout(confirmTimer);
+      confirmTimer = setTimeout(() => { btn.classList.remove('warn'); btn.textContent = 'Evolve from this genome'; }, 4000);
+      return;
+    }
+    clearTimeout(confirmTimer); btn.classList.remove('warn'); btn.textContent = 'Evolve from this genome';
+    const start = labGenome();
+    whenIdle(() => {
+      run = fresh(start); selected = null;
+      showReadings(); drawChart(); $('rate').textContent = '–';
+      watch(run.mean, 'Your genome · generation 0', 0, true);
+      setRunning(true);
+    });
+  });
+  $('world').addEventListener('change', () => { $('world').value = worldValue(); saveSoon(); });
+
+  // all the numbers as text
+  function listText(g) {
+    const fmt = (a, b, per) => {
+      const rows = [];
+      for (let i = a; i < b; i += per) rows.push(Array.from(g.subarray(i, Math.min(b, i + per)), v => v.toFixed(5)).join(', '));
+      return rows.join(',\n');
+    };
+    return [`# K: wiring bias toward each neighbour: up-left, up, up-right, left, right, down-left, down, down-right`, fmt(OFF_K, OFF_W1, 8) + ',',
+      `# W1: what each hidden unit listens to. 54 rows (18 own values, 18 left-right changes, 18 top-bottom changes) of 32 hidden units`, fmt(OFF_W1, OFF_W2, HID) + ',',
+      `# W2: what each hidden unit adds. 32 rows (hidden units) of 18 channels: ${NAMES.join(', ')}`, fmt(OFF_W2, OFF_B1, C) + ',',
+      `# b1: each hidden unit's bias`, fmt(OFF_B1, GENOME, HID)].join('\n');
+  }
+  $('showList').addEventListener('click', () => { $('genomeText').value = listText(labGenome()); $('numbersStatus').textContent = 'These are the numbers that grow, dials included.'; });
+  $('copyNumbers').addEventListener('click', async () => {
+    const text = toB64(labGenome());
+    try { await navigator.clipboard.writeText(text); $('numbersStatus').textContent = 'Copied. Paste it into best.txt for the Python version.'; }
+    catch (err) { $('genomeText').value = text; $('genomeText').select(); $('numbersStatus').textContent = 'Copying was blocked here: the text is in the box, selected. Copy it from there.'; }
+  });
+  $('applyNumbers').addEventListener('click', () => {
+    const text = $('genomeText').value.trim();
+    let g = null;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(text) && !/[,]/.test(text) && text.replace(/\s/g, '').length > 1000) {
+      try { g = fromB64(text.replace(/\s/g, '')); } catch (err) { g = null; }
+    } else {
+      const nums = text.split('\n').filter(l => !l.trim().startsWith('#')).join(' ').split(/[\s,]+/).filter(Boolean).map(Number);
+      if (nums.every(Number.isFinite)) g = Float64Array.from(nums);
+    }
+    if (!g || g.length !== GENOME) {
+      $('numbersStatus').textContent = `That isn't a genome: it needs exactly ${GENOME.toLocaleString()} numbers${g ? `, and the box holds ${g.length.toLocaleString()}` : ''}.`;
+      return;
+    }
+    setLab(g); saveSoon();
+    $('numbersStatus').textContent = `Loaded ${GENOME.toLocaleString()} numbers. Press Grow to watch them grow.`;
+  });
+
+  // ---------- run controls ----------
+  $('run').addEventListener('click', () => setRunning(!running));
+  $('reset').addEventListener('click', () => {
+    whenIdle(() => {
+      run = fresh(); selected = null;
+      setRunning(false); showReadings(); drawChart(); $('rate').textContent = '–';
+      watch(run.mean, 'Generation 0 · a random growth rule', 0, true);
+      setLab(run.mean); save();
+    });
+  });
+  $('follow').addEventListener('change', () => {
+    if ($('follow').value === 'best') watch(run.best.genome, run.best.gen ? `Best so far · generation ${run.best.gen}` : 'Generation 0 · a random growth rule', run.best.gen, true);
+  });
+
+  // ---------- start ----------
+  const saved = load();
+  if (saved) {
+    run = saved.run;
+    if (run.gen) {
+      $('status').textContent = `Picked up where you left off: generation ${run.gen}. Press Continue to keep evolving.`;
+      $('run').textContent = 'Continue';
+    }
+    watch(run.best.genome, run.best.gen ? `Best so far · generation ${run.best.gen}` : 'Generation 0 · a random growth rule', run.best.gen, true);
+    try {
+      setLab(saved.lab ? fromB64(saved.lab.base) : run.best.genome);
+      if (saved.lab) {
+        saved.lab.dials.forEach((v, c) => { lab.dials[c] = v; });
+        saved.lab.off.forEach((v, h) => { lab.off[h] = v; });
+        $('world').value = saved.lab.world;
+        syncDials(); drawMatrix(); schedulePreview();
+      }
+    } catch (err) { setLab(run.best.genome); }
+  } else {
+    run = fresh();
+    watch(run.mean, 'Generation 0 · a random growth rule', 0, true);
+    setLab(run.mean);
+  }
+  showReadings();
+  drawChart();
+  requestAnimationFrame(frame);
+})();
+</script>

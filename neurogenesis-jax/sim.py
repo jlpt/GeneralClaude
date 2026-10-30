@@ -1,11 +1,12 @@
-"""The world: a side view with flat ground. The creature's job is to walk forward (to the right).
+"""The world: a side view with flat ground and fruit lying on it. The creature has to find fruit to keep
+its energy up, and starves if it doesn't.
 
 Body. Every living cell is a joint: a point mass at its place on the grid. Bones (rigid links one
 cell long) join each cell to its parent, the neighbour one step nearer the seed, so the skeleton is a
 tree branching out from the seed. Neighbouring cells that are both bone are joined too, so a solid patch
 of bone is solid. At each cell, the angle between the bone to its parent and the bone to each of its
 children is held where it grew:
-    - a bone cell holds it rigidly
+    - a bone cell holds it rigidly, and so does an eye
     - a muscle cell is a hinge: when the nerve cells in its patch fire, the joint bends by up to
       BEND_RANGE, the way the cell's bend number says, and it straightens again when they go quiet. A
       muscle joint with no nerve in it never moves.
@@ -14,8 +15,9 @@ So a thin line of cells is a limb, stiff along its bone cells and bending at its
 Bones and joints are solved with position-based dynamics. They're split into batches in which no two
 share a point, so each batch is solved fully in parallel (good for a GPU) and later batches see earlier
 fixes, which converges fast. Each bone also damps the relative motion of its two ends; without that,
-floppy bodies build up a jiggle under their own weight, and evolution used it to slide along. A joint's angle is held with a linear constraint (see _hold_angle), which
-settles much faster than correcting the angle directly. The ground pushes joints up. Friction follows
+floppy bodies build up a jiggle under their own weight, and evolution used it to slide along. A joint's
+angle is held with a linear constraint (see _hold_angle), which settles much faster than correcting the
+angle directly. The ground pushes joints up. Friction follows
 Coulomb's law: the body's weight is shared among the joints touching the ground, and a loaded joint
 sticks unless pushed hard, so to travel a creature has to lift and push.
 
@@ -29,16 +31,26 @@ real muscle does.
 
 Senses. Each is a current into the nerve cells that can feel it, scaled by each one's gain for it:
     touch      nerve cells in the patch of a joint touching the ground
+    sight      nerve cells in an eye's patch: how much fruit colour the eye sees in the direction it
+               faces (away from the body's middle), nearer fruit counting more. This is the same as
+               reading a strip of pixels ahead where fruit is one colour, computed from the fruit positions.
+    hunger     every nerve cell, like a blood-sugar signal: 1 − energy
     pacemaker  every nerve cell: a steady rhythm, sin(2π · PACE_HZ · t), like the heart's pacemaker
-So a foot's touch only matters if a nerve carries the signal on to something.
+So an eye or a foot only matters if a nerve carries its signal on to something.
 
-Score. Before the clock starts, the creature settles for SETTLE_SECONDS with its muscles off, after a
-tiny random sideways nudge, so a body that would topple over has already done so. Then its middle is
-tracked for EPISODE_SECONDS as it moves to the right. The worse half of that time counts three times as
-much as the better half, so a steady walker keeps its full distance and one big lunge keeps only half
-(evolution's first walkers lunged once and stopped). Falling over, turning more than MAX_TILT from the
-pose it settled in, scores 0 (otherwise evolution grows bodies that throw themselves forward). A body of
-fewer than 3 cells scores 0.
+The world. Before the clock starts, the creature settles for SETTLE_SECONDS with its muscles off, after
+a tiny random sideways nudge, so a body that would topple over has already done so. Then FRUIT fruit are
+placed beyond its left or right end, farther away than the body is tall, so no body can reach food by
+falling or lunging toward it. Energy starts at 1 and drains every tick, faster for bodies bigger than
+SIZE_REF joints (never slower for smaller ones, or evolution shrinks creatures until they outlive the
+clock) and while muscles work. Touching a fruit near the ground eats it: energy + FRUIT_ENERGY, and a new
+fruit appears beyond a random end. At zero energy the creature dies and stops. Where fruit appears, and
+which way the nudge goes, come from chance(world, n), a small hash both this file and the browser version
+compute identically, so a world number gives the same world in both.
+
+Score. Fruit eaten, plus the fraction of the time it stayed alive, plus TRAVEL_CREDIT per metre it ended
+up from where it started (up to TRAVEL_MAX metres), so that creatures that merely move beat ones that
+don't, before any can reach food. A body of fewer than 3 joints scores 0.
 """
 
 from typing import NamedTuple
@@ -63,14 +75,21 @@ FIBRE = 3                   # firing nerve cells in a joint's patch needed to dr
 BONE_DAMPING = 0.3          # fraction of the relative motion of a bone's two ends removed each substep
 STATIC_FRICTION, KINETIC_FRICTION = 1.2, 0.8
 
-# nervous system
+# nervous system and senses
 LEAK = 0.8
 PACE_HZ = 1.5
+SIGHT_RANGE = 1.5           # metres at which fruit looks 1/e as bright
 
-# the test
+# the world
 SETTLE_SECONDS = 3.0        # time to fall into a resting pose before the clock starts
 NUDGE = 0.09                # m/s sideways push at the start of settling, so balanced-on-a-knife-edge bodies fall too
-MAX_TILT = np.radians(45)   # turning further than this from the settled pose counts as falling over
+FRUIT = 4                   # fruit lying in the world at any time
+FRUIT_ENERGY = 0.4
+EAT_REACH = 0.08            # metres: a joint this close to a fruit (and near the ground) eats it
+IDLE_LIFE = 12.0            # seconds an idle creature of SIZE_REF joints survives on a full stomach
+SIZE_REF = 20               # each joint beyond this many adds half as much drain again per SIZE_REF joints
+MOVE_COST = 0.25            # working every muscle flat out drains energy 1.25 times as fast
+TRAVEL_CREDIT, TRAVEL_MAX = 0.25, 4.0
 EPISODE_SECONDS = 20.0
 
 ROOT = SEED[0] * W + SEED[1]
@@ -128,8 +147,11 @@ class State(NamedTuple):
     spikes: jnp.ndarray     # (HF, WF)
     rate: jnp.ndarray       # (HF, WF) recent firing rate
     act: jnp.ndarray        # (N,) how hard each muscle is pulling
-    walked: jnp.ndarray     # metres walked to the right so far
-    fallen: jnp.ndarray
+    energy: jnp.ndarray
+    fruit: jnp.ndarray      # (FRUIT,) x positions on the ground
+    placed: jnp.ndarray     # how many fruit have been placed so far (numbers the draws from chance())
+    eaten: jnp.ndarray
+    alive_ticks: jnp.ndarray
     tick: jnp.ndarray
 
 
@@ -165,6 +187,11 @@ class Setup(NamedTuple):
     point_on: jnp.ndarray   # (N,) the joint belongs to the body
     bones: Skeleton
     nerve: jnp.ndarray      # (HF, WF) a nerve cell grows in this fine cell
+    eye: jnp.ndarray        # (N,) this joint is an eye
+    muscle: jnp.ndarray     # (N,) this joint is a muscle
+    size: jnp.ndarray       # joints / SIZE_REF, for the energy cost
+    height: jnp.ndarray     # how tall it is: how far it could reach just by falling over
+    world: jnp.ndarray      # the world number
     start_x: jnp.ndarray
     pose: jnp.ndarray       # (N, 2) the settled shape around its middle, to tell how far the body has turned
 
@@ -186,34 +213,72 @@ def tilt(setup: Setup, x):
     return jnp.arctan2(jnp.sum(then[:, 0] * now[:, 1] - then[:, 1] * now[:, 0]), jnp.sum(then * now))
 
 
-def start(body: Body, key):
-    """Stand the creature on the ground, nudge it, and let it settle with its muscles off."""
+def chance(world, n):
+    """A number in [0, 1) for draw n of a world: a 32-bit integer hash, so the browser version can compute
+    exactly the same one."""
+    h = (jnp.uint32(world) * jnp.uint32(2654435761) + jnp.uint32(n) * jnp.uint32(2246822519) + jnp.uint32(374761393))
+    h = h ^ (h >> 16)
+    h = h * jnp.uint32(0x7FEB352D)
+    h = h ^ (h >> 15)
+    h = h * jnp.uint32(0x846CA68B)
+    h = h ^ (h >> 16)
+    return (h >> 8).astype(jnp.float32) / 16777216.0
+
+
+NUDGE_DRAW = 1_000_000      # chance(world, NUDGE_DRAW) decides the nudge; fruit k uses draws 2k and 2k + 1
+
+
+def _place(x, point_on, height, world, k, near, far):
+    """Fruit number k: beyond the creature's left or right end, farther away than it is tall."""
+    left = jnp.min(jnp.where(point_on, x[:, 0], jnp.inf))
+    right = jnp.max(jnp.where(point_on, x[:, 0], -jnp.inf))
+    gap = height + near + (far - near) * chance(world, 2 * k + 1)
+    return jnp.where(chance(world, 2 * k) < 0.5, right + gap, left - gap)
+
+
+def start(body: Body, world):
+    """Stand the creature on the ground, nudge it, let it settle with its muscles off, then place fruit
+    beyond either end: farther than its height, plus 0.2–1.2 m."""
     point_on = body.alive
     lowest = jnp.min(jnp.where(point_on, HOME[:, 1], 1e3))
     x = jnp.asarray(HOME) - jnp.array([0.0, lowest - RADIUS])
     x = x - jnp.array([centre_x(x, point_on), 0.0])
-    setup = Setup(point_on, skeleton(body), body.nerve, jnp.float32(0.0), jnp.zeros((N, 2)))
-    push = jnp.where(jax.random.bernoulli(key), 1.0, -1.0) * NUDGE * DT / SUBSTEPS   # x − px is one substep
+    grown_height = jnp.max(jnp.where(point_on, x[:, 1], 0.0))
+    setup = Setup(point_on, skeleton(body), body.nerve, body.alive & (body.tissue == 2), body.alive & (body.tissue == 1),
+                  jnp.sum(body.alive) / SIZE_REF, grown_height, jnp.uint32(world), jnp.float32(0.0), jnp.zeros((N, 2)))
+    push = jnp.where(chance(world, NUDGE_DRAW) < 0.5, 1.0, -1.0) * NUDGE * DT / SUBSTEPS   # x − px is one substep
     relaxed = jnp.zeros(N)
     x, px = jax.lax.fori_loop(0, ticks_for(SETTLE_SECONDS), lambda _, xs: physics(setup, *xs, relaxed),
                               (x, x - jnp.array([push, 0.0])))
     pose = (x - _middle(x, point_on)) * point_on[:, None]
-    setup = setup._replace(start_x=centre_x(x, point_on), pose=pose)
+    height = jnp.maximum(grown_height, jnp.max(jnp.where(point_on, x[:, 1], 0.0)))
+    setup = setup._replace(start_x=centre_x(x, point_on), pose=pose, height=height)
+    fruit = jax.vmap(lambda k: _place(x, point_on, height, world, k, 0.2, 1.2))(jnp.arange(FRUIT))
     fine = jnp.zeros((HF, WF))
-    return setup, State(x, px, fine, fine, fine, jnp.zeros(N), jnp.float32(0.0), jnp.bool_(False), jnp.int32(0))
+    state = State(x, px, fine, fine, fine, jnp.zeros(N), jnp.float32(1.0), fruit, jnp.int32(FRUIT),
+                  jnp.float32(0.0), jnp.float32(0.0), jnp.int32(0))
+    return setup, state
 
 
 # ---------- one tick ----------
 
 def senses(setup: Setup, state: State):
-    touch = (state.x[:, 1] < RADIUS + 0.01) & setup.point_on
+    x = state.x
+    touch = (x[:, 1] < RADIUS + 0.01) & setup.point_on
+    middle = centre_x(x, setup.point_on)
+    facing = jnp.where(x[:, 0] >= middle, 1.0, -1.0)              # eyes look away from the body's middle
+    ahead = (state.fruit[None, :] - x[:, :1]) * facing[:, None]
+    brightness = jnp.sum(jnp.where(ahead > 0, jnp.exp(-ahead / SIGHT_RANGE), 0.0), axis=1)
+    sight = (1 - jnp.exp(-2 * brightness)) * setup.eye
     pace = jnp.sin(2 * jnp.pi * PACE_HZ * state.tick * DT)
-    return pace, spread(touch.reshape(H, W)).astype(jnp.float32)       # felt by every fine cell of the patch
+    # touch and sight are felt by every fine cell of the joint's patch
+    return (pace, spread(touch.reshape(H, W)).astype(jnp.float32), spread(sight.reshape(H, W)),
+            1.0 - state.energy)
 
 
-def think(brain: Brain, state: State, nerve, pace, touch):
+def think(brain: Brain, state: State, nerve, pace, touch, sight, hunger):
     g = brain.gains
-    current = brain.bias + g[..., 0] * pace + g[..., 1] * touch
+    current = brain.bias + g[..., 0] * pace + g[..., 1] * touch + g[..., 2] * sight + g[..., 3] * hunger
     charge = LEAK * state.charge + current + synapse_input(brain, state.spikes)
     spikes = ((charge >= brain.threshold) & nerve).astype(jnp.float32)
     charge = jnp.maximum(jnp.where(spikes > 0, 0.0, charge), -3.0)
@@ -246,6 +311,21 @@ def _hold_angle(x, bones: Skeleton, target, idx):
     return x.at[a].add(step / 2 + k * turn(step)).at[p].add(-step).at[c].add(step / 2 - k * turn(step))
 
 
+def _no_turn(x, before, point_on):
+    """Take back any turn of the whole body that one pass over the bones and joints made.
+
+    Bones and joints are forces inside the body, and can't turn it as a whole. But when a joint can't reach
+    its angle because the rest of the body won't let it, each pass over the bones and joints goes round a
+    small loop of shapes and comes back turned a little, every substep: a free motor (evolution found it and
+    rolled along at 6 m/s). This removes the pass's rotation about the body's middle.
+    """
+    w = point_on.astype(jnp.float32)[:, None]
+    r = (before - jnp.sum(before * w, axis=0) / jnp.maximum(jnp.sum(w), 1.0)) * w
+    d = (x - before) * w
+    turned = jnp.sum(r[:, 0] * d[:, 1] - r[:, 1] * d[:, 0]) / (jnp.sum(r * r) + 1e-12)
+    return x - turned * jnp.stack([-r[:, 1], r[:, 0]], axis=1)
+
+
 def _substep(setup: Setup, x, px, target):
     dt = DT / SUBSTEPS
     bones = setup.bones
@@ -258,6 +338,7 @@ def _substep(setup: Setup, x, px, target):
 
     def solve(_, carry):
         x, depth = carry
+        before = x
         for idx in LINK_BATCHES:                # bones keep their length
             a, b = LINK_A[idx], LINK_B[idx]
             d = x[b] - x[a]
@@ -266,6 +347,7 @@ def _substep(setup: Setup, x, px, target):
             x = x.at[a].add(fix).at[b].add(-fix)
         for idx in JOINT_BATCHES:               # joints keep (or, for muscles, bend to) their angle
             x = _hold_angle(x, joint_live, target, idx)
+        x = _no_turn(x, before, setup.point_on)
         below = jnp.minimum(x[:, 1] - RADIUS, 0.0)
         return x.at[:, 1].set(x[:, 1] - below), depth - below
 
@@ -289,13 +371,32 @@ def _substep(setup: Setup, x, px, target):
     return jnp.where(setup.point_on[:, None], x, px), px
 
 
+def feed(setup: Setup, state: State, x, act):
+    """Eat fruit within reach, pay for living and moving, and put new fruit beyond a random end."""
+    near_ground = (x[:, 1] < RADIUS + 0.08) & setup.point_on
+    reach = jnp.abs(x[:, None, 0] - state.fruit[None, :]) < EAT_REACH                  # (N, FRUIT)
+    eaten = jnp.any(reach & near_ground[:, None], axis=0)
+    lost = jnp.abs(state.fruit - centre_x(x, setup.point_on)) > 6.0                    # wandered far away
+    renew = eaten | lost
+    number = state.placed + jnp.cumsum(renew) - 1                                     # each new fruit's draw
+    fresh = jax.vmap(lambda k: _place(x, setup.point_on, setup.height, setup.world, k, 0.5, 2.5))(number)
+    fruit = jnp.where(renew, fresh, state.fruit)
+    working = jnp.sum(act * setup.muscle) / jnp.maximum(jnp.sum(setup.muscle), 1.0)
+    drain = DT / IDLE_LIFE * (1 + 0.5 * jnp.maximum(setup.size - 1, 0.0) + MOVE_COST * working)
+    energy = jnp.minimum(state.energy + FRUIT_ENERGY * jnp.sum(eaten) - drain, 1.0)
+    return fruit, state.placed + jnp.sum(renew).astype(jnp.int32), energy, jnp.sum(eaten).astype(jnp.float32)
+
+
 def tick(setup: Setup, brain: Brain, state: State):
-    pace, touch = senses(setup, state)
-    charge, spikes, rate, act = think(brain, state, setup.nerve, pace, touch)
+    pace, touch, sight, hunger = senses(setup, state)
+    charge, spikes, rate, act = think(brain, state, setup.nerve, pace, touch, sight, hunger)
     x, px = physics(setup, state.x, state.px, act)
-    fallen = state.fallen | (jnp.abs(tilt(setup, x)) > MAX_TILT)
-    walked = centre_x(x, setup.point_on) - setup.start_x
-    return State(x, px, charge, spikes, rate, act, walked, fallen, state.tick + 1)
+    fruit, placed, energy, ate = feed(setup, state, x, act)
+    new = State(x, px, charge, spikes, rate, act, energy, fruit, placed, state.eaten + ate,
+                state.alive_ticks + 1, state.tick + 1)
+    living = state.energy > 0
+    # a dead creature stays where it fell
+    return jax.tree_util.tree_map(lambda n, o: jnp.where(living, n, o), new, state._replace(tick=state.tick + 1))
 
 
 # ---------- a whole life ----------
@@ -304,33 +405,28 @@ def ticks_for(seconds):
     return int(round(seconds / DT))
 
 
-def life(body: Body, brain: Brain, key, seconds=EPISODE_SECONDS):
-    """The whole life; also returns the distance walked by halfway."""
-    setup, state = start(body, key)
-    half = ticks_for(seconds) // 2
-    step = lambda s, _: (tick(setup, brain, s), None)
-    middle, _ = jax.lax.scan(step, state, None, length=half)
-    final, _ = jax.lax.scan(step, middle, None, length=ticks_for(seconds) - half)
-    return setup, final, middle.walked
+def life(body: Body, brain: Brain, world, seconds=EPISODE_SECONDS):
+    setup, state = start(body, world)
+    final, _ = jax.lax.scan(lambda s, _: (tick(setup, brain, s), None), state, None, length=ticks_for(seconds))
+    return setup, final
 
 
-def score(body: Body, brain: Brain, key, seconds=EPISODE_SECONDS):
-    """Metres walked to the right, the worse half of the life counting three times as much as the better
-    half; 0 for falling over."""
-    setup, final, first = life(body, brain, key, seconds)
-    second = final.walked - first
-    steady = 1.5 * jnp.minimum(first, second) + 0.5 * jnp.maximum(first, second)
+def score(body: Body, brain: Brain, world, seconds=EPISODE_SECONDS):
+    """Fruit eaten + the fraction of the time alive + a little for distance travelled."""
+    setup, final = life(body, brain, world, seconds)
+    travelled = jnp.abs(centre_x(final.x, setup.point_on) - setup.start_x)
+    survived = final.alive_ticks / ticks_for(seconds)
     has_body = jnp.sum(body.alive) >= 3         # a growth rule that kills its seed gets nothing
-    return jnp.where(has_body & ~final.fallen, steady, 0.0)
+    return jnp.where(has_body, final.eaten + survived + TRAVEL_CREDIT * jnp.minimum(travelled, TRAVEL_MAX), 0.0)
 
 
-def record(body: Body, brain: Brain, key, seconds=EPISODE_SECONDS):
+def record(body: Body, brain: Brain, world, seconds=EPISODE_SECONDS):
     """A life tick by tick, for drawing."""
-    setup, state = start(body, key)
+    setup, state = start(body, world)
 
     def step(s, _):
         s = tick(setup, brain, s)
-        return s, (s.x, s.act, s.spikes, s.walked, s.fallen)
+        return s, (s.x, s.act, s.spikes, s.fruit, s.energy, s.eaten)
 
     _, frames = jax.lax.scan(step, state, None, length=ticks_for(seconds))
     return setup, frames

@@ -1,4 +1,4 @@
-"""Evolve creatures that grow a body and a nervous system, and walk forward.
+"""Evolve creatures that grow a body and a nervous system, and must find fruit to stay alive.
 
     python evolve.py --out runs/first            # sized for a GPU
     python evolve.py --out runs/check --small    # a quick check on a CPU
@@ -7,13 +7,13 @@ Evolution starts from nothing designed: a single cell and a random growth rule. 
 nothing at all about half the time, so random rules are drawn until one grows a small body (3 to 30
 joints). From there, an evolution strategy (OpenAI-ES): each generation, make POP copies of the
 current genome with a little random noise added, grow and test every copy, and nudge the genome toward
-the noise of the copies that walked farthest. When a copy beats the best walker so far on a re-test, the
+the noise of the copies that scored best. When a copy beats the best walker so far on a re-test, the
 search jumps to it: from a random start, good walkers are rare lucky finds, and one lucky copy barely
 moves the average. All copies are grown and simulated in parallel (jax.vmap), which is where the GPU
 earns its keep.
 
-Scores are metres walked to the right. Each generation's farthest walker is re-tested 4 times (with
-different starting nudges), and the best of those is saved. The run folder gets best.npy (that best
+Scores are fruit eaten + the fraction of the time alive + a little for distance travelled (see sim.py).
+Each generation's best is re-tested in 4 fixed worlds, and the best of those is saved. The run folder gets best.npy (that best
 creature), mean.npy (the current genome, to resume from), log.csv and config.json. Draw one with
 render.py.
 """
@@ -30,7 +30,7 @@ import numpy as np
 import creature as cr
 import sim
 
-TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test runs: each starts with a different nudge
+TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test worlds: fruit placed differently in each
 
 
 # ---------- the start: a random growth rule ----------
@@ -73,10 +73,11 @@ def make_generation(pop, sigma, lr, seconds, decay=0.005):
     @jax.jit
     def generation(mean, m, v, t, key):
         k_noise, k_world = jax.random.split(key)
+        world = jax.random.randint(k_world, (), 0, 1_000_000)      # every member lives in the same world
         eps = jax.random.normal(k_noise, (half, cr.GENOME_SIZE))
         eps = jnp.concatenate([eps, -eps])                     # mirrored pairs cancel out noise
         genomes = mean + sigma * eps
-        fitness = many(genomes, k_world, seconds)
+        fitness = many(genomes, world, seconds)
         grad = -(centered_ranks(fitness) @ eps) / (pop * sigma) + decay * mean
         step, m, v = adam(grad, m, v, t, lr)
         return mean - step, m, v, fitness, genomes[jnp.argmax(fitness)]
@@ -87,7 +88,7 @@ def make_generation(pop, sigma, lr, seconds, decay=0.005):
 def make_test(seconds):
     @jax.jit
     def test(genome):
-        return jnp.mean(jax.vmap(lambda k: evaluate(genome, jax.random.PRNGKey(k), seconds))(TEST_WORLDS))
+        return jnp.mean(jax.vmap(lambda w: evaluate(genome, w, seconds))(TEST_WORLDS))
     return test
 
 
@@ -120,7 +121,7 @@ def main():
         key, k = jax.random.split(key)
         mean = random_start(k, args.init_scale)
     body, _ = cr.develop(mean)
-    print('Where evolution starts (B bone, M muscle joint; lower case where a nerve runs):\n' + cr.describe(body))
+    print('Where evolution starts (B bone, M muscle joint, E eye; lower case where a nerve runs):\n' + cr.describe(body))
     print(f'{int(body.alive.sum())} joints, {int(body.nerve.sum())} nerve cells')
 
     generation = make_generation(args.pop, args.sigma, args.lr, args.seconds)
@@ -143,7 +144,7 @@ def main():
         took = time.time() - t0
         log.write(f'{gen},{float(fitness.max()):.4f},{float(fitness.mean()):.4f},{champion_test:.4f},{best_score:.4f},{took:.2f}\n')
         log.flush()
-        print(f'gen {gen:4d}  metres walked: best {float(fitness.max()):5.2f}  mean {float(fitness.mean()):5.2f}  '
+        print(f'gen {gen:4d}  score: best {float(fitness.max()):5.2f}  mean {float(fitness.mean()):5.2f}  '
               f'best re-tested {champion_test:5.2f}  best so far {best_score:5.2f}  ({took:.1f}s)')
     print(f'Done. Draw the best creature with:  python render.py {os.path.join(args.out, "best.npy")}')
 

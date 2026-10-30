@@ -1,13 +1,15 @@
 """Draw a creature growing from its seed cell and then living, as an animated GIF.
 
     python render.py runs/first/best.npy                 # writes creature.gif
-    python render.py runs/first/best.npy --out walk.gif --seconds 30 --nudge 1
+    python render.py runs/first/best.npy --out life.gif --seconds 30 --world 7
 
 Bones are pale, rounded limbs, and solid patches of bone are filled in. A muscle joint is a dark dot,
 with its muscle drawn as a red band on the side it pulls: the band turns deeper red, thickens and
-shortens as the muscle contracts, and stays dull if no nerve reaches the joint. On top is the nervous
-system: violet fibres between wired nerve cells, a violet dot for each nerve cell, and a green flash
-when one fires. A green line on the ground marks where the creature started.
+shortens as the muscle contracts, and stays dull if no nerve reaches the joint. An eye is a white
+eyeball looking away from the body's middle. On top is the nervous system: violet fibres between wired
+nerve cells, a violet dot for each nerve cell, and a green flash when one fires. Fruit are orange dots
+on the ground (an arrow at the edge points to fruit off screen), and the bar at the top right is the
+creature's energy.
 """
 
 import argparse
@@ -35,6 +37,9 @@ MUSCLE_SOFT, MUSCLE_HARD = (226, 150, 138), (182, 30, 26)
 MUSCLE_IDLE = (220, 179, 171)
 NERVE = (90, 61, 176)
 FIRE = (18, 181, 83)
+EYE_WHITE, PUPIL = (255, 255, 255), (30, 28, 36)
+FRUIT, LEAF = (236, 120, 30), (60, 150, 60)
+ENERGY_FULL, ENERGY_LOW = (40, 160, 80), (200, 50, 40)
 FONT = ImageFont.load_default(size=14)
 
 
@@ -115,11 +120,19 @@ def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None, angle=0.0
         d.line([q1, q2], fill=colour, width=width)
         for q in (q1, q2):
             d.ellipse([q[0] - width / 2, q[1] - width / 2, q[0] + width / 2, q[1] + width / 2], fill=colour)
-    # 3. muscle joints, then the nervous system on top
+    # 3. muscle joints and eyes (looking away from the body's middle, as they see), then the nervous system
     for i in np.flatnonzero(alive & (tissue == 1)):
         cx, cy = pts[i]
         r = radius * 0.45
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=JOINT)
+    middle = x[alive, 0].mean()
+    for i in np.flatnonzero(alive & (tissue == 2)):
+        cx, cy = pts[i]
+        r = radius * 0.95
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=EYE_WHITE, outline=OUTLINE)
+        px = cx + (1 if x[i, 0] >= middle else -1) * r * 0.45
+        q = r * 0.45
+        d.ellipse([px - q, cy - q, px + q, cy + q], fill=PUPIL)
     nerve = np.asarray(body.nerve).reshape(-1)
     weights = np.asarray(brain.weights).reshape(cr.NF, -1)
     spots = np.array([to_px(*p) for p in nerve_positions(x, angle)])
@@ -161,18 +174,46 @@ def growth_frames(genome):
             d.line([to_px(c * sim.CELL, 0), to_px(c * sim.CELL, (cr.H - 1) * sim.CELL)], fill=GRID)
         draw_creature(img, sim.HOME, to_px, pick(bodies, k), pick(skeletons, k), np.full(cr.N, 0.3), pick(brains, k))
         d.text((16, 14), f'growing  step {k + 1} / {len(states)}', fill=INK, font=FONT)
-        d.text((16, 32), 'pale = bone   red = muscle joint   violet = nerves', fill=MUTED, font=FONT)
+        d.text((16, 32), 'pale = bone   red = muscle joint   white = eye   violet = nerves', fill=MUTED, font=FONT)
         frames.append(img)
     return frames
 
 
-def life_frames(genome, nudge, seconds, every=2):
+def draw_fruit(d, px, fruit, ground_y):
+    r = 0.035 * SCALE
+    for f in fruit:
+        cx, cy = px(f, 0)
+        cy -= r
+        if cx < -r or cx > SIZE[0] + r:          # off screen: an arrow at the edge, with the distance
+            side = 1 if cx > SIZE[0] else -1
+            ex = SIZE[0] - 14 if side > 0 else 14
+            d.polygon([(ex + side * 8, ground_y - 20), (ex - side * 4, ground_y - 27), (ex - side * 4, ground_y - 13)], fill=FRUIT)
+            d.text((ex - (40 if side > 0 else -6), ground_y - 46), f'{abs(f - cam_of(px)):.1f} m', fill=MUTED, font=FONT)
+            continue
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=FRUIT)
+        d.ellipse([cx, cy - r - 5, cx + 7, cy - r + 1], fill=LEAF)
+
+
+def cam_of(px):
+    """The world x at the middle of the picture."""
+    return (SIZE[0] / 2 - px(0, 0)[0]) / SCALE
+
+
+def draw_energy(d, energy):
+    x0, y0, w, h = SIZE[0] - 150, 16, 130, 12
+    d.text((x0 - 56, y0 - 2), 'energy', fill=MUTED, font=FONT)
+    d.rectangle([x0, y0, x0 + w, y0 + h], outline=OUTLINE)
+    e = float(np.clip(energy, 0, 1))
+    if e > 0:
+        d.rectangle([x0 + 1, y0 + 1, x0 + 1 + (w - 2) * e, y0 + h - 1], fill=mix(ENERGY_LOW, ENERGY_FULL, e * 1.6))
+
+
+def life_frames(genome, world, seconds, every=2):
     body, brain = cr.develop(jnp.asarray(genome))
-    setup, frames = jax.jit(sim.record, static_argnums=(3,))(body, brain, jax.random.PRNGKey(nudge), seconds)
-    x, act, spikes, walked, fallen = (np.asarray(a) for a in frames)
+    setup, frames = jax.jit(sim.record, static_argnums=(3,))(body, brain, world, seconds)
+    x, act, spikes, fruit, energy, eaten = (np.asarray(a) for a in frames)
     angles = np.asarray(jax.vmap(lambda xt: sim.tilt(setup, xt))(frames[0]))
     on = np.asarray(setup.point_on)
-    start_x = float(setup.start_x)
     ground_y = SIZE[1] - 60
     cam = float(x[0, on, 0].mean())
     images = []
@@ -182,7 +223,7 @@ def life_frames(genome, nudge, seconds, every=2):
         px = lambda X, Y: (SIZE[0] / 2 + (X - cam) * SCALE, ground_y - Y * SCALE)
         img = Image.new('RGB', SIZE, SKY)
         d = ImageDraw.Draw(img)
-        # ground with a mark every half metre, and a line where it started
+        # ground with a mark every half metre
         left = cam - SIZE[0] / 2 / SCALE
         for k in range(int(np.floor(left * 2)), int(np.ceil((left + SIZE[0] / SCALE) * 2)) + 1):
             gx = px(k / 2, 0)[0]
@@ -190,14 +231,14 @@ def life_frames(genome, nudge, seconds, every=2):
             if k % 2 == 0:
                 d.text((gx - 8, ground_y + 12), f'{k // 2} m', fill=MUTED, font=FONT)
         d.line([(0, ground_y), (SIZE[0], ground_y)], fill=GROUND, width=2)
-        sx = px(start_x, 0)[0]
-        d.line([(sx, ground_y - 24), (sx, ground_y)], fill=FIRE, width=3)
+        draw_fruit(d, px, fruit[t], ground_y)
         fired = np.maximum(spikes[t], spikes[t - 1]) if t > 0 else spikes[t]    # frames skip every other tick
         draw_creature(img, x[t], px, body, setup.bones, act[t], brain, fired, angles[t])
-        d.text((16, 14), f'walked {walked[t]:+.2f} m    {(t + 1) * sim.DT:4.1f} s', fill=INK, font=FONT)
+        d.text((16, 14), f'fruit eaten {int(eaten[t])}    {(t + 1) * sim.DT:4.1f} s', fill=INK, font=FONT)
         d.text((16, 32), 'violet = nerves, flashing green when they fire', fill=MUTED, font=FONT)
-        if fallen[t]:
-            d.text((16, 50), 'fell over: scores 0', fill=(190, 34, 26), font=FONT)
+        draw_energy(d, energy[t])
+        if energy[t] <= 0:
+            d.text((16, 50), 'ran out of energy', fill=ENERGY_LOW, font=FONT)
         images.append(img)
     return images
 
@@ -206,20 +247,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('genome', help='a .npy file saved by evolve.py')
     ap.add_argument('--out', default='creature.gif')
-    ap.add_argument('--nudge', type=int, default=1000, help='which random starting nudge to use')
+    ap.add_argument('--world', type=int, default=1000, help='which world: where the fruit lie and which way the start nudge goes')
     ap.add_argument('--seconds', type=float, default=sim.EPISODE_SECONDS)
     ap.add_argument('--no-growth', action='store_true', help='skip the growing part')
     args = ap.parse_args()
     genome = np.load(args.genome)
     body, _ = cr.develop(jnp.asarray(genome))
-    print('Body (B bone, M muscle joint; lower case where a nerve runs):\n' + cr.describe(body))
+    print('Body (B bone, M muscle joint, E eye; lower case where a nerve runs):\n' + cr.describe(body))
     print(f'{int(body.alive.sum())} joints, {int(body.nerve.sum())} nerve cells')
     frames, durations = [], []
     if not args.no_growth:
         grown = growth_frames(genome)
         frames += grown
         durations += [70] * (len(grown) - 1) + [900]
-    lived = life_frames(genome, args.nudge, args.seconds)
+    lived = life_frames(genome, args.world, args.seconds)
     frames += lived
     durations += [int(2 * sim.DT * 1000)] * len(lived)
     frames[0].save(args.out, save_all=True, append_images=frames[1:], duration=durations, loop=0)

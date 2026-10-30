@@ -7,19 +7,19 @@ patches of fine cells, so nerve cells are a third the size of the body's joints 
 in a body. When growth ends, the cells' numbers are read off as:
 
   - for each 3 × 3 patch: whether it is part of the body (at least 5 of its 9 cells alive), and which
-    tissue it is, bone (a rigid joint) or muscle (a joint that bends), and for a muscle which way and how
-    far it bends
+    tissue it is: bone (a rigid joint), muscle (a joint that bends) or eye (a rigid joint that sees
+    food), and for a muscle which way and how far it bends
   - for each fine cell: whether a nerve cell grows there, and if so its spiking threshold and bias, how
-    strongly it feels touch and the pacemaker rhythm, how strongly it sends to and receives from
-    neighbouring nerve cells, and how hard it drives the joint whose patch it sits in
+    strongly it feels touch, the pacemaker rhythm, sight (in an eye) and hunger, how strongly it sends to
+    and receives from neighbouring nerve cells, and how hard it drives the joint whose patch it sits in
 
 Every patch in the body is a joint of the skeleton, joined by a bone to its parent: the neighbouring
 patch one step nearer the seed. So the bones form a tree branching out from the seed, and a thin line of
 patches is a limb whose length and joints the growth rule decides.
 
 Only nerve cells are neurons, and a signal can only travel from a nerve cell to a nerve cell touching it.
-So a muscle joint bends only if a nerve reaches it and fires, a foot's touch matters only if a nerve
-carries it away, and a brain is simply a place where many nerve cells cluster and connect. Nothing says
+So a muscle joint bends only if a nerve reaches it and fires, a foot's touch or an eye's sight matters
+only if a nerve carries it away, and a brain is simply a place where many nerve cells cluster and connect. Nothing says
 where the brain goes or what connects to what: the growth rule lays it all down, the same way it lays
 down bone and muscle.
 
@@ -39,7 +39,7 @@ N = H * W
 FINE = 3                 # each joint is a FINE × FINE patch of the grid that grows
 HF, WF = H * FINE, W * FINE
 NF = HF * WF             # fine cells: any of them can grow a nerve cell
-C = 16                   # numbers each cell carries
+C = 18                   # numbers each cell carries
 HIDDEN = 32              # size of the growth rule's hidden layer
 GROW_STEPS = 40
 SEED = (4, 7)            # the joint the creature grows from
@@ -47,17 +47,19 @@ SEED_FINE = (SEED[0] * FINE + FINE // 2, SEED[1] * FINE + FINE // 2)   # the fir
 
 # What each channel means once growth has finished.
 ALIVE = 0
-BONE, MUSCLE = 1, 2                          # tissue: the larger of these two wins (rigid or bending joint)
+BONE, MUSCLE = 1, 2                          # tissue: the largest of these and EYE wins
 NERVE = 3                                    # above 0: a nerve cell grows here too
 THRESH, BIAS = 4, 5                          # the nerve cell's spiking settings
 PACE, TOUCH = 6, 7                           # how strongly it feels the pacemaker and touch
 SEND, RECV = 8, 9                            # wiring: strength out to / in from neighbouring nerve cells
 JUNCTION = 10                                # how hard it drives the joint it sits in
 BEND = 11                                    # a muscle joint: which way it bends, and how far
-FREE = 12                                    # channels 12–15 have no fixed meaning: cells use them to
+EYE = 12                                     # tissue: an eye, a rigid joint that sees food
+SIGHT, HUNGER = 13, 14                       # how strongly a nerve cell feels sight (in an eye) and hunger
+FREE = 15                                    # channels 15–17 have no fixed meaning: cells use them to
                                              # signal each other while growing
 
-TISSUES = ('bone', 'muscle')
+TISSUES = ('bone', 'muscle', 'eye')
 OFFSETS = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0)]
 DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))   # up, down, left, right: the order a cell picks its parent in
 
@@ -133,7 +135,7 @@ def grow_history(params, steps=GROW_STEPS):
 
 class Body(NamedTuple):
     alive: jnp.ndarray     # (N,) bool: this joint is part of the creature
-    tissue: jnp.ndarray    # (N,) int: 0 bone, 1 muscle
+    tissue: jnp.ndarray    # (N,) int: 0 bone, 1 muscle, 2 eye
     parent: jnp.ndarray    # (N,) int: the neighbouring joint one step nearer the seed (the seed is its own parent)
     bend: jnp.ndarray      # (N,) −1 to 1: which way and how far a muscle bends its joint
     nerve: jnp.ndarray     # (HF, WF) bool: a nerve cell grows in this fine cell
@@ -143,7 +145,7 @@ class Brain(NamedTuple):
     weights: jnp.ndarray   # (HF, WF, 8): synapse from each nerve cell to its neighbour in each of the 8 directions
     threshold: jnp.ndarray # (HF, WF)
     bias: jnp.ndarray      # (HF, WF)
-    gains: jnp.ndarray     # (HF, WF, 2): response to the pacemaker and to touch
+    gains: jnp.ndarray     # (HF, WF, 4): response to the pacemaker, touch, sight and hunger
     junction: jnp.ndarray  # (HF, WF) 0 to 1: how hard a nerve cell drives the joint whose patch it sits in
 
 
@@ -181,10 +183,10 @@ def read_body(s):
     shift = jnp.array([dy * W + dx for dy, dx in DIRS])[jnp.argmax(nearer, axis=0)]
     index = jnp.arange(N).reshape(H, W)
     parent = jnp.where(connected & (steps > 0), index + shift, index)
-    tissue = jnp.sum(patches(s[..., MUSCLE] - s[..., BONE]), axis=-1) > 0
+    tissue = jnp.argmax(jnp.sum(patches(s[..., [BONE, MUSCLE, EYE]]), axis=2), axis=-1)
     bend = jnp.tanh(jnp.mean(patches(s[..., BEND]), axis=-1))
     nerve = alive_fine & (s[..., NERVE] > 0) & spread(connected)
-    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N).astype(jnp.int32), parent=parent.reshape(N),
+    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N), parent=parent.reshape(N),
                 bend=bend.reshape(N), nerve=nerve)
 
 
@@ -204,7 +206,7 @@ def read_brain(s, body, params):
         weights=weights,
         threshold=0.5 + jax.nn.sigmoid(s[..., THRESH]),
         bias=0.3 * jnp.tanh(s[..., BIAS]) * m,
-        gains=1.5 * jnp.tanh(s[..., [PACE, TOUCH]]) * m[..., None],
+        gains=1.5 * jnp.tanh(s[..., [PACE, TOUCH, SIGHT, HUNGER]]) * m[..., None],
         junction=jax.nn.sigmoid(2 * s[..., JUNCTION]) * m,
     )
 
@@ -227,11 +229,11 @@ def develop(genome):
 
 
 def describe(body):
-    """A text picture of a body: . empty, B bone, M muscle joint; lower case where a nerve runs."""
+    """A text picture of a body: . empty, B bone, M muscle joint, E eye; lower case where a nerve runs."""
     alive = np.asarray(body.alive).reshape(H, W)
     tissue = np.asarray(body.tissue).reshape(H, W)
     nerves = np.asarray(patches(body.nerve)).sum(-1)
-    letter = lambda r, c: ('bm' if nerves[r, c] else 'BM')[tissue[r, c]] if alive[r, c] else '.'
+    letter = lambda r, c: ('bme' if nerves[r, c] else 'BME')[tissue[r, c]] if alive[r, c] else '.'
     return '\n'.join(''.join(letter(r, c) for c in range(W)) for r in range(H))
 
 
