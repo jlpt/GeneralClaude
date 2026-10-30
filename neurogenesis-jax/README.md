@@ -11,23 +11,30 @@ Written in JAX, so a whole population is grown and simulated in parallel on a GP
 
 **Windows:** JAX's GPU support runs through WSL2. Install WSL2 with Ubuntu (`wsl --install` in an
 administrator PowerShell) and keep your normal Windows NVIDIA driver. Don't install a Linux NVIDIA driver
-inside WSL2. Then, inside Ubuntu:
+inside WSL2.
+
+Work inside Ubuntu's own home folder, not under `/mnt/c`. Windows folders are slow from WSL, and a
+OneDrive folder will try to sync the thousands of files in the Python environment. So copy the project
+over first, for example
+`cp -r /mnt/c/Users/<you>/Downloads/neurogenesis-jax ~/`. Then:
 
 ```bash
-cd neurogenesis-jax
+cd ~/neurogenesis-jax
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -U "jax[cuda13]"
 ```
 
-On Linux, do the same without WSL2. For a CPU-only install, skip the last line. Check the
+Creating and activating the environment prints nothing; `(.venv)` at the start of the prompt shows
+it worked. On Linux, do the same without WSL2. For a CPU-only install, skip the last line. Check the
 [JAX installation guide](https://docs.jax.dev/en/latest/installation.html) for the current CUDA extra if
 `cuda13` doesn't suit your driver. `python3 -c "import jax; print(jax.devices())"` should list your GPU.
 
 ## Use
 
 ```bash
+python benchmark.py                              # is the GPU being used, and how fast is a generation?
 python evolve.py --out runs/first                # sized for a GPU: 512 creatures per generation, 500 generations
 python evolve.py --out runs/check --small        # a quick CPU check: 32 creatures, 15 generations, 8 s lives
 python evolve.py --out runs/more --resume runs/first/mean.npy    # carry on from where a run stopped
@@ -36,6 +43,9 @@ python render.py runs/first/best.npy --out creature.gif          # watch it grow
 
 The physics works on square cells, but `render.py` paints each frame's cells as one soft, rounded body:
 it blurs the outline and cuts it back out, and blends the tissue colours.
+
+On a GPU, time per generation is mostly a fixed cost for the long chain of physics steps, so bigger
+populations come almost free. Pick `--pop` from what `benchmark.py` reports.
 
 `evolve.py` prints one line per generation and writes `best.npy`, `mean.npy`, `log.csv` and
 `config.json` into the run folder. Useful options: `--pop`, `--gens`, `--seconds` (length of each
