@@ -18,7 +18,8 @@ is grown and simulated in parallel on a GPU.
 evolution running in background workers while the best creature so far looks for fruit. It also has a
 genome bench: every one of the genome's numbers as a heatmap you can click and edit, a dial per channel,
 and a Grow button that grows and runs your edited genome. Open it in any browser.
-`web/neurogenesis-thrower.html` is the same for the throwing task (see below).
+`web/neurogenesis-thrower.html` and `web/neurogenesis-balltoss.html` are the same for the throwing and
+five-ball tasks (see below).
 (`web/neurogenesis-walker.html` is the earlier walking version; its genomes don't fit the current code.)
 
 ## Setup
@@ -58,8 +59,11 @@ python evolve.py --out runs/check --small        # a quick CPU check: 32 creatur
 python evolve.py --out runs/more --resume runs/first/mean.npy    # carry on from where a run stopped
 python render.py runs/first/best.npy --out creature.gif          # watch it grow and look for fruit
 python render.py runs/first/best.npy --world 7                   # in another world (fruit elsewhere)
-python evolve.py --out runs/throw --task throw                   # the other task: throw a ball
+python evolve.py --out runs/throw --task throw                   # another task: throw a ball
 python render.py runs/throw/best.npy --task throw
+python evolve.py --out runs/balls --task balls                   # and another: five balls, total air time
+python evolve.py --out runs/balls2 --task balls --resume examples/thrower.npy   # starting from a thrower
+python render.py runs/balls/best.npy --task balls
 ```
 
 `render.py` draws bones as pale, rounded limbs and fills in solid patches of bone. A muscle joint is a
@@ -78,10 +82,11 @@ version can be drawn here too; the page shows how.
 
 ## How it works
 
-The code is in four files, each with notes at the top:
+The code is in five files, each with notes at the top:
 - **`creature.py`**: the growth rule, and how a grown grid becomes a skeleton and a nervous system
 - **`sim.py`**: physics, the nervous system, senses, and the food task and its score
 - **`throw.py`**: the throwing task
+- **`balls.py`**: the five-ball task
 - **`evolve.py`**: the random start and evolution
 
 ### The genome
@@ -203,6 +208,20 @@ creature has no hands, so it has to fling the ball off with its body.
   than 8 m/s. It slides to a stop on the ground.
 - Senses: touch includes touching the ball, eyes see the ball, and hunger stays at 0.
 
+### The five-ball task (`balls.py`, `--task balls`)
+One ball is dropped onto the creature's back, as in the throwing task, and four more lie on the ground
+0.14–1.44 m beyond either end. Lives are 30 s.
+- **Score: each ball's longest time in the air** (more than 1 cm up) after it last left the creature,
+  added up over the five balls, in seconds, plus 0.1 for each ball on the ground the creature reaches.
+  Each ball counts only its best throw, so juggling one ball over and over can't add up: to score more,
+  the creature has to get to another ball and get it up.
+- Why the credit for reaching: without it, four runs of 60 generations only ever threw the ball on their
+  back, since reaching a ball earned nothing until it was in the air.
+- The ball on its back is the first step, for the same reason as in the throwing task: no random
+  creature ever lifts a ball off the ground.
+- Balls pass through each other. Eyes see all the balls ahead of them, added up like fruit, and touch
+  includes touching any ball.
+
 ### Evolution (`evolve.py`)
 1. **A random start.** Evolution starts from a single cell and a random growth rule. About half of random
    rules grow nothing, so rules are drawn until one grows a small body of 3 to 30 joints with nerves
@@ -247,6 +266,18 @@ eyes (blinded, it averages 2.0 m). It's `examples/thrower.npy`
 (`python render.py examples/thrower.npy --task throw`), and the browser page can load it. Since muscles
 cost nothing and have unlimited force here, long chains of muscle make very good whips; a cost for muscle
 work would push toward more economical throws.
+
+Five-ball task (runs of 64 creatures per generation, 60 generations, 30 s lives):
+- Without credit for reaching balls, four runs (three from random starts, one from the thrower) only
+  ever flung the ball on their back, 0.6–1.2 s in the air, and barely moved (0.1–0.25 m).
+- With 0.1 for each ground ball reached, both runs from random starts learned to crawl 2.5–3 m in 30 s
+  and touch 2–4 of the four ground balls, still flinging the ball on their back. One briefly got two
+  ground balls up (0.13 s each, a couple of centimetres) at generation 45, then traded it away. None yet
+  reliably gets a ball up off the ground: that's the gap a GPU-sized run has to close. A run starting
+  from the thrower lost even its crawl and reached at most one ball.
+- The best: 140 joints (116 muscle, 24 eyes), crawling (its body turns less than 30°) with a rhythm
+  from the pacemaker (without it, it crawls 0.5 m instead of 2.3 m). It's `examples/ball_chaser.npy`
+  (`python render.py examples/ball_chaser.npy --task balls`), and the browser page can load it.
 
 Walking version (before food, the score was distance walked right):
 - About half of random growth rules grow a body; small ones are lumps that twitch.

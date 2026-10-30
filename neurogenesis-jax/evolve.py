@@ -2,7 +2,8 @@
 
     python evolve.py --out runs/first                  # sized for a GPU
     python evolve.py --out runs/check --small          # a quick check on a CPU
-    python evolve.py --out runs/throw --task throw     # the other task: throw a ball as far as possible
+    python evolve.py --out runs/throw --task throw     # another task: throw a ball as far as possible
+    python evolve.py --out runs/balls --task balls     # and another: keep five balls in the air longest
 
 Evolution starts from nothing designed: a single cell and a random growth rule. A random rule grows
 nothing at all about half the time, so random rules are drawn until one grows a small body (3 to 30
@@ -14,7 +15,8 @@ moves the average. All copies are grown and simulated in parallel (jax.vmap), wh
 earns its keep.
 
 Scores are fruit eaten + the fraction of the time alive + a little for distance travelled (see sim.py),
-or with --task throw, the longest throw of a ball in metres (see throw.py).
+with --task throw, the longest throw of a ball in metres (see throw.py), or with --task balls, five balls'
+best times in the air added up, in seconds (see balls.py).
 Each generation's best is re-tested in 4 fixed worlds, and the best of those is saved. The run folder gets best.npy (that best
 creature), mean.npy (the current genome, to resume from), log.csv and config.json. Draw one with
 render.py.
@@ -30,10 +32,11 @@ import jax.numpy as jnp
 import numpy as np
 
 import creature as cr
+import balls
 import sim
 import throw
 
-TASKS = {'food': sim, 'throw': throw}
+TASKS = {'food': sim, 'throw': throw, 'balls': balls}
 
 TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test worlds: fruit placed differently in each
 
@@ -111,8 +114,8 @@ def main():
     ap.add_argument('--gens', type=int, default=500)
     ap.add_argument('--sigma', type=float, default=0.02, help='size of the random changes')
     ap.add_argument('--lr', type=float, default=0.005)
-    ap.add_argument('--task', choices=sorted(TASKS), default='food', help='find fruit, or throw a ball')
-    ap.add_argument('--seconds', type=float, help='length of each life (default: 20 for food, 10 for throw)')
+    ap.add_argument('--task', choices=sorted(TASKS), default='food', help='find fruit, throw a ball, or keep five balls in the air')
+    ap.add_argument('--seconds', type=float, help='length of each life (default: 20 for food, 10 for throw, 30 for balls)')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--resume', help='a mean.npy to continue from')
     ap.add_argument('--init-scale', type=float, default=0.1, help='size of the random starting growth rule\'s weights')
@@ -161,7 +164,7 @@ def main():
         log.flush()
         print(f'gen {gen:4d}  score: best {float(fitness.max()):5.2f}  mean {float(fitness.mean()):5.2f}  '
               f'best re-tested {champion_test:5.2f}  best so far {best_score:5.2f}  ({took:.1f}s)')
-    task = ' --task throw' if args.task == 'throw' else ''
+    task = f' --task {args.task}' if args.task != 'food' else ''
     print(f'Done. Draw the best creature with:  python render.py {os.path.join(args.out, "best.npy")}{task}')
 
 

@@ -295,13 +295,14 @@ def think(brain: Brain, state: State, nerve, pace, touch, sight, hunger):
     return charge, spikes, rate, act
 
 
-def physics(setup: Setup, x, px, act, ball=None):
-    """One tick of physics. ball, if given, is (position, position one substep ago), and comes back moved too."""
+def physics(setup: Setup, x, px, act, balls=None):
+    """One tick of physics. balls, if given, is (positions, positions one substep ago), each (B, 2), and
+    comes back moved too. Balls pass through each other."""
     bones = setup.bones
     target = bones.joint_rest + bones.joint_bend * act[JOINT_P]      # muscles bend their joints
-    if ball is None:
+    if balls is None:
         return jax.lax.fori_loop(0, SUBSTEPS, lambda _, xs: _substep(setup, *xs, target), (x, px))
-    return jax.lax.fori_loop(0, SUBSTEPS, lambda _, s: _substep(setup, s[0], s[1], target, s[2]), (x, px, ball))
+    return jax.lax.fori_loop(0, SUBSTEPS, lambda _, s: _substep(setup, s[0], s[1], target, s[2]), (x, px, balls))
 
 
 def _hold_angle(x, bones: Skeleton, target, idx):
@@ -335,19 +336,20 @@ def _no_turn(x, before, point_on):
     return x - turned * jnp.stack([-r[:, 1], r[:, 0]], axis=1)
 
 
-def _push_ball(x, ball, point_on):
-    """Joints and the ball can't overlap: push each touching pair apart along the line between them, the
-    lighter ball moving more. The ball moves by the average of its pushes."""
-    d = ball[None, :] - x
-    dist = jnp.linalg.norm(d, axis=1) + 1e-9
-    overlap = jnp.maximum(RADIUS + BALL_RADIUS - dist, 0.0) * point_on
-    push = (overlap / dist)[:, None] * d
+def _push_balls(x, balls, point_on):
+    """Joints and balls can't overlap: push each touching pair apart along the line between them, the
+    lighter ball moving more. A ball moves by the average of its pushes. Returns which joints touch which
+    balls, (N, B)."""
+    d = balls[None, :, :] - x[:, None, :]                                   # (N, B, 2)
+    dist = jnp.linalg.norm(d, axis=-1) + 1e-9
+    overlap = jnp.maximum(RADIUS + BALL_RADIUS - dist, 0.0) * point_on[:, None]
+    push = (overlap / dist)[..., None] * d
     share = (1 / BALL_WEIGHT) / (1 / BALL_WEIGHT + 1)
-    ball = ball + share * jnp.sum(push, axis=0) / jnp.maximum(jnp.sum(overlap > 0), 1)
-    return x - (1 - share) * push, ball, overlap > 0
+    balls = balls + share * jnp.sum(push, axis=0) / jnp.maximum(jnp.sum(overlap > 0, axis=0), 1)[:, None]
+    return x - (1 - share) * jnp.sum(push, axis=1), balls, overlap > 0
 
 
-def _substep(setup: Setup, x, px, target, ball=None):
+def _substep(setup: Setup, x, px, target, balls=None):
     dt = DT / SUBSTEPS
     bones = setup.bones
     v = (x - px) * DAMPING ** (1 / SUBSTEPS)
@@ -356,14 +358,14 @@ def _substep(setup: Setup, x, px, target, ball=None):
     x = jnp.where(setup.point_on[:, None], x, px)
     live = bones.link_on.astype(jnp.float32)
     joint_live = bones._replace(joint_on=bones.joint_on.astype(jnp.float32))
-    if ball is not None:
-        bx, bpx = ball
+    if balls is not None:
+        bx, bpx = balls
         bv = (bx - bpx) * DAMPING ** (1 / SUBSTEPS)
         bpx = bx
         bx = bx + bv + jnp.array([0.0, -GRAVITY * dt * dt])
-        coming = jnp.linalg.norm(bx - bpx)          # how far it would go this substep untouched
+        coming = jnp.linalg.norm(bx - bpx, axis=1)  # how far each would go this substep untouched
     else:
-        bx = jnp.zeros(2)
+        bx = jnp.zeros((0, 2))
 
     def solve(_, carry):
         x, depth, bx, contact = carry
@@ -377,23 +379,24 @@ def _substep(setup: Setup, x, px, target, ball=None):
         for idx in JOINT_BATCHES:               # joints keep (or, for muscles, bend to) their angle
             x = _hold_angle(x, joint_live, target, idx)
         x = _no_turn(x, before, setup.point_on)
-        if ball is not None:                    # the ball pushes from outside, so it can turn the body
-            x, bx, touch = _push_ball(x, bx, setup.point_on)
-            bx = bx.at[1].set(jnp.maximum(bx[1], BALL_RADIUS))
+        if balls is not None:                   # balls push from outside, so they can turn the body
+            x, bx, touch = _push_balls(x, bx, setup.point_on)
+            bx = bx.at[:, 1].set(jnp.maximum(bx[:, 1], BALL_RADIUS))
             contact = contact | touch
         below = jnp.minimum(x[:, 1] - RADIUS, 0.0)
         return x.at[:, 1].set(x[:, 1] - below), depth - below, bx, contact
 
-    x, depth, bx, contact = jax.lax.fori_loop(0, ITERATIONS, solve, (x, jnp.zeros(N), bx, jnp.zeros(N, bool)))
-    if ball is not None:
-        # Joints hold their angles with unlimited force, so pressing the ball into the ground or pinching it
-        # between joints could shoot it out at any speed, and evolution found that at once. So the ball can
+    x, depth, bx, contact = jax.lax.fori_loop(0, ITERATIONS, solve, (x, jnp.zeros(N), bx, jnp.zeros((N, len(bx)), bool)))
+    if balls is not None:
+        # Joints hold their angles with unlimited force, so pressing a ball into the ground or pinching it
+        # between joints could shoot it out at any speed, and evolution found that at once. So a ball can
         # leave the joints it touched at most BALL_KICK times as fast as the fastest of them moved (a light
         # ball hit by a heavy limb), unless it was already going faster.
-        hit = jnp.max(jnp.where(contact, jnp.linalg.norm(x - px, axis=1), 0.0))
+        hit = jnp.max(jnp.where(contact, jnp.linalg.norm(x - px, axis=1)[:, None], 0.0), axis=0)    # (B,)
         step = bx - bpx
         limit = jnp.maximum(coming, BALL_KICK * hit)
-        bx = jnp.where(jnp.any(contact), bpx + step * jnp.minimum(1.0, limit / (jnp.linalg.norm(step) + 1e-9)), bx)
+        scale = jnp.minimum(1.0, limit / (jnp.linalg.norm(step, axis=1) + 1e-9))
+        bx = jnp.where(jnp.any(contact, axis=0)[:, None], bpx + step * scale[:, None], bx)
     # Every bone damps how fast its two ends move relative to each other, which stops the jiggling that
     # floppy bodies otherwise build up under their own weight (evolution found it and slid along on it).
     for idx in LINK_BATCHES:
@@ -411,14 +414,14 @@ def _substep(setup: Setup, x, px, target, ball=None):
     new_x0 = jnp.where(stick, px[:, 0], jnp.where(skid, x[:, 0] - jnp.sign(slide) * KINETIC_FRICTION * load, x[:, 0]))
     x = x.at[:, 0].set(new_x0)
     x = jnp.where(setup.point_on[:, None], x, px)
-    if ball is None:
+    if balls is None:
         return x, px
-    # the ball slides to a stop on the ground, and never moves faster than BALL_MAX_SPEED
-    slide = bx[0] - bpx[0]
+    # balls slide to a stop on the ground, and never move faster than BALL_MAX_SPEED
+    slide = bx[:, 0] - bpx[:, 0]
     slowed = jnp.sign(slide) * jnp.maximum(jnp.abs(slide) - BALL_FRICTION * GRAVITY * dt * dt, 0.0)
-    bx = bx.at[0].set(jnp.where(bx[1] <= BALL_RADIUS + 1e-6, bpx[0] + slowed, bx[0]))
+    bx = bx.at[:, 0].set(jnp.where(bx[:, 1] <= BALL_RADIUS + 1e-6, bpx[:, 0] + slowed, bx[:, 0]))
     step = bx - bpx
-    bx = bpx + step * jnp.minimum(1.0, BALL_MAX_SPEED * dt / (jnp.linalg.norm(step) + 1e-9))
+    bx = bpx + step * jnp.minimum(1.0, BALL_MAX_SPEED * dt / (jnp.linalg.norm(step, axis=1) + 1e-9))[:, None]
     return x, px, (bx, bpx)
 
 

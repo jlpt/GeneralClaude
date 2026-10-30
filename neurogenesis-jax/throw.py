@@ -59,9 +59,10 @@ def start(body, world):
     top = jnp.max(jnp.where(on, s.x[:, 1], 0.0))
     ball = jnp.array([s.x[column, 0], top + RADIUS + BALL_RADIUS + 0.02])
     relaxed = jnp.zeros_like(s.act)
-    x, px, (ball, ball_px) = jax.lax.fori_loop(
+    x, px, (balls, balls_px) = jax.lax.fori_loop(
         0, sim.ticks_for(BALL_SETTLE_SECONDS), lambda _, c: sim.physics(setup, c[0], c[1], relaxed, c[2]),
-        (s.x, s.px, (ball, ball)))
+        (s.x, s.px, (ball[None], ball[None])))
+    ball, ball_px = balls[0], balls_px[0]
     zero = jnp.float32(0.0)
     return setup, Throw(x, px, s.charge, s.spikes, s.rate, s.act, ball, ball_px, ball[0], zero, zero, jnp.int32(0))
 
@@ -84,7 +85,8 @@ def senses(setup, state: Throw):
 def tick(setup, brain, state: Throw):
     pace, touch, sight, hunger = senses(setup, state)
     charge, spikes, rate, act = sim.think(brain, state, setup.nerve, pace, touch, sight, hunger)
-    x, px, (ball, ball_px) = sim.physics(setup, state.x, state.px, act, (state.ball, state.ball_px))
+    x, px, (balls, balls_px) = sim.physics(setup, state.x, state.px, act, (state.ball[None], state.ball_px[None]))
+    ball, ball_px = balls[0], balls_px[0]
     held = jnp.any(touching(setup, x, ball))
     airborne = ball[1] > BALL_RADIUS + AIR_HEIGHT
     release = jnp.where(held, ball[0], state.release)
