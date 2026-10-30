@@ -1,18 +1,23 @@
-"""Growing a creature: one cellular automaton grows the body and, inside it, a nervous system.
+"""Growing a creature: one cellular automaton grows a jointed body and, inside it, a nervous system.
 
 Every cell of a small grid carries C numbers (its state). The genome is the growth rule: a tiny neural
 network that every cell applies on every step, reading its own state and its 8 neighbours' states and
 writing a change to its own. Growth starts from a single living cell. When growth ends, each cell's
 numbers are read off as:
 
-  - alive or empty, and which tissue it is: bone (stiff) or muscle (contracts)
+  - alive or empty, and which tissue it is: bone (a rigid joint) or muscle (a joint that bends), and for
+    a muscle which way and how far it bends
   - whether a nerve cell also grows inside it, and if so its spiking threshold and bias, how strongly
     it feels touch and the pacemaker rhythm, how strongly it sends to and receives from neighbouring
-    nerve cells, and how hard it drives the muscle it sits in
+    nerve cells, and how hard it drives the joint it sits in
+
+Every living cell is a joint of the skeleton, joined by a bone to its parent: the neighbour one step
+nearer the seed. So the bones form a tree branching out from the seed, and a thin line of cells is a limb
+whose length and joints the growth rule decides.
 
 Only nerve cells are neurons, and a signal can only travel from a nerve cell to a nerve cell touching it.
-So a muscle contracts only if a nerve runs through it, a foot's touch matters only if a nerve carries it
-away, and a brain is simply a place where many nerve cells cluster and connect. Nothing says
+So a muscle joint bends only if a nerve reaches it and fires, a foot's touch matters only if a nerve
+carries it away, and a brain is simply a place where many nerve cells cluster and connect. Nothing says
 where the brain goes or what connects to what: the growth rule lays it all down, the same way it lays
 down bone and muscle.
 
@@ -28,7 +33,7 @@ import numpy as np
 from jax.flatten_util import ravel_pytree
 
 H, W = 10, 14            # the grid the creature grows on (rows, columns); row 0 is the top
-N = H * W                # cells: each is one voxel of body, and may also hold one nerve cell
+N = H * W                # cells: each is one joint of the skeleton, and may also hold one nerve cell
 C = 16                   # numbers each cell carries
 HIDDEN = 32              # size of the growth rule's hidden layer
 GROW_STEPS = 32
@@ -36,17 +41,19 @@ SEED = (4, 7)            # where the first living cell is (row, column)
 
 # What each channel means once growth has finished.
 ALIVE = 0
-BONE, MUSCLE = 1, 2                          # tissue: the larger of these two wins
+BONE, MUSCLE = 1, 2                          # tissue: the larger of these two wins (rigid or bending joint)
 NERVE = 3                                    # above 0: a nerve cell grows here too
 THRESH, BIAS = 4, 5                          # the nerve cell's spiking settings
 PACE, TOUCH = 6, 7                           # how strongly it feels the pacemaker and touch
 SEND, RECV = 8, 9                            # wiring: strength out to / in from neighbouring nerve cells
-JUNCTION = 10                                # how hard it drives the muscle it sits in
-FREE = 11                                    # channels 11–15 have no fixed meaning: cells use them to
+JUNCTION = 10                                # how hard it drives the joint it sits in
+BEND = 11                                    # a muscle joint: which way it bends, and how far
+FREE = 12                                    # channels 12–15 have no fixed meaning: cells use them to
                                              # signal each other while growing
 
 TISSUES = ('bone', 'muscle')
 OFFSETS = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0)]
+DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))   # up, down, left, right: the order a cell picks its parent in
 
 
 def _neighbour_pairs():
@@ -137,6 +144,8 @@ class Body(NamedTuple):
     alive: jnp.ndarray     # (N,) bool: part of the creature
     tissue: jnp.ndarray    # (N,) int: 0 bone, 1 muscle
     nerve: jnp.ndarray     # (N,) bool: a nerve cell grows here too
+    parent: jnp.ndarray    # (N,) int: the neighbour one step nearer the seed (the seed is its own parent)
+    bend: jnp.ndarray      # (N,) −1 to 1: which way and how far a muscle bends its joint
 
 
 class Brain(NamedTuple):
@@ -144,23 +153,34 @@ class Brain(NamedTuple):
     threshold: jnp.ndarray # (N,)
     bias: jnp.ndarray      # (N,)
     gains: jnp.ndarray     # (N, 2): response to the pacemaker and to touch
-    junction: jnp.ndarray  # (N,) 0 to 1: how hard a nerve cell drives the muscle it sits in
+    junction: jnp.ndarray  # (N,) 0 to 1: how hard a nerve cell drives the joint it sits in
 
 
 def read_body(s):
     alive = s[..., ALIVE] > 0.1
-    # Keep only the piece joined to the seed (side by side, not just corner to corner).
-    start = jnp.zeros((H, W), bool).at[SEED].set(True) & alive
+    # Steps from the seed to every living cell, moving side by side (not corner to corner). Cells that
+    # can't be reached are not part of the creature.
+    far = N + 1
+    start = jnp.where(alive & (jnp.zeros((H, W), bool).at[SEED].set(True)), 0, far)
 
-    def spread(_, part):
-        p = jnp.pad(part, 1)
-        grown = part | p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]
-        return grown & alive
+    def neighbours(d):
+        p = jnp.pad(d, 1, constant_values=far)
+        return [p[1 + dy:1 + dy + H, 1 + dx:1 + dx + W] for dy, dx in DIRS]
 
-    connected = jax.lax.fori_loop(0, N, spread, start)
+    def spread(_, d):
+        return jnp.where(alive, jnp.minimum(d, jnp.min(jnp.stack(neighbours(d)), axis=0) + 1), far)
+
+    steps = jax.lax.fori_loop(0, N, spread, start)
+    connected = steps < far
+    # Each cell's parent is its first neighbour (up, down, left, right) one step nearer the seed.
+    nearer = jnp.stack([n == steps - 1 for n in neighbours(steps)])          # (4, H, W)
+    shift = jnp.array([dy * W + dx for dy, dx in DIRS])[jnp.argmax(nearer, axis=0)]
+    index = jnp.arange(N).reshape(H, W)
+    parent = jnp.where(connected & (steps > 0), index + shift, index)
     tissue = jnp.argmax(s[..., [BONE, MUSCLE]], axis=-1)
     nerve = connected & (s[..., NERVE] > 0)
-    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N), nerve=nerve.reshape(N))
+    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N), nerve=nerve.reshape(N),
+                parent=parent.reshape(N), bend=jnp.tanh(s[..., BEND]).reshape(N))
 
 
 def read_brain(s, body, params):
@@ -186,7 +206,7 @@ def develop(genome):
 
 
 def describe(body):
-    """A text picture of a body: . empty, B bone, M muscle; lower case where a nerve runs."""
+    """A text picture of a body: . empty, B bone, M muscle joint; lower case where a nerve runs."""
     alive = np.asarray(body.alive).reshape(H, W)
     tissue = np.asarray(body.tissue).reshape(H, W)
     nerve = np.asarray(body.nerve).reshape(H, W)

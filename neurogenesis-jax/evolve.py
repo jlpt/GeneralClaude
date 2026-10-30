@@ -5,10 +5,11 @@
 
 Two stages:
 
-1. Starter body. Gradient descent trains the growth rule to grow a simple creature: a long, low body
-   with a bending leg at each end, and inside it a small brain with a nerve from it down through each
-   leg's muscle. The legs' nerves feel the pacemaker in opposite phase, so the legs take turns.
-   Evolution starts from there rather than from shapeless random growth.
+1. Starter body. Gradient descent trains the growth rule to grow a simple walker: a long, low body with a
+   leg near each end, each leg with a hip and a knee joint, and inside it a small brain with a nerve
+   running from it down each leg through the hip to the knee. The pacemaker reaches the two legs'
+   nerves with opposite signs, so the legs take turns. Evolution starts from there rather than from
+   shapeless random growth.
 
 2. Evolution strategy (OpenAI-ES). Each generation, make POP copies of the current genome with a little
    random noise added, grow and test every copy, and nudge the genome toward the noise of the copies
@@ -39,27 +40,28 @@ TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test runs: each starts with a
 # ---------- stage 1: the starter body ----------
 
 def starter_target():
-    """A long, low body (bone) with a leg at each end. Each leg is a column of muscle beside a column of
-    bone, so contracting bends it. Inside, a nervous system: a brain of six nerve cells in the middle of
-    the body, and a nerve from the brain along the body and down through the muscle of each leg. The two
-    legs' nerves feel the pacemaker rhythm with opposite signs, so the legs take turns; evolution can
-    change all of it."""
-    alive = np.zeros((cr.H, cr.W), np.float32)
+    """A long, low body (bone) with a leg near each end. Each leg is a line of cells from the body to the
+    foot: a muscle joint at the hip, bone, a muscle joint at the knee, then bone. Hips bend one way and
+    knees the other. Inside, a nervous system: a brain of six nerve cells in the middle of the body, and a
+    nerve from it along the body and down each leg through the hip to the knee. The pacemaker reaches the
+    two legs' nerves with opposite signs, so the legs take turns; evolution can change all of it."""
+    alive, nerve, bend, pace = (np.zeros((cr.H, cr.W), np.float32) for _ in range(4))
     tissue = np.zeros((cr.H, cr.W), np.int32)
-    nerve = np.zeros((cr.H, cr.W), np.float32)
-    pace = np.zeros((cr.H, cr.W), np.float32)
     r0, c0 = cr.SEED
-    alive[r0:r0 + 2, c0 - 5:c0 + 5] = 1                      # body
-    for m, b in ((c0 - 5, c0 - 4), (c0 + 3, c0 + 4)):        # legs: muscle column, bone column
-        alive[r0 + 2:, m] = alive[r0 + 2:, b] = 1
-        tissue[r0 + 2:, m] = 1
-    brain = [(r, c) for r in (r0, r0 + 1) for c in (c0 - 1, c0, c0 + 1)]
-    legs = [(r0 + 1, c) for c in (c0 - 2, c0 - 3, c0 - 4)] + [(r, c0 - 5) for r in range(r0 + 2, cr.H)] + \
-           [(r0 + 1, c0 + 2)] + [(r, c0 + 3) for r in range(r0 + 2, cr.H)]
-    for r, c in brain + legs:
+    alive[r0 - 1:r0 + 1, c0 - 5:c0 + 6] = 1                  # body
+    brain = [(r, c) for r in (r0 - 1, r0) for c in (c0 - 1, c0, c0 + 1)]
+    wiring = brain
+    for c, side, sign in ((c0 - 4, -1, 1), (c0 + 4, 1, -1)):  # back leg, front leg
+        alive[r0 + 1:, c] = 1
+        tissue[r0 + 1, c] = tissue[r0 + 3, c] = 1             # hip and knee
+        bend[r0 + 1, c], bend[r0 + 3, c] = 1, -1
+        leg = [(r, c) for r in (r0 + 1, r0 + 2, r0 + 3)]
+        wiring = wiring + [(r0, c0 + side * k) for k in (2, 3, 4)] + leg
+        for r, cc in leg:
+            pace[r, cc] = sign
+    for r, c in wiring:
         nerve[r, c] = 1
-    pace[r0 + 2:, c0 - 5], pace[r0 + 2:, c0 + 3] = 1, -1
-    return jnp.asarray(alive), jnp.asarray(tissue), jnp.asarray(nerve), jnp.asarray(pace)
+    return (jnp.asarray(alive), jnp.asarray(tissue), jnp.asarray(nerve), jnp.asarray(bend), jnp.asarray(pace))
 
 
 def adam(grad, m, v, t, lr, b1=0.9, b2=0.999):
@@ -70,8 +72,9 @@ def adam(grad, m, v, t, lr, b1=0.9, b2=0.999):
 
 
 def train_starter(key, steps=1500, lr=2e-3, attempts=8):
-    alive_t, tissue_t, nerve_t, pace_t = starter_target()
+    alive_t, tissue_t, nerve_t, bend_t, pace_t = starter_target()
     onehot = jax.nn.one_hot(tissue_t, 2)
+    muscle_t = onehot[..., 1] * alive_t
     paced = (pace_t != 0).astype(jnp.float32)
 
     def loss(genome):
@@ -81,7 +84,8 @@ def train_starter(key, steps=1500, lr=2e-3, attempts=8):
         kind = -jnp.sum(jnp.sum(logp * onehot, -1) * alive_t) / jnp.sum(alive_t)
         wiring = jnp.sum((jnp.tanh(s[..., cr.NERVE]) - 0.8 * (2 * nerve_t - 1)) ** 2 * alive_t) / jnp.sum(alive_t)
         rhythm = jnp.sum((jnp.tanh(s[..., cr.PACE]) - 0.8 * pace_t) ** 2 * paced) / jnp.sum(paced)
-        return 10 * shape + 0.3 * kind + 0.3 * wiring + 0.1 * rhythm
+        turn = jnp.sum((jnp.tanh(s[..., cr.BEND]) - 0.8 * bend_t) ** 2 * muscle_t) / jnp.sum(muscle_t)
+        return 10 * shape + 0.3 * kind + 0.3 * wiring + 0.1 * rhythm + 0.1 * turn
 
     def grows_right(genome):
         body = cr.read_body(cr.grow(cr.unflatten(genome)))
@@ -184,7 +188,7 @@ def main():
         key, k = jax.random.split(key)
         mean = train_starter(k)
     body, _ = cr.develop(mean)
-    print('Starter body (B bone, M muscle; lower case where a nerve runs):\n' + cr.describe(body))
+    print('Starter body (B bone, M muscle joint; lower case where a nerve runs):\n' + cr.describe(body))
 
     generation = make_generation(args.pop, args.sigma, args.lr, args.seconds)
     test = make_test(args.seconds)

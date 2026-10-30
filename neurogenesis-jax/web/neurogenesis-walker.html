@@ -1,0 +1,1093 @@
+<title>Neurogenesis Walker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: the specimen stage on the left with the run's controls and readings in a side column,
+   the distance chart below, short field notes last. One column on phones. */
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --stage: #fafbfc;
+  --line: #d6dce4;
+  --ink: #1a2230;
+  --muted: #5b6676;
+  --accent: #5a3db0;        /* haematoxylin violet: nerves, and the best-so-far line */
+  --fire: #12b553;          /* calcium-imaging green: a nerve cell firing */
+  --bone: #e8dfcd;
+  --bone-edge: #6a5d4d;
+  --muscle: #c4392f;
+  --muscle-idle: #dcb3ab;
+  --ground: #8b8072;
+  --grid: #e3e7ec;
+  --display: "Newsreader", Georgia, "Times New Roman", serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1016; --panel: #141a23; --stage: #0f141b; --line: #263040; --ink: #e4e9f0; --muted: #94a1b3;
+    --accent: #a88ff3; --fire: #4cf08a; --bone: #cbc1ae; --bone-edge: #1d1914; --muscle: #e65a4d;
+    --muscle-idle: #6d4642; --ground: #6f675c; --grid: #19212c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c1016; --panel: #141a23; --stage: #0f141b; --line: #263040; --ink: #e4e9f0; --muted: #94a1b3;
+  --accent: #a88ff3; --fire: #4cf08a; --bone: #cbc1ae; --bone-edge: #1d1914; --muscle: #e65a4d;
+  --muscle-idle: #6d4642; --ground: #6f675c; --grid: #19212c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.top { padding-block: 28px 18px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(30px, 4.6vw, 44px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 10px 0 0; max-width: 62ch; color: var(--muted); font-size: 16px; }
+.lede strong { color: var(--ink); font-weight: 700; }
+main.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; padding-block: 0 40px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.stage-card { padding: 0; overflow: hidden; }
+.stage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.stage-head .what { font-family: var(--display); font-size: 19px; font-weight: 500; }
+.stage-head .phase { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+#stage { display: block; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; background: var(--stage); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 18px; height: 8px; border-radius: 4px; display: inline-block; }
+.sw.bone { background: var(--bone); border: 1px solid var(--bone-edge); }
+.sw.muscle { background: var(--muscle); }
+.sw.idle { background: var(--muscle-idle); }
+.sw.nerve { height: 2px; background: var(--accent); border-radius: 1px; }
+.sw.fire { width: 10px; height: 10px; border-radius: 50%; background: var(--fire); box-shadow: 0 0 6px var(--fire); }
+.side { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.buttons { display: flex; gap: 8px; }
+button {
+  font: 600 15px/1 var(--body); border-radius: 8px; padding: 11px 16px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); flex: 1; }
+button:hover { filter: brightness(1.06); }
+button:focus-visible, select:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
+.field label { color: var(--muted); }
+select { font: 14px var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.readings { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.readings dt { color: var(--muted); font-size: 13px; }
+.readings dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.readings dd.big { font-size: 20px; font-weight: 600; color: var(--accent); }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.chart-card { grid-column: 1 / -1; padding: 14px 16px 12px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 21px; margin: 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.keys i { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+#chart { display: block; width: 100%; height: 220px; margin-top: 8px; cursor: crosshair; }
+.notes { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.notes section { padding: 16px; }
+.notes h3 { font-family: var(--display); font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+.notes p { margin: 0 0 8px; font-size: 14px; color: var(--muted); max-width: 65ch; }
+.notes p:last-child { margin-bottom: 0; }
+details.python { grid-column: 1 / -1; padding: 12px 16px; }
+details.python summary { cursor: pointer; font-weight: 700; }
+details.python pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); }
+details.python .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+#copied { font-size: 13px; color: var(--muted); }
+@media (max-width: 860px) {
+  main.grid { grid-template-columns: minmax(0, 1fr); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <h1>Neurogenesis Walker</h1>
+    <p class="lede">One cell grows into a jointed body with a nervous system inside it. A joint only moves when a <strong>nerve reaches it and fires</strong>, and nothing says where the nerves go: the growth rule lays them down like bone and muscle. Evolution keeps the growth rules whose creatures walk farthest.</p>
+  </div>
+</header>
+
+<main class="wrap grid">
+  <section class="card stage-card" aria-label="The creature being watched">
+    <div class="stage-head">
+      <span class="what" id="what">Starter creature</span>
+      <span class="phase" id="phase">growing</span>
+    </div>
+    <canvas id="stage" role="img" aria-label="A jointed creature growing from one cell and then walking"></canvas>
+    <div class="legend">
+      <span><i class="sw bone"></i>bone</span>
+      <span><i class="sw muscle"></i>muscle joint, pulling</span>
+      <span><i class="sw idle"></i>muscle with no nerve</span>
+      <span><i class="sw nerve"></i>nerve</span>
+      <span><i class="sw fire"></i>nerve cell firing</span>
+    </div>
+  </section>
+
+  <aside class="card side" aria-label="Evolution controls">
+    <div class="buttons">
+      <button class="primary" id="run" type="button">Evolve</button>
+      <button id="reset" type="button">Start over</button>
+    </div>
+    <div class="field"><label for="pop">Creatures per generation</label>
+      <select id="pop"><option>32</option><option selected>64</option><option>128</option><option>256</option></select></div>
+    <div class="field"><label for="sigma">Mutation size</label>
+      <select id="sigma"><option value="0.005">small</option><option value="0.01" selected>medium</option><option value="0.02">large</option></select></div>
+    <div class="field"><label for="speed">Playback</label>
+      <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></div>
+    <div class="field"><label for="follow">Watch</label>
+      <select id="follow"><option value="best" selected>best so far</option><option value="latest">latest generation</option></select></div>
+    <dl class="readings">
+      <dt>Generation</dt><dd id="gen">0</dd>
+      <dt>Best steady walk</dt><dd class="big" id="best">–</dd>
+      <dt>Population average</dt><dd id="avg">–</dd>
+      <dt>Creatures tested</dt><dd id="tested">0</dd>
+      <dt>Testing speed</dt><dd id="rate">–</dd>
+      <dt>Watched body</dt><dd id="body">–</dd>
+      <dt>Its nervous system</dt><dd id="nerves">–</dd>
+    </dl>
+    <p class="note" id="status">Press Evolve. Each generation, every creature grows from one cell and gets 20 seconds to walk right.</p>
+  </aside>
+
+  <section class="card chart-card" aria-label="Distance walked by generation">
+    <div class="chart-head">
+      <h2>Metres walked in 20 seconds</h2>
+      <div class="keys">
+        <span><i style="background: var(--accent)"></i>best so far</span>
+        <span><i style="background: var(--accent); opacity: .4"></i>each generation's best</span>
+        <span><i style="background: var(--muted)"></i>population average</span>
+      </div>
+    </div>
+    <canvas id="chart" tabindex="0" aria-label="Chart of distance walked per generation. Click a generation to watch its best walker."></canvas>
+    <p class="note">Click a generation to watch its best walker. The score counts the slower half of the 20 seconds three times, so steady walking beats one big lunge, and falling over scores nothing.</p>
+  </section>
+
+  <div class="notes">
+    <section class="card">
+      <h3>Growth</h3>
+      <p>The genome is about 2,100 numbers: the weights of one tiny neural network that every cell runs. Over 32 steps, each cell reads its neighbours and updates its 16 numbers, starting from a single cell.</p>
+      <p>Each living cell becomes a joint, joined by a bone to the neighbour it grew from. Bone cells are rigid; muscle cells are hinges, and their numbers say which way they bend.</p>
+    </section>
+    <section class="card">
+      <h3>Nerves</h3>
+      <p>A cell may also grow a nerve cell. Only nerve cells are neurons, and a spike can only pass to a nerve cell touching it, one cell per tick, so long nerves have a delay.</p>
+      <p>A muscle joint bends when the nerve cell inside it fires. Nerves in the feet feel the ground, and every nerve cell can feel a slow pacemaker rhythm. The cluster in the middle is the brain only because that is where the nerves meet.</p>
+    </section>
+    <section class="card">
+      <h3>Evolution</h3>
+      <p>Each generation adds small random changes to the genome, grows and tests every copy in parallel workers, and moves the genome toward the changes that walked farthest (an evolution strategy).</p>
+      <p>The starter was trained to grow a long body with a hip and knee in each leg and a nerve to each joint. From there, evolution may reshape the body, rewire the nerves or cut them.</p>
+    </section>
+  </div>
+
+  <details class="card python">
+    <summary>Take the best walker to the Python version</summary>
+    <p class="note">Copy its genome, save it as <code>best.txt</code> in the project folder, and turn it into a file <code>render.py</code> can draw:</p>
+    <pre>python -c "import base64, numpy as np; np.save('best.npy', np.frombuffer(base64.b64decode(open('best.txt').read()), np.float32))"
+python render.py best.npy --out best.gif</pre>
+    <div class="row"><button id="copy" type="button">Copy best genome</button><span id="copied" aria-live="polite"></span></div>
+  </details>
+</main>
+
+<script id="core">
+// Neurogenesis core: growth, skeleton, nervous system and physics. A port of creature.py and sim.py.
+// Runs both on the page (to show a creature) and in the workers (to score the population).
+
+const H = 10, W = 14, N = H * W, C = 16, HID = 32, GROW_STEPS = 32, SEED_R = 4, SEED_C = 7;
+const ROOT = SEED_R * W + SEED_C;
+const ALIVE = 0, BONE = 1, MUSCLE = 2, NERVE = 3, THRESH = 4, BIAS = 5, PACE = 6, TOUCH = 7,
+  SEND = 8, RECV = 9, JUNCTION = 10, BEND = 11, FREE = 12;
+// genome layout (as JAX flattens the parameter dict): K, W1 (48x32), W2 (32x16), b1
+const OFF_K = 0, OFF_W1 = 8, OFF_W2 = 8 + 3 * C * HID, OFF_B1 = OFF_W2 + HID * C;
+const GENOME = OFF_B1 + HID;
+const OFFSETS = [];
+for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dy || dx) OFFSETS.push([dy, dx]);
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];   // up, down, left, right: the order a cell picks its parent in
+
+// physics and nervous system settings
+const CELL = 0.1, RADIUS = 0.04, DT = 1 / 30, GRAVITY = 9.8, DAMPING = 0.99, SUBSTEPS = 6, ITERATIONS = 2;
+const BEND_RANGE = 1.2, MUSCLE_RESPONSE = 0.15, STATIC_FRICTION = 1.2, KINETIC_FRICTION = 0.8;
+const LEAK = 0.8, PACE_HZ = 1.5;
+const SETTLE_TICKS = 90, NUDGE = 0.09, MAX_TILT = 45 * Math.PI / 180, LIFE_TICKS = 600;
+const TAU = 2 * Math.PI;
+const inside = (r, c) => r >= 0 && r < H && c >= 0 && c < W;
+
+const sigmoid = v => 1 / (1 + Math.exp(-v));
+
+// ---------- growth ----------
+
+function seedState() {
+  const s = new Float64Array(N * C);
+  const i = (SEED_R * W + SEED_C) * C;
+  s[i + ALIVE] = 1;
+  for (let k = FREE; k < C; k++) s[i + k] = 1;
+  return s;
+}
+
+function aliveNearby(s, r, c) {
+  let m = 0;                                   // cells beyond the edge count as 0
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const rr = r + dy, cc = c + dx;
+    if (rr >= 0 && rr < H && cc >= 0 && cc < W) m = Math.max(m, s[(rr * W + cc) * C + ALIVE]);
+  }
+  return m > 0.1;
+}
+
+function growStep(g, s, empty) {
+  // empty: the change for a cell whose whole neighbourhood is zero (the same for every such cell)
+  const out = new Float64Array(N * C);
+  const sensed = new Float64Array(3 * C), hid = new Float64Array(HID);
+  const WP = W + 2, pad = new Float64Array((H + 2) * WP * C), busy = new Uint8Array((H + 2) * WP);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = (r * W + c) * C, q = ((r + 1) * WP + c + 1);
+    for (let k = 0; k < C; k++) { pad[q * C + k] = s[i + k]; if (s[i + k] !== 0) busy[q] = 1; }
+  }
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = r * W + c, q = (r + 1) * WP + c + 1;
+    let near = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) near |= busy[q + dy * WP + dx];
+    if (!near) {
+      for (let k = 0; k < C; k++) out[i * C + k] = Math.min(3, Math.max(-3, empty[k]));
+      continue;
+    }
+    const nw = (q - WP - 1) * C, n = (q - WP) * C, ne = (q - WP + 1) * C, w = (q - 1) * C, e = (q + 1) * C,
+      sw = (q + WP - 1) * C, so = (q + WP) * C, se = (q + WP + 1) * C;
+    for (let k = 0; k < C; k++) {
+      sensed[k] = pad[q * C + k];
+      sensed[C + k] = (pad[ne + k] + 2 * pad[e + k] + pad[se + k] - pad[nw + k] - 2 * pad[w + k] - pad[sw + k]) / 8;
+      sensed[2 * C + k] = (pad[sw + k] + 2 * pad[so + k] + pad[se + k] - pad[nw + k] - 2 * pad[n + k] - pad[ne + k]) / 8;
+    }
+    for (let h = 0; h < HID; h++) hid[h] = g[OFF_B1 + h];
+    for (let a = 0; a < 3 * C; a++) {
+      const v = sensed[a];
+      if (v === 0) continue;
+      const row = OFF_W1 + a * HID;
+      for (let h = 0; h < HID; h++) hid[h] += v * g[row + h];
+    }
+    for (let k = 0; k < C; k++) out[i * C + k] = s[i * C + k];
+    for (let h = 0; h < HID; h++) {
+      const v = hid[h];
+      if (v <= 0) continue;
+      const row = OFF_W2 + h * C;
+      for (let k = 0; k < C; k++) out[i * C + k] += v * g[row + k];
+    }
+    for (let k = 0; k < C; k++) out[i * C + k] = Math.min(3, Math.max(-3, out[i * C + k]));
+  }
+  const keep = new Uint8Array(N);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) keep[r * W + c] = aliveNearby(s, r, c) && aliveNearby(out, r, c);
+  for (let i = 0; i < N; i++) if (!keep[i]) out.fill(0, i * C, (i + 1) * C);
+  return out;
+}
+
+function emptyChange(g) {
+  const empty = new Float64Array(C);
+  for (let h = 0; h < HID; h++) {
+    const v = Math.max(0, g[OFF_B1 + h]);
+    for (let k = 0; k < C; k++) empty[k] += v * g[OFF_W2 + h * C + k];
+  }
+  return empty;
+}
+
+function grow(g, keepHistory) {
+  let s = seedState();
+  const history = [], empty = emptyChange(g);
+  for (let t = 0; t < GROW_STEPS; t++) {
+    s = growStep(g, s, empty);
+    if (keepHistory) history.push(s);
+  }
+  return keepHistory ? history : s;
+}
+
+// ---------- reading off the body and the nervous system ----------
+
+function readBody(s) {
+  const alive = new Uint8Array(N), steps = new Int32Array(N).fill(-1);
+  for (let i = 0; i < N; i++) alive[i] = s[i * C + ALIVE] > 0.1 ? 1 : 0;
+  // steps from the seed, moving side by side; cells that can't be reached are not part of the creature
+  const queue = [];
+  if (alive[ROOT]) { steps[ROOT] = 0; queue.push(ROOT); }
+  for (let q = 0; q < queue.length; q++) {
+    const i = queue[q], r = (i / W) | 0, c = i % W;
+    for (const [dr, dc] of DIRS) {
+      const rr = r + dr, cc = c + dc;
+      if (!inside(rr, cc)) continue;
+      const j = rr * W + cc;
+      if (alive[j] && steps[j] < 0) { steps[j] = steps[i] + 1; queue.push(j); }
+    }
+  }
+  const part = new Uint8Array(N), parent = new Int32Array(N), tissue = new Uint8Array(N),
+    nerve = new Uint8Array(N), bend = new Float64Array(N);
+  let cells = 0, nerves = 0;
+  for (let i = 0; i < N; i++) {
+    const r = (i / W) | 0, c = i % W;
+    part[i] = steps[i] >= 0 ? 1 : 0;
+    parent[i] = i;
+    if (steps[i] > 0) {     // the first neighbour (up, down, left, right) one step nearer the seed
+      for (const [dr, dc] of DIRS) {
+        const rr = r + dr, cc = c + dc;
+        if (inside(rr, cc) && steps[rr * W + cc] === steps[i] - 1) { parent[i] = rr * W + cc; break; }
+      }
+    }
+    tissue[i] = s[i * C + MUSCLE] > s[i * C + BONE] ? 1 : 0;
+    nerve[i] = part[i] && s[i * C + NERVE] > 0 ? 1 : 0;
+    bend[i] = Math.tanh(s[i * C + BEND]);
+    cells += part[i]; nerves += nerve[i];
+  }
+  return { alive: part, tissue, nerve, parent, bend, cells, nerves };
+}
+
+function readBrain(s, body, g) {
+  const threshold = new Float64Array(N), bias = new Float64Array(N), gPace = new Float64Array(N),
+    gTouch = new Float64Array(N), junction = new Float64Array(N);
+  const from = [], to = [], weight = [];
+  for (let i = 0; i < N; i++) {
+    const m = body.nerve[i];
+    threshold[i] = 0.5 + sigmoid(s[i * C + THRESH]);
+    if (!m) continue;
+    bias[i] = 0.3 * Math.tanh(s[i * C + BIAS]);
+    gPace[i] = 1.5 * Math.tanh(s[i * C + PACE]);
+    gTouch[i] = 1.5 * Math.tanh(s[i * C + TOUCH]);
+    junction[i] = sigmoid(2 * s[i * C + JUNCTION]);
+    const r = (i / W) | 0, c = i % W;
+    OFFSETS.forEach(([dy, dx], o) => {        // synapses only join nerve cells that touch
+      const rr = r + dy, cc = c + dx;
+      if (rr < 0 || rr >= H || cc < 0 || cc >= W) return;
+      const j = rr * W + cc;
+      if (!body.nerve[j]) return;
+      from.push(i); to.push(j);
+      weight.push(1.5 * Math.tanh(s[i * C + SEND] * s[j * C + RECV] + g[OFF_K + o]));
+    });
+  }
+  return { threshold, bias, gPace, gTouch, junction, from: Int32Array.from(from), to: Int32Array.from(to),
+    weight: Float64Array.from(weight) };
+}
+
+function develop(g) {
+  const s = grow(g, false);
+  const body = readBody(s);
+  return { body, brain: readBrain(s, body, g) };
+}
+
+// ---------- the skeleton ----------
+
+const HOME = new Float64Array(2 * N);
+for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { HOME[2 * (r * W + c)] = c * CELL; HOME[2 * (r * W + c) + 1] = (H - 1 - r) * CELL; }
+const TABLES = (() => {
+  const linkA = [], linkB = [], linkBatch = [], jointP = [], jointC = [], jointBatch = [];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W - 1; c++) { linkA.push(r * W + c); linkB.push(r * W + c + 1); linkBatch.push(c % 2); }
+  for (let r = 0; r < H - 1; r++) for (let c = 0; c < W; c++) { linkA.push(r * W + c); linkB.push((r + 1) * W + c); linkBatch.push(2 + r % 2); }
+  // a joint is a cell p and one of its children; it only touches the plus shape around p, and plus
+  // shapes around cells with the same (row + 2·column) mod 5 never overlap
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) DIRS.forEach(([dy, dx], d) => {
+    if (!inside(r + dy, c + dx)) return;
+    jointP.push(r * W + c); jointC.push((r + dy) * W + c + dx); jointBatch.push(5 * d + (r + 2 * c) % 5);
+  });
+  const rootKids = DIRS.filter(([dy, dx]) => inside(SEED_R + dy, SEED_C + dx)).map(([dy, dx]) => (SEED_R + dy) * W + SEED_C + dx);
+  return { linkA, linkB, linkBatch, jointP, jointC, jointBatch, rootKids };
+})();
+
+function skeleton(body) {
+  const { alive, parent, tissue } = body, T = TABLES;
+  const muscle = i => alive[i] && tissue[i] === 1;
+  const links = [], joints = [];
+  for (let b = 0; b < 4; b++) T.linkA.forEach((i, k) => {
+    if (T.linkBatch[k] !== b) return;
+    const j = T.linkB[k], family = parent[i] === j || parent[j] === i;
+    if (alive[i] && alive[j] && (family || (!muscle(i) && !muscle(j)))) links.push([i, j]);
+  });
+  // the seed has no parent, so its children's angles are held relative to its first child
+  let first = T.rootKids[0];
+  for (const k of T.rootKids) if (alive[k] && parent[k] === ROOT) { first = k; break; }
+  for (let b = 0; b < 20; b++) T.jointP.forEach((p, k) => {
+    if (T.jointBatch[k] !== b) return;
+    const c = T.jointC[k];
+    if (!(alive[p] && alive[c] && parent[c] === p) || (p === ROOT && c === first)) return;
+    const a = p === ROOT ? first : parent[p];
+    const ux = HOME[2 * a] - HOME[2 * p], uy = HOME[2 * a + 1] - HOME[2 * p + 1];
+    const vx = HOME[2 * c] - HOME[2 * p], vy = HOME[2 * c + 1] - HOME[2 * p + 1];
+    const rest = ((Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy) % TAU) + TAU) % TAU;
+    joints.push({ a, p, c, rest, bend: muscle(p) ? BEND_RANGE * body.bend[p] : 0 });
+  });
+  return { links, joints };
+}
+
+class Life {
+  constructor(body, brain, sign) {
+    this.body = body; this.brain = brain;
+    const sk = skeleton(body);
+    this.links = sk.links; this.joints = sk.joints;
+    this.la = Int32Array.from(sk.links, l => 2 * l[0]); this.lb = Int32Array.from(sk.links, l => 2 * l[1]);
+    this.ja = Int32Array.from(sk.joints, j => 2 * j.a); this.jp = Int32Array.from(sk.joints, j => 2 * j.p);
+    this.jc = Int32Array.from(sk.joints, j => 2 * j.c);
+    this.jmotor = Int32Array.from(sk.joints, j => j.p);
+    this.jrest = Float64Array.from(sk.joints, j => j.rest); this.jbend = Float64Array.from(sk.joints, j => j.bend);
+    this.jk = new Float64Array(sk.joints.length);
+    this.points = [];
+    for (let i = 0; i < N; i++) if (body.alive[i]) this.points.push(i);
+    this.x = new Float64Array(2 * N); this.px = new Float64Array(2 * N);
+    let lowest = 1e3;
+    for (const i of this.points) lowest = Math.min(lowest, HOME[2 * i + 1]);
+    for (let i = 0; i < N; i++) { this.x[2 * i] = HOME[2 * i]; this.x[2 * i + 1] = HOME[2 * i + 1] - (lowest - RADIUS); }
+    const cx = this.centreX();
+    for (let i = 0; i < N; i++) this.x[2 * i] -= cx;
+    this.px.set(this.x);
+    const push = sign * NUDGE * DT / SUBSTEPS;      // x − px is one substep
+    for (let i = 0; i < N; i++) this.px[2 * i] -= push;
+    this.charge = new Float64Array(N); this.spikes = new Float64Array(N); this.rate = new Float64Array(N);
+    this.act = new Float64Array(N); this.input = new Float64Array(N);
+    this.depth = new Float64Array(N);
+    const relaxed = new Float64Array(N);
+    for (let t = 0; t < SETTLE_TICKS; t++) this.physics(relaxed);
+    this.startX = this.centreX();
+    const [mx, my] = this.middle();
+    this.pose = new Float64Array(2 * N);
+    for (const i of this.points) { this.pose[2 * i] = this.x[2 * i] - mx; this.pose[2 * i + 1] = this.x[2 * i + 1] - my; }
+    this.walked = 0; this.fallen = false; this.tick = 0;
+  }
+
+  centreX() {
+    let s = 0;
+    for (const i of this.points) s += this.x[2 * i];
+    return this.points.length ? s / this.points.length : 0;
+  }
+
+  middle() {
+    let sx = 0, sy = 0;
+    for (const i of this.points) { sx += this.x[2 * i]; sy += this.x[2 * i + 1]; }
+    const n = Math.max(this.points.length, 1);
+    return [sx / n, sy / n];
+  }
+
+  tilt() {   // how far the body has turned from its settled pose
+    const [mx, my] = this.middle();
+    let cross = 0, dot = 0;
+    for (const i of this.points) {
+      const nx = this.x[2 * i] - mx, ny = this.x[2 * i + 1] - my, tx = this.pose[2 * i], ty = this.pose[2 * i + 1];
+      cross += tx * ny - ty * nx; dot += tx * nx + ty * ny;
+    }
+    return Math.atan2(cross, dot);
+  }
+
+  physics(act) {
+    const x = this.x, px = this.px, la = this.la, lb = this.lb, ja = this.ja, jp = this.jp, jc = this.jc, jk = this.jk;
+    const L = la.length, J = ja.length;
+    for (let n = 0; n < J; n++) {     // muscles bend their joints: k = cot(target / 2) / 2
+      const t = Math.min(TAU - 0.2, Math.max(0.2, this.jrest[n] + this.jbend[n] * act[this.jmotor[n]]));
+      jk[n] = 0.5 / Math.tan(t / 2);
+    }
+    const dt = DT / SUBSTEPS, damp = Math.pow(DAMPING, 1 / SUBSTEPS), fall = GRAVITY * dt * dt;
+    const depth = this.depth, points = this.points;
+    for (let sub = 0; sub < SUBSTEPS; sub++) {
+      for (const i of points) {
+        const vx = (x[2 * i] - px[2 * i]) * damp, vy = (x[2 * i + 1] - px[2 * i + 1]) * damp;
+        px[2 * i] = x[2 * i]; px[2 * i + 1] = x[2 * i + 1];
+        x[2 * i] += vx; x[2 * i + 1] += vy - fall;
+      }
+      depth.fill(0);
+      for (let it = 0; it < ITERATIONS; it++) {
+        for (let n = 0; n < L; n++) {   // bones keep their length
+          const a = la[n], b = lb[n];
+          const dx = x[b] - x[a], dy = x[b + 1] - x[a + 1];
+          const dist = Math.sqrt(dx * dx + dy * dy) + 1e-9;
+          const f = 0.5 * (dist - CELL) / dist;
+          x[a] += f * dx; x[a + 1] += f * dy; x[b] -= f * dx; x[b + 1] -= f * dy;
+        }
+        for (let n = 0; n < J; n++) {   // joints keep (or, for muscles, bend to) their angle
+          const a = ja[n], p = jp[n], c = jc[n], k = jk[n];
+          const ex = x[p] - (x[a] + x[c]) / 2 + k * (x[c + 1] - x[a + 1]);
+          const ey = x[p + 1] - (x[a + 1] + x[c + 1]) / 2 - k * (x[c] - x[a]);
+          const s = 1 / (1.5 + 2 * k * k), sx = ex * s, sy = ey * s;
+          x[a] += sx / 2 - k * sy; x[a + 1] += sy / 2 + k * sx;
+          x[p] -= sx; x[p + 1] -= sy;
+          x[c] += sx / 2 + k * sy; x[c + 1] += sy / 2 - k * sx;
+        }
+        for (const i of points) if (x[2 * i + 1] < RADIUS) { depth[i] += RADIUS - x[2 * i + 1]; x[2 * i + 1] = RADIUS; }
+      }
+      // Coulomb friction, with the body's weight shared among the joints touching the ground
+      let total = 0;
+      for (const i of points) total += depth[i];
+      const weight = points.length * fall;
+      for (const i of points) {
+        if (depth[i] <= 0) continue;
+        const load = weight * depth[i] / (total + 1e-12), slide = x[2 * i] - px[2 * i];
+        if (Math.abs(slide) < STATIC_FRICTION * load) x[2 * i] = px[2 * i];
+        else x[2 * i] -= Math.sign(slide) * KINETIC_FRICTION * load;
+      }
+    }
+  }
+
+  step() {
+    const br = this.brain, body = this.body, x = this.x, input = this.input;
+    const pace = Math.sin(TAU * PACE_HZ * this.tick * DT);
+    input.fill(0);
+    for (let k = 0; k < br.from.length; k++) if (this.spikes[br.from[k]]) input[br.to[k]] += br.weight[k];
+    for (let i = 0; i < N; i++) {
+      const touch = body.alive[i] && x[2 * i + 1] < RADIUS + 0.01 ? 1 : 0;
+      const q = LEAK * this.charge[i] + br.bias[i] + br.gPace[i] * pace + br.gTouch[i] * touch + input[i];
+      const fire = body.nerve[i] && q >= br.threshold[i] ? 1 : 0;
+      this.charge[i] = Math.max(fire ? 0 : q, -3);
+      this.spikes[i] = fire;
+      this.rate[i] = 0.7 * this.rate[i] + 0.3 * fire;
+      // a muscle joint follows the nerve cell inside it (junction is 0 where there's no nerve)
+      this.act[i] += (this.rate[i] * br.junction[i] - this.act[i]) * MUSCLE_RESPONSE;
+    }
+    this.physics(this.act);
+    if (Math.abs(this.tilt()) > MAX_TILT) this.fallen = true;
+    this.walked = this.centreX() - this.startX;
+    this.tick++;
+  }
+}
+
+// Metres walked to the right in 20 s, with the worse half of the life counting three times as much as the
+// better half (so a steady walker keeps its full distance and one big lunge keeps half). Falling over
+// scores 0, and so does a body of fewer than 3 cells.
+function score(g, sign) {
+  const { body, brain } = develop(g);
+  if (body.cells < 3) return 0;
+  const life = new Life(body, brain, sign);
+  for (let t = 0; t < LIFE_TICKS / 2; t++) life.step();
+  const first = life.walked;
+  for (let t = LIFE_TICKS / 2; t < LIFE_TICKS; t++) life.step();
+  if (life.fallen) return 0;
+  const second = life.walked - first;
+  return 1.5 * Math.min(first, second) + 0.5 * Math.max(first, second);
+}
+
+if (typeof module !== 'undefined') module.exports = { H, W, N, C, GENOME, HOME, TABLES, develop, grow, readBody, readBrain, skeleton, Life, score, LIFE_TICKS, DT, CELL, RADIUS };
+
+</script>
+<script>
+(() => {
+  const STARTER = "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";
+  const $ = id => document.getElementById(id);
+
+  // ---------- numbers <-> text ----------
+  const toB64 = arr => {
+    const bytes = new Uint8Array(new Float32Array(arr).buffer);
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+  const fromB64 = b64 => {
+    const bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return Float64Array.from(new Float32Array(bytes.buffer));
+  };
+  const starter = fromB64(STARTER);
+
+  // ---------- random numbers ----------
+  let seed = (crypto.getRandomValues(new Uint32Array(1))[0]) | 0;
+  const rand = () => {
+    seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const normal = () => { let u = 0; while (!u) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
+
+  // ---------- workers that test creatures ----------
+  const coreSource = $('core').textContent;
+  const workerSource = coreSource + `
+    onmessage = e => {
+      const { id, genomes, signs } = e.data, n = signs.length, out = new Float64Array(n);
+      for (let k = 0; k < n; k++) out[k] = score(genomes.subarray(k * GENOME, (k + 1) * GENOME), signs[k]);
+      postMessage({ id, out }, [out.buffer]);
+    };`;
+  const pool = [];
+  try {
+    const url = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    const count = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+    for (let i = 0; i < count; i++) pool.push(new Worker(url));
+  } catch (err) { /* no workers: test on the page instead */ }
+  let jobId = 0;
+  function testOn(worker, genomes, signs) {
+    return new Promise(resolve => {
+      const id = ++jobId;
+      const done = e => { if (e.data.id !== id) return; worker.removeEventListener('message', done); resolve(e.data.out); };
+      worker.addEventListener('message', done);
+      worker.postMessage({ id, genomes, signs }, [genomes.buffer]);
+    });
+  }
+  async function testAll(genomes, signs) {   // genomes: Float64Array(n * GENOME)
+    const n = signs.length;
+    if (!pool.length) {
+      const out = new Float64Array(n);
+      for (let k = 0; k < n; k++) {
+        out[k] = score(genomes.subarray(k * GENOME, (k + 1) * GENOME), signs[k]);
+        if (k % 4 === 3) await new Promise(r => setTimeout(r, 0));
+      }
+      return out;
+    }
+    const per = Math.ceil(n / pool.length), jobs = [];
+    for (let w = 0; w < pool.length && w * per < n; w++) {
+      const a = w * per, b = Math.min(n, a + per);
+      jobs.push(testOn(pool[w], genomes.slice(a * GENOME, b * GENOME), signs.slice(a, b)));
+    }
+    const parts = await Promise.all(jobs), out = new Float64Array(n);
+    let k = 0;
+    for (const p of parts) { out.set(p, k); k += p.length; }
+    return out;
+  }
+
+  // ---------- the evolution strategy ----------
+  const LR = 0.005, DECAY = 0.005, SAVE_KEY = 'neurogenesis-walker-v1';
+  let run;
+  function fresh() {
+    return { mean: Float64Array.from(starter), m: new Float64Array(GENOME), v: new Float64Array(GENOME), gen: 0, tested: 0,
+      history: [], champions: [], best: { score: -Infinity, genome: Float64Array.from(starter), gen: 0 } };
+  }
+  let running = false, busy = false;
+
+  async function generation() {
+    const pop = +$('pop').value, sigma = +$('sigma').value, half = pop / 2;
+    const t0 = performance.now();
+    const eps = new Float64Array(half * GENOME);
+    for (let i = 0; i < eps.length; i++) eps[i] = normal();
+    const genomes = new Float64Array(pop * GENOME);
+    for (let k = 0; k < half; k++) for (let i = 0; i < GENOME; i++) {
+      const e = sigma * eps[k * GENOME + i];
+      genomes[k * GENOME + i] = run.mean[i] + e;               // mirrored pairs: +ε and −ε
+      genomes[(k + half) * GENOME + i] = run.mean[i] - e;
+    }
+    const sign = rand() < 0.5 ? 1 : -1;                        // which way the starting nudge goes
+    const scores = await testAll(genomes.slice(), new Int8Array(pop).fill(sign));
+    // ranks instead of raw scores, centred on zero
+    const order = Array.from(scores.keys()).sort((a, b) => scores[a] - scores[b]);
+    const rank = new Float64Array(pop);
+    order.forEach((idx, r) => { rank[idx] = r / (pop - 1) - 0.5; });
+    run.gen++;
+    for (let i = 0; i < GENOME; i++) {
+      let g = 0;
+      for (let k = 0; k < half; k++) g += (rank[k] - rank[k + half]) * eps[k * GENOME + i];
+      g = -g / (pop * sigma) + DECAY * run.mean[i];
+      run.m[i] = 0.9 * run.m[i] + 0.1 * g;
+      run.v[i] = 0.999 * run.v[i] + 0.001 * g * g;
+      run.mean[i] -= LR * (run.m[i] / (1 - 0.9 ** run.gen)) / (Math.sqrt(run.v[i] / (1 - 0.999 ** run.gen)) + 1e-8);
+    }
+    let top = 0;
+    for (let k = 1; k < pop; k++) if (scores[k] > scores[top]) top = k;
+    const champion = genomes.slice(top * GENOME, (top + 1) * GENOME);
+    // re-test the generation's best with the nudge both ways, so luck doesn't decide
+    const twice = new Float64Array(2 * GENOME);
+    twice.set(champion, 0); twice.set(champion, GENOME);
+    const retest = await testAll(twice, Int8Array.from([1, -1]));
+    const test = (retest[0] + retest[1]) / 2;
+    run.tested += pop + 2;
+    let avg = 0;
+    for (const s of scores) avg += s;
+    avg /= pop;
+    const better = test > run.best.score;
+    if (better) run.best = { score: test, genome: champion, gen: run.gen };
+    run.champions[run.gen] = new Float32Array(champion);
+    run.history.push({ gen: run.gen, top: scores[top], avg, test, best: run.best.score });
+    const secs = (performance.now() - t0) / 1000;
+    $('rate').textContent = `${Math.round((pop + 2) / secs)} per s`;
+    if ($('follow').value === 'latest') watch(champion, `Generation ${run.gen}'s best`, run.gen, false);
+    else if (better) watch(champion, `Best so far · generation ${run.gen}`, run.gen, false);
+    if (run.gen % 5 === 0) save();
+    showReadings();
+    drawChart();
+  }
+
+  async function loop() {
+    if (busy) return;
+    busy = true;
+    while (running) {
+      await generation();
+      await new Promise(r => setTimeout(r, 0));
+    }
+    busy = false;
+  }
+
+  function showReadings() {
+    const last = run.history[run.history.length - 1];
+    $('gen').textContent = run.gen;
+    $('best').textContent = run.history.length ? `${run.best.score.toFixed(2)} m` : '–';
+    $('avg').textContent = last ? `${last.avg.toFixed(2)} m` : '–';
+    $('tested').textContent = run.tested.toLocaleString();
+  }
+
+  function setRunning(on) {
+    running = on;
+    $('run').textContent = on ? 'Pause' : (run.gen ? 'Continue' : 'Evolve');
+    $('status').textContent = on
+      ? `Evolving with ${pool.length || 1} ${pool.length === 1 ? 'worker' : 'workers'}. The stage switches to each new best walker after the current walk.`
+      : (run.gen ? 'Paused. Continue whenever you like; progress is kept in this browser.' : 'Press Evolve. Each generation, every creature grows from one cell and gets 20 seconds to walk right.');
+    if (on) loop(); else save();
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        gen: run.gen, tested: run.tested, mean: toB64(run.mean), m: toB64(run.m), v: toB64(run.v),
+        best: { score: run.best.score, gen: run.best.gen, genome: toB64(run.best.genome) },
+        history: run.history.map(h => [h.gen, h.top, h.avg, h.test, h.best]),
+        pop: $('pop').value, sigma: $('sigma').value,
+      }));
+    } catch (err) { /* storage unavailable: progress lasts until the page closes */ }
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!d || !d.gen) return null;
+      const r = fresh();
+      r.gen = d.gen; r.tested = d.tested; r.mean = fromB64(d.mean); r.m = fromB64(d.m); r.v = fromB64(d.v);
+      r.best = { score: d.best.score, gen: d.best.gen, genome: fromB64(d.best.genome) };
+      r.history = d.history.map(([gen, top, avg, test, best]) => ({ gen, top, avg, test, best }));
+      r.champions[r.best.gen] = new Float32Array(r.best.genome);
+      $('pop').value = d.pop; $('sigma').value = d.sigma;
+      return r;
+    } catch (err) { return null; }
+  }
+
+  // ---------- the stage ----------
+  const stage = $('stage'), sctx = stage.getContext('2d');
+  const view = { genome: null, label: '', gen: 0, growth: [], body: null, brain: null, sk: null, life: null,
+    phase: 'grow', t: 0, acc: 0, glow: new Float64Array(N), queued: null, cam: 0 };
+  let colours = {};
+  function readColours() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ['stage', 'ink', 'muted', 'accent', 'fire', 'bone', 'bone-edge', 'muscle', 'muscle-idle', 'ground', 'grid', 'line', 'panel'])
+      colours[k] = cs.getPropertyValue('--' + k).trim();
+    colours.mono = cs.getPropertyValue('--mono').trim() || 'monospace';
+    colours.body = cs.getPropertyValue('--body').trim() || 'sans-serif';
+  }
+  readColours();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColours(); drawChart(); });
+  new MutationObserver(() => { readColours(); drawChart(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  function watch(genome, label, gen, now) {
+    view.queued = { genome: Float64Array.from(genome), label, gen };
+    if (now || !view.genome) begin();
+  }
+  function begin() {
+    const { genome, label, gen } = view.queued;
+    view.queued = null;
+    view.genome = genome; view.label = label; view.gen = gen;
+    view.growth = grow(genome, true).map(s => {
+      const body = readBody(s);
+      return { body, sk: skeleton(body), brain: readBrain(s, body, genome) };
+    });
+    const last = view.growth[view.growth.length - 1];
+    view.body = last.body; view.brain = last.brain; view.sk = last.sk;
+    view.life = last.body.cells >= 3 ? new Life(last.body, last.brain, 1) : null;
+    view.phase = 'grow'; view.t = 0; view.acc = 0; view.glow.fill(0);
+    view.cam = view.life ? view.life.centreX() : 0;
+    $('what').textContent = label;
+    const motors = view.sk.joints.filter(j => j.bend !== 0), wired = motors.filter(j => view.body.nerve[j.p]);
+    $('body').textContent = `${view.body.cells} cells, ${view.sk.joints.length} joints`;
+    $('nerves').textContent = `${view.body.nerves} cells, ${view.brain.from.length} synapses`;
+    $('body').title = `${motors.length} muscle joints, ${wired.length} with a nerve`;
+  }
+
+  function lerp(a, b, t) {
+    const pa = a.match(/\w\w/g).map(h => parseInt(h, 16)), pb = b.match(/\w\w/g).map(h => parseInt(h, 16));
+    return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * Math.min(1, Math.max(0, t)))).join(',')})`;
+  }
+
+  // Draw one creature: x is joint positions in metres (2 per cell), at(x, y) turns metres into pixels.
+  function drawCreature(ctx, x, at, scale, body, sk, brain, act, glow) {
+    const R = RADIUS * scale, cell = CELL * scale;
+    const linked = new Set(sk.links.map(([i, j]) => i * N + j));
+    const squares = [];
+    for (let r = 0; r < H - 1; r++) for (let c = 0; c < W - 1; c++) {
+      const tl = r * W + c, tr = tl + 1, bl = tl + W, br = bl + 1;
+      if (linked.has(tl * N + tr) && linked.has(bl * N + br) && linked.has(tl * N + bl) && linked.has(tr * N + br)) squares.push([tl, tr, br, bl]);
+    }
+    const P = i => at(x[2 * i], x[2 * i + 1]);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [colour, extra] of [[colours['bone-edge'], 2.4], [colours.bone, 0]]) {   // outline, then fill
+      ctx.strokeStyle = colour; ctx.fillStyle = colour;
+      ctx.lineWidth = 2 * R + extra;
+      ctx.beginPath();
+      for (const [i, j] of sk.links) { const a = P(i), b = P(j); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      ctx.stroke();
+      for (const q of squares) {
+        ctx.beginPath();
+        q.forEach((i, n) => { const p = P(i); n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      for (let i = 0; i < N; i++) if (body.alive[i]) {
+        const p = P(i);
+        ctx.beginPath(); ctx.arc(p[0], p[1], R + extra / 2, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    // muscles: a band across each muscle joint, on the side that shortens as it pulls
+    for (const j of sk.joints) {
+      if (!j.bend) continue;
+      const ux = x[2 * j.a] - x[2 * j.p], uy = x[2 * j.a + 1] - x[2 * j.p + 1];
+      const vx = x[2 * j.c] - x[2 * j.p], vy = x[2 * j.c + 1] - x[2 * j.p + 1];
+      const lu = Math.hypot(ux, uy) || 1, lv = Math.hypot(vx, vy) || 1, side = Math.sign(j.bend), off = RADIUS * 0.75;
+      const m1 = [x[2 * j.p] + 0.55 * ux + off * side * uy / lu, x[2 * j.p + 1] + 0.55 * uy - off * side * ux / lu];
+      const m2 = [x[2 * j.p] + 0.55 * vx - off * side * vy / lv, x[2 * j.p + 1] + 0.55 * vy + off * side * vx / lv];
+      const k = act ? act[j.p] : 0, wired = body.nerve[j.p];
+      ctx.strokeStyle = wired ? lerp(colours['muscle-idle'], colours.muscle, 0.35 + k * 1.6) : colours['muscle-idle'];
+      ctx.lineWidth = Math.max(R * (0.75 + 0.9 * k), 2);
+      const a = at(m1[0], m1[1]), b = at(m2[0], m2[1]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    for (let i = 0; i < N; i++) if (body.alive[i] && body.tissue[i] === 1) {
+      const p = P(i);
+      ctx.fillStyle = colours['bone-edge'];
+      ctx.beginPath(); ctx.arc(p[0], p[1], R * 0.42, 0, 2 * Math.PI); ctx.fill();
+    }
+    // the nervous system on top: fibres, nerve cells, and a green flash for each one firing
+    ctx.strokeStyle = colours.accent; ctx.lineWidth = Math.max(1.4, cell * 0.06); ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    const drawn = new Set();
+    for (let k = 0; k < brain.from.length; k++) {
+      const i = brain.from[k], j = brain.to[k], pair = Math.min(i, j) * N + Math.max(i, j);
+      if (drawn.has(pair)) continue;   // draw each pair once
+      drawn.add(pair);
+      const a = P(i), b = P(j);
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < N; i++) {
+      if (!body.nerve[i]) continue;
+      const p = P(i), g = glow ? glow[i] : 0;
+      if (g > 0.02) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, g);
+        ctx.shadowColor = colours.fire; ctx.shadowBlur = cell * 0.5;
+        ctx.fillStyle = colours.fire;
+        ctx.beginPath(); ctx.arc(p[0], p[1], cell * (0.16 + 0.14 * g), 0, 2 * Math.PI); ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = colours.accent;
+      ctx.beginPath(); ctx.arc(p[0], p[1], cell * 0.12, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
+    const dpr = window.devicePixelRatio || 1;
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (stage.width !== Math.round(w * dpr) || stage.height !== Math.round(h * dpr)) { stage.width = Math.round(w * dpr); stage.height = Math.round(h * dpr); }
+    const ctx = sctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = colours.stage; ctx.fillRect(0, 0, w, h);
+    if (view.genome) step(dt * +$('speed').value, w, h, ctx);
+    requestAnimationFrame(frame);
+  }
+
+  function step(dt, w, h, ctx) {
+    const scale = Math.min(w / 2.6, h / 1.25);
+    for (let i = 0; i < N; i++) view.glow[i] = Math.max(0, view.glow[i] - dt * 5);
+    if (view.phase === 'grow') {
+      view.t += dt;
+      const k = Math.min(GROW_STEPS - 1, Math.floor(view.t / 0.07));
+      const g = view.growth[k];
+      const cx = w / 2 - (W - 1) * CELL * scale / 2, top = h / 2 - (H - 1) * CELL * scale / 2;
+      const at = (X, Y) => [cx + X * scale, top + ((H - 1) * CELL - Y) * scale];
+      ctx.strokeStyle = colours.grid; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let r = 0; r < H; r++) { const a = at(0, r * CELL), b = at((W - 1) * CELL, r * CELL); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      for (let c = 0; c < W; c++) { const a = at(c * CELL, 0), b = at(c * CELL, (H - 1) * CELL); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      ctx.stroke();
+      drawCreature(ctx, HOME, at, scale, g.body, g.sk, g.brain, null, null);
+      $('phase').textContent = `growing · step ${k + 1} of ${GROW_STEPS}`;
+      if (view.t > GROW_STEPS * 0.07 + 0.7) { view.phase = view.life ? 'walk' : 'rest'; view.t = 0; }
+      return;
+    }
+    const life = view.life;
+    if (view.phase === 'walk') {
+      view.acc += dt / DT;
+      while (view.acc >= 1 && life.tick < LIFE_TICKS) {
+        life.step();
+        for (let i = 0; i < N; i++) if (life.spikes[i]) view.glow[i] = 1;
+        view.acc -= 1;
+      }
+      if (life.tick >= LIFE_TICKS) { view.phase = 'rest'; view.t = 0; }
+    } else {
+      view.t += dt;
+      if (view.t > 2) {
+        if (view.queued) begin();
+        else if (view.life) { view.life = new Life(view.body, view.brain, 1); view.phase = 'walk'; view.acc = 0; }
+        return;
+      }
+    }
+    if (!life) {
+      $('phase').textContent = 'this growth rule grew no body';
+      return;
+    }
+    view.cam += (life.centreX() - view.cam) * Math.min(1, dt * 3);
+    const ground = h - Math.max(34, h * 0.12);
+    const at = (X, Y) => [w / 2 + (X - view.cam) * scale, ground - Y * scale];
+    // ground, a mark every half metre, and where it started
+    ctx.strokeStyle = colours.ground; ctx.fillStyle = colours.muted; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, ground); ctx.lineTo(w, ground); ctx.stroke();
+    ctx.lineWidth = 1; ctx.font = `11px ${colours.mono}`;
+    ctx.textAlign = 'center';
+    const left = view.cam - w / 2 / scale, right = view.cam + w / 2 / scale;
+    for (let m = Math.floor((left - life.startX) * 2); m <= Math.ceil((right - life.startX) * 2); m++) {
+      const X = life.startX + m / 2, px = at(X, 0)[0];
+      ctx.beginPath(); ctx.moveTo(px, ground); ctx.lineTo(px, ground + (m % 2 ? 4 : 8)); ctx.stroke();
+      if (m % 2 === 0) ctx.fillText(`${m / 2} m`, px, ground + 20);
+    }
+    const sx = at(life.startX, 0)[0];
+    ctx.strokeStyle = colours.fire; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(sx, ground - 22); ctx.lineTo(sx, ground); ctx.stroke();
+    drawCreature(ctx, life.x, at, scale, view.body, view.sk, view.brain, life.act, view.glow);
+    // distance so far
+    ctx.textAlign = 'left'; ctx.fillStyle = colours.ink;
+    ctx.font = `600 15px ${colours.mono}`;
+    ctx.fillText(`${life.walked >= 0 ? '+' : '−'}${Math.abs(life.walked).toFixed(2)} m`, 14, 24);
+    ctx.font = `12px ${colours.mono}`;
+    ctx.fillStyle = colours.muted;
+    ctx.fillText(`${(life.tick * DT).toFixed(1)} s of 20`, 14, 42);
+    if (life.fallen) { ctx.fillStyle = colours.muscle; ctx.fillText('fell over: scores 0', 14, 60); }
+    $('phase').textContent = view.phase === 'walk' ? 'walking' : 'walk finished';
+  }
+
+  // ---------- the chart ----------
+  const chart = $('chart'), cctx = chart.getContext('2d');
+  let hover = null, selected = null;
+  function chartLayout() {
+    const w = chart.clientWidth, h = chart.clientHeight, pad = { l: 46, r: 14, t: 10, b: 26 };
+    const hist = run.history, n = Math.max(10, hist.length);
+    let lo = 0, hi = 0.2;
+    for (const p of hist) { lo = Math.min(lo, p.avg, p.test, p.best); hi = Math.max(hi, p.top, p.test, p.best); }
+    hi *= 1.08;
+    const X = g => pad.l + (g - 1) / Math.max(1, n - 1) * (w - pad.l - pad.r);
+    const Y = v => pad.t + (hi - v) / (hi - lo) * (h - pad.t - pad.b);
+    return { w, h, pad, n, lo, hi, X, Y };
+  }
+  function niceStep(span) {
+    const raw = span / 4, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
+    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * mag;
+  }
+  function drawChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const L = chartLayout();
+    if (chart.width !== Math.round(L.w * dpr) || chart.height !== Math.round(L.h * dpr)) { chart.width = Math.round(L.w * dpr); chart.height = Math.round(L.h * dpr); }
+    const ctx = cctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L.w, L.h);
+    const mono = colours.mono;
+    ctx.font = `11px ${mono}`; ctx.fillStyle = colours.muted; ctx.strokeStyle = colours.grid; ctx.lineWidth = 1;
+    const st = niceStep(L.hi - L.lo);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let v = Math.ceil(L.lo / st) * st; v <= L.hi + 1e-9; v += st) {
+      const y = L.Y(v);
+      ctx.beginPath(); ctx.moveTo(L.pad.l, y); ctx.lineTo(L.w - L.pad.r, y); ctx.stroke();
+      ctx.fillText(`${+v.toFixed(3)} m`, L.pad.l - 6, y);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const gs = Math.max(1, niceStep(L.n - 1));
+    for (let g = 1; g <= L.n; g += (g === 1 ? gs - 1 || 1 : gs)) ctx.fillText(g, L.X(g), L.h - L.pad.b + 6);
+    const hist = run.history;
+    if (!hist.length) {
+      ctx.fillStyle = colours.muted; ctx.font = `14px ${colours.body}`; ctx.textBaseline = 'middle';
+      ctx.fillText('Each generation will add a point here.', (L.pad.l + L.w - L.pad.r) / 2, L.h / 2 - 8);
+      return;
+    }
+    const line = (key, colour, width, alpha) => {
+      ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      hist.forEach((p, n) => { const x = L.X(p.gen), y = L.Y(p[key]); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.globalAlpha = 1;
+    };
+    // area under best-so-far
+    ctx.fillStyle = colours.accent; ctx.globalAlpha = 0.09;
+    ctx.beginPath(); ctx.moveTo(L.X(hist[0].gen), L.Y(Math.max(L.lo, 0)));
+    hist.forEach(p => ctx.lineTo(L.X(p.gen), L.Y(p.best)));
+    ctx.lineTo(L.X(hist[hist.length - 1].gen), L.Y(Math.max(L.lo, 0))); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    line('avg', colours.muted, 1.5, 1);
+    line('test', colours.accent, 1, 0.45);
+    line('best', colours.accent, 2.5, 1);
+    const end = hist[hist.length - 1];
+    ctx.fillStyle = colours.accent;
+    ctx.beginPath(); ctx.arc(L.X(end.gen), L.Y(end.best), 3.5, 0, 2 * Math.PI); ctx.fill();
+    for (const [g, strong] of [[selected, true], [hover, false]]) {
+      if (!g || !hist[g - 1]) continue;
+      const p = hist[g - 1], x = L.X(g);
+      ctx.strokeStyle = strong ? colours.accent : colours.muted; ctx.lineWidth = 1; ctx.setLineDash(strong ? [] : [3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, L.pad.t); ctx.lineTo(x, L.h - L.pad.b); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = colours.accent;
+      ctx.beginPath(); ctx.arc(x, L.Y(p.test), 3, 0, 2 * Math.PI); ctx.fill();
+      if (!strong || g === hover) {
+        const label = `gen ${g} · best ${p.test.toFixed(2)} m · average ${p.avg.toFixed(2)} m`;
+        ctx.font = `12px ${mono}`;
+        const tw = ctx.measureText(label).width + 12, tx = Math.min(Math.max(x - tw / 2, L.pad.l), L.w - L.pad.r - tw);
+        ctx.fillStyle = colours.panel; ctx.strokeStyle = colours.line;
+        ctx.fillRect(tx, L.pad.t, tw, 20); ctx.strokeRect(tx, L.pad.t, tw, 20);
+        ctx.fillStyle = colours.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, tx + 6, L.pad.t + 10);
+      }
+    }
+  }
+  const genAt = e => {
+    const L = chartLayout(), r = chart.getBoundingClientRect();
+    const g = Math.round(1 + (e.clientX - r.left - L.pad.l) / (L.w - L.pad.l - L.pad.r) * (L.n - 1));
+    return g >= 1 && g <= run.history.length ? g : null;
+  };
+  chart.addEventListener('mousemove', e => { hover = genAt(e); drawChart(); });
+  chart.addEventListener('mouseleave', () => { hover = null; drawChart(); });
+  chart.addEventListener('click', e => {
+    const g = genAt(e);
+    if (!g) return;
+    selected = g;
+    const genome = run.champions[g];
+    if (genome) watch(genome, `Generation ${g}'s best`, g, true);
+    else $('status').textContent = `Generation ${g} is from an earlier visit, and only its scores were kept. The best walker was kept.`;
+    drawChart();
+  });
+  chart.addEventListener('keydown', e => {
+    if (!run.history.length) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      selected = Math.min(run.history.length, Math.max(1, (selected || run.history.length) + (e.key === 'ArrowLeft' ? -1 : 1)));
+      drawChart(); e.preventDefault();
+    } else if (e.key === 'Enter' && selected && run.champions[selected]) watch(run.champions[selected], `Generation ${selected}'s best`, selected, true);
+  });
+  new ResizeObserver(() => drawChart()).observe(chart);
+
+  // ---------- controls ----------
+  $('run').addEventListener('click', () => setRunning(!running));
+  $('reset').addEventListener('click', () => {
+    running = false;
+    const wait = () => busy ? setTimeout(wait, 50) : (() => {
+      run = fresh(); selected = null;
+      try { localStorage.removeItem(SAVE_KEY); } catch (err) { /* nothing stored */ }
+      setRunning(false); showReadings(); drawChart(); $('rate').textContent = '–';
+      watch(starter, 'Starter creature', 0, true);
+    })();
+    wait();
+  });
+  $('follow').addEventListener('change', () => {
+    if ($('follow').value === 'best') watch(run.best.genome, run.best.gen ? `Best so far · generation ${run.best.gen}` : 'Starter creature', run.best.gen, true);
+  });
+  $('copy').addEventListener('click', async () => {
+    const text = toB64(run.best.genome);
+    try { await navigator.clipboard.writeText(text); $('copied').textContent = 'Copied. Paste it into best.txt.'; }
+    catch (err) { $('copied').textContent = 'Copying was blocked here. Select the text below and copy it.'; showGenomeText(text); }
+  });
+  function showGenomeText(text) {
+    let ta = document.getElementById('genomeText');
+    if (!ta) {
+      ta = document.createElement('textarea'); ta.id = 'genomeText'; ta.rows = 4; ta.readOnly = true;
+      ta.style.cssText = 'width:100%;margin-top:10px;font:12px var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px';
+      $('copy').parentElement.after(ta);
+    }
+    ta.value = text; ta.focus(); ta.select();
+  }
+
+  // ---------- start ----------
+  run = load();
+  if (run) {
+    $('status').textContent = `Picked up where you left off: generation ${run.gen}. Press Continue to keep evolving.`;
+    $('run').textContent = 'Continue';
+    watch(run.best.genome, `Best so far · generation ${run.best.gen}`, run.best.gen, true);
+  } else {
+    run = fresh();
+    watch(starter, 'Starter creature', 0, true);
+  }
+  showReadings();
+  drawChart();
+  requestAnimationFrame(frame);
+})();
+</script>
