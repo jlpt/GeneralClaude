@@ -1,19 +1,21 @@
 """Growing a creature: one cellular automaton grows a jointed body and, inside it, a nervous system.
 
-Every cell of a small grid carries C numbers (its state). The genome is the growth rule: a tiny neural
+Every cell of a fine grid carries C numbers (its state). The genome is the growth rule: a tiny neural
 network that every cell applies on every step, reading its own state and its 8 neighbours' states and
-writing a change to its own. Growth starts from a single living cell. When growth ends, each cell's
-numbers are read off as:
+writing a change to its own. Growth starts from a single living cell. The body is built from 3 × 3
+patches of fine cells, so nerve cells are a third the size of the body's joints and hundreds of them fit
+in a body. When growth ends, the cells' numbers are read off as:
 
-  - alive or empty, and which tissue it is: bone (a rigid joint) or muscle (a joint that bends), and for
-    a muscle which way and how far it bends
-  - whether a nerve cell also grows inside it, and if so its spiking threshold and bias, how strongly
-    it feels touch and the pacemaker rhythm, how strongly it sends to and receives from neighbouring
-    nerve cells, and how hard it drives the joint it sits in
+  - for each 3 × 3 patch: whether it is part of the body (at least 5 of its 9 cells alive), and which
+    tissue it is, bone (a rigid joint) or muscle (a joint that bends), and for a muscle which way and how
+    far it bends
+  - for each fine cell: whether a nerve cell grows there, and if so its spiking threshold and bias, how
+    strongly it feels touch and the pacemaker rhythm, how strongly it sends to and receives from
+    neighbouring nerve cells, and how hard it drives the joint whose patch it sits in
 
-Every living cell is a joint of the skeleton, joined by a bone to its parent: the neighbour one step
-nearer the seed. So the bones form a tree branching out from the seed, and a thin line of cells is a limb
-whose length and joints the growth rule decides.
+Every patch in the body is a joint of the skeleton, joined by a bone to its parent: the neighbouring
+patch one step nearer the seed. So the bones form a tree branching out from the seed, and a thin line of
+patches is a limb whose length and joints the growth rule decides.
 
 Only nerve cells are neurons, and a signal can only travel from a nerve cell to a nerve cell touching it.
 So a muscle joint bends only if a nerve reaches it and fires, a foot's touch matters only if a nerve
@@ -32,12 +34,16 @@ import jax.numpy as jnp
 import numpy as np
 from jax.flatten_util import ravel_pytree
 
-H, W = 10, 14            # the grid the creature grows on (rows, columns); row 0 is the top
-N = H * W                # cells: each is one joint of the skeleton, and may also hold one nerve cell
+H, W = 10, 14            # the body's grid of joints (rows, columns); row 0 is the top
+N = H * W
+FINE = 3                 # each joint is a FINE × FINE patch of the grid that grows
+HF, WF = H * FINE, W * FINE
+NF = HF * WF             # fine cells: any of them can grow a nerve cell
 C = 16                   # numbers each cell carries
 HIDDEN = 32              # size of the growth rule's hidden layer
-GROW_STEPS = 32
-SEED = (4, 7)            # where the first living cell is (row, column)
+GROW_STEPS = 40
+SEED = (4, 7)            # the joint the creature grows from
+SEED_FINE = (SEED[0] * FINE + FINE // 2, SEED[1] * FINE + FINE // 2)   # the first living cell
 
 # What each channel means once growth has finished.
 ALIVE = 0
@@ -54,21 +60,6 @@ FREE = 12                                    # channels 12–15 have no fixed me
 TISSUES = ('bone', 'muscle')
 OFFSETS = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0)]
 DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))   # up, down, left, right: the order a cell picks its parent in
-
-
-def _neighbour_pairs():
-    """Every (cell i, neighbour j, which offset) pair inside the grid, for wiring."""
-    pairs = []
-    for r in range(H):
-        for c in range(W):
-            for o, (dy, dx) in enumerate(OFFSETS):
-                rr, cc = r + dy, c + dx
-                if 0 <= rr < H and 0 <= cc < W:
-                    pairs.append((r * W + c, rr * W + cc, o))
-    return tuple(np.array(a, dtype=np.int32) for a in zip(*pairs))
-
-
-PAIR_I, PAIR_J, PAIR_O = _neighbour_pairs()
 
 
 # ---------- the genome ----------
@@ -98,7 +89,7 @@ def flatten(params):
 def _shifted(x):
     """The state of each cell's 8 neighbours and itself, with empty space beyond the grid edge."""
     p = jnp.pad(x, ((1, 1), (1, 1), (0, 0)))
-    return {(dy, dx): p[1 + dy:1 + dy + H, 1 + dx:1 + dx + W] for dy in (-1, 0, 1) for dx in (-1, 0, 1)}
+    return {(dy, dx): p[1 + dy:1 + dy + HF, 1 + dx:1 + dx + WF] for dy in (-1, 0, 1) for dx in (-1, 0, 1)}
 
 
 def _alive_nearby(n):
@@ -120,9 +111,9 @@ def grow_step(params, s):
 
 
 def seed_state():
-    s = jnp.zeros((H, W, C))
-    s = s.at[SEED[0], SEED[1], ALIVE].set(1.0)
-    return s.at[SEED[0], SEED[1], FREE:].set(1.0)
+    s = jnp.zeros((HF, WF, C))
+    s = s.at[SEED_FINE[0], SEED_FINE[1], ALIVE].set(1.0)
+    return s.at[SEED_FINE[0], SEED_FINE[1], FREE:].set(1.0)
 
 
 def grow(params, steps=GROW_STEPS):
@@ -141,24 +132,37 @@ def grow_history(params, steps=GROW_STEPS):
 # ---------- reading off the body and the nervous system ----------
 
 class Body(NamedTuple):
-    alive: jnp.ndarray     # (N,) bool: part of the creature
+    alive: jnp.ndarray     # (N,) bool: this joint is part of the creature
     tissue: jnp.ndarray    # (N,) int: 0 bone, 1 muscle
-    nerve: jnp.ndarray     # (N,) bool: a nerve cell grows here too
-    parent: jnp.ndarray    # (N,) int: the neighbour one step nearer the seed (the seed is its own parent)
+    parent: jnp.ndarray    # (N,) int: the neighbouring joint one step nearer the seed (the seed is its own parent)
     bend: jnp.ndarray      # (N,) −1 to 1: which way and how far a muscle bends its joint
+    nerve: jnp.ndarray     # (HF, WF) bool: a nerve cell grows in this fine cell
 
 
 class Brain(NamedTuple):
-    weights: jnp.ndarray   # (N, N): weights[i, j] is the synapse from nerve cell i to nerve cell j
-    threshold: jnp.ndarray # (N,)
-    bias: jnp.ndarray      # (N,)
-    gains: jnp.ndarray     # (N, 2): response to the pacemaker and to touch
-    junction: jnp.ndarray  # (N,) 0 to 1: how hard a nerve cell drives the joint it sits in
+    weights: jnp.ndarray   # (HF, WF, 8): synapse from each nerve cell to its neighbour in each of the 8 directions
+    threshold: jnp.ndarray # (HF, WF)
+    bias: jnp.ndarray      # (HF, WF)
+    gains: jnp.ndarray     # (HF, WF, 2): response to the pacemaker and to touch
+    junction: jnp.ndarray  # (HF, WF) 0 to 1: how hard a nerve cell drives the joint whose patch it sits in
+
+
+def patches(x):
+    """(HF, WF, ...) → (H, W, FINE * FINE, ...): the fine cells of each joint's patch."""
+    rest = x.shape[2:]
+    x = x.reshape((H, FINE, W, FINE) + rest)
+    return jnp.moveaxis(x, 2, 1).reshape((H, W, FINE * FINE) + rest)
+
+
+def spread(x):
+    """(H, W, ...) → (HF, WF, ...): each joint's value copied to every fine cell of its patch."""
+    return jnp.repeat(jnp.repeat(x, FINE, axis=0), FINE, axis=1)
 
 
 def read_body(s):
-    alive = s[..., ALIVE] > 0.1
-    # Steps from the seed to every living cell, moving side by side (not corner to corner). Cells that
+    alive_fine = s[..., ALIVE] > 0.1
+    alive = jnp.sum(patches(alive_fine), axis=-1) >= 5          # (H, W): a joint needs 5 of its 9 cells
+    # Steps from the seed to every living joint, moving side by side (not corner to corner). Joints that
     # can't be reached are not part of the creature.
     far = N + 1
     start = jnp.where(alive & (jnp.zeros((H, W), bool).at[SEED].set(True)), 0, far)
@@ -167,34 +171,51 @@ def read_body(s):
         p = jnp.pad(d, 1, constant_values=far)
         return [p[1 + dy:1 + dy + H, 1 + dx:1 + dx + W] for dy, dx in DIRS]
 
-    def spread(_, d):
+    def step(_, d):
         return jnp.where(alive, jnp.minimum(d, jnp.min(jnp.stack(neighbours(d)), axis=0) + 1), far)
 
-    steps = jax.lax.fori_loop(0, N, spread, start)
+    steps = jax.lax.fori_loop(0, N, step, start)
     connected = steps < far
-    # Each cell's parent is its first neighbour (up, down, left, right) one step nearer the seed.
+    # Each joint's parent is its first neighbour (up, down, left, right) one step nearer the seed.
     nearer = jnp.stack([n == steps - 1 for n in neighbours(steps)])          # (4, H, W)
     shift = jnp.array([dy * W + dx for dy, dx in DIRS])[jnp.argmax(nearer, axis=0)]
     index = jnp.arange(N).reshape(H, W)
     parent = jnp.where(connected & (steps > 0), index + shift, index)
-    tissue = jnp.argmax(s[..., [BONE, MUSCLE]], axis=-1)
-    nerve = connected & (s[..., NERVE] > 0)
-    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N), nerve=nerve.reshape(N),
-                parent=parent.reshape(N), bend=jnp.tanh(s[..., BEND]).reshape(N))
+    tissue = jnp.sum(patches(s[..., MUSCLE] - s[..., BONE]), axis=-1) > 0
+    bend = jnp.tanh(jnp.mean(patches(s[..., BEND]), axis=-1))
+    nerve = alive_fine & (s[..., NERVE] > 0) & spread(connected)
+    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N).astype(jnp.int32), parent=parent.reshape(N),
+                bend=bend.reshape(N), nerve=nerve)
+
+
+def _neighbour(x, dy, dx):
+    """Each cell's neighbour at (dy, dx), with 0 beyond the grid edge."""
+    p = jnp.pad(x, ((1, 1), (1, 1)))
+    return p[1 + dy:1 + dy + HF, 1 + dx:1 + dx + WF]
 
 
 def read_brain(s, body, params):
-    cell = s.reshape(N, C)
     m = body.nerve.astype(jnp.float32)
-    w = 1.5 * jnp.tanh(cell[PAIR_I, SEND] * cell[PAIR_J, RECV] + params['K'][PAIR_O])
-    w = w * m[PAIR_I] * m[PAIR_J]                 # synapses only join nerve cells that touch
+    send, recv = s[..., SEND], s[..., RECV]
+    # synapses only join nerve cells that touch
+    weights = jnp.stack([1.5 * jnp.tanh(send * _neighbour(recv, dy, dx) + params['K'][o]) * m * _neighbour(m, dy, dx)
+                         for o, (dy, dx) in enumerate(OFFSETS)], axis=-1)
     return Brain(
-        weights=jnp.zeros((N, N)).at[PAIR_I, PAIR_J].set(w),
-        threshold=0.5 + jax.nn.sigmoid(cell[:, THRESH]),
-        bias=0.3 * jnp.tanh(cell[:, BIAS]) * m,
-        gains=1.5 * jnp.tanh(cell[:, [PACE, TOUCH]]) * m[:, None],
-        junction=jax.nn.sigmoid(2 * cell[:, JUNCTION]) * m,
+        weights=weights,
+        threshold=0.5 + jax.nn.sigmoid(s[..., THRESH]),
+        bias=0.3 * jnp.tanh(s[..., BIAS]) * m,
+        gains=1.5 * jnp.tanh(s[..., [PACE, TOUCH]]) * m[..., None],
+        junction=jax.nn.sigmoid(2 * s[..., JUNCTION]) * m,
     )
+
+
+def synapse_input(brain, spikes):
+    """The current each nerve cell gets from the spikes of the nerve cells touching it."""
+    total = jnp.zeros((HF, WF))
+    for o, (dy, dx) in enumerate(OFFSETS):
+        out = jnp.pad(spikes * brain.weights[..., o], 1)       # sent toward the neighbour at (dy, dx)
+        total = total + out[1 - dy:1 - dy + HF, 1 - dx:1 - dx + WF]
+    return total
 
 
 def develop(genome):
@@ -209,6 +230,12 @@ def describe(body):
     """A text picture of a body: . empty, B bone, M muscle joint; lower case where a nerve runs."""
     alive = np.asarray(body.alive).reshape(H, W)
     tissue = np.asarray(body.tissue).reshape(H, W)
-    nerve = np.asarray(body.nerve).reshape(H, W)
-    letter = lambda r, c: ('bm' if nerve[r, c] else 'BM')[tissue[r, c]] if alive[r, c] else '.'
+    nerves = np.asarray(patches(body.nerve)).sum(-1)
+    letter = lambda r, c: ('bm' if nerves[r, c] else 'BM')[tissue[r, c]] if alive[r, c] else '.'
     return '\n'.join(''.join(letter(r, c) for c in range(W)) for r in range(H))
+
+
+def describe_nerves(body):
+    """The fine grid: . empty, o a nerve cell."""
+    nerve = np.asarray(body.nerve)
+    return '\n'.join(''.join('o' if nerve[r, c] else '.' for c in range(WF)) for r in range(HF))

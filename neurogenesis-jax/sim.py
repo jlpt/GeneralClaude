@@ -6,9 +6,9 @@ tree branching out from the seed. Neighbouring cells that are both bone are join
 of bone is solid. At each cell, the angle between the bone to its parent and the bone to each of its
 children is held where it grew:
     - a bone cell holds it rigidly
-    - a muscle cell is a hinge: when the nerve cell inside it fires, the joint bends by up to BEND_RANGE,
-      the way the cell's bend number says, and it straightens again when the nerve goes quiet. A muscle
-      joint with no nerve in it never moves.
+    - a muscle cell is a hinge: when the nerve cells in its patch fire, the joint bends by up to
+      BEND_RANGE, the way the cell's bend number says, and it straightens again when they go quiet. A
+      muscle joint with no nerve in it never moves.
 So a thin line of cells is a limb, stiff along its bone cells and bending at its muscle cells.
 
 Bones and joints are solved with position-based dynamics. They're split into batches in which no two
@@ -19,14 +19,15 @@ Coulomb's law: the body's weight is shared among the joints touching the ground,
 sticks unless pushed hard, so to travel a creature has to lift and push.
 
 Nervous system. Only nerve cells are neurons: leaky integrate-and-fire, each wired to the nerve cells
-touching it. Each tick:
-    charge = LEAK * charge + bias + senses + spikes @ weights
+touching it. They live on the fine grid, 9 to a joint. Each tick:
+    charge = LEAK * charge + bias + senses + input from the spikes of touching nerve cells
 and a nerve cell spikes (and resets) when its charge reaches its threshold. A muscle joint follows the
-recent firing rate of the nerve cell inside it, times that nerve cell's junction strength, with about
-a 0.2 s lag, as real muscle does.
+recent firing rate of the nerve cells in its patch, each times its junction strength, summed and divided
+by FIBRE (so one nerve running straight through a joint can drive it fully), with about a 0.2 s lag, as
+real muscle does.
 
 Senses. Each is a current into the nerve cells that can feel it, scaled by each one's gain for it:
-    touch      nerve cells in joints touching the ground
+    touch      nerve cells in the patch of a joint touching the ground
     pacemaker  every nerve cell: a steady rhythm, sin(2π · PACE_HZ · t), like the heart's pacemaker
 So a foot's touch only matters if a nerve carries the signal on to something.
 
@@ -45,7 +46,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from creature import DIRS, H, W, N, SEED, Body, Brain
+from creature import DIRS, FINE, H, HF, W, WF, N, SEED, Body, Brain, patches, spread, synapse_input
 
 # body physics
 CELL = 0.1                  # metres between neighbouring joints: the length of every bone
@@ -57,6 +58,7 @@ SUBSTEPS = 6                # physics steps per tick; joints get stiffer with sm
 ITERATIONS = 2              # passes over all bones and joints per substep; fewer, the starter's hips buckle
 BEND_RANGE = 1.2            # radians (about 70°) a fully active muscle bends its joint
 MUSCLE_RESPONSE = 0.15      # fraction of the way a muscle moves toward its drive each tick
+FIBRE = 3                   # firing nerve cells in a joint's patch needed to drive it fully
 STATIC_FRICTION, KINETIC_FRICTION = 1.2, 0.8
 
 # nervous system
@@ -120,9 +122,9 @@ def _angle(u, v):
 class State(NamedTuple):
     x: jnp.ndarray          # (N, 2) joint positions
     px: jnp.ndarray         # (N, 2) positions one substep ago (velocity = x − px)
-    charge: jnp.ndarray     # (N,)
-    spikes: jnp.ndarray     # (N,)
-    rate: jnp.ndarray       # (N,) recent firing rate
+    charge: jnp.ndarray     # (HF, WF)
+    spikes: jnp.ndarray     # (HF, WF)
+    rate: jnp.ndarray       # (HF, WF) recent firing rate
     act: jnp.ndarray        # (N,) how hard each muscle is pulling
     walked: jnp.ndarray     # metres walked to the right so far
     fallen: jnp.ndarray
@@ -160,7 +162,7 @@ class Setup(NamedTuple):
     """Everything about a creature that stays fixed during its life."""
     point_on: jnp.ndarray   # (N,) the joint belongs to the body
     bones: Skeleton
-    nerve: jnp.ndarray      # (N,) a nerve cell grows in this joint
+    nerve: jnp.ndarray      # (HF, WF) a nerve cell grows in this fine cell
     start_x: jnp.ndarray
     pose: jnp.ndarray       # (N, 2) the settled shape around its middle, to tell how far the body has turned
 
@@ -195,8 +197,8 @@ def start(body: Body, key):
                               (x, x - jnp.array([push, 0.0])))
     pose = (x - _middle(x, point_on)) * point_on[:, None]
     setup = setup._replace(start_x=centre_x(x, point_on), pose=pose)
-    zeros = jnp.zeros(N)
-    return setup, State(x, px, zeros, zeros, zeros, zeros, jnp.float32(0.0), jnp.bool_(False), jnp.int32(0))
+    fine = jnp.zeros((HF, WF))
+    return setup, State(x, px, fine, fine, fine, jnp.zeros(N), jnp.float32(0.0), jnp.bool_(False), jnp.int32(0))
 
 
 # ---------- one tick ----------
@@ -204,18 +206,19 @@ def start(body: Body, key):
 def senses(setup: Setup, state: State):
     touch = (state.x[:, 1] < RADIUS + 0.01) & setup.point_on
     pace = jnp.sin(2 * jnp.pi * PACE_HZ * state.tick * DT)
-    return pace, touch.astype(jnp.float32)
+    return pace, spread(touch.reshape(H, W)).astype(jnp.float32)       # felt by every fine cell of the patch
 
 
 def think(brain: Brain, state: State, nerve, pace, touch):
     g = brain.gains
-    current = brain.bias + g[:, 0] * pace + g[:, 1] * touch
-    charge = LEAK * state.charge + current + state.spikes @ brain.weights
+    current = brain.bias + g[..., 0] * pace + g[..., 1] * touch
+    charge = LEAK * state.charge + current + synapse_input(brain, state.spikes)
     spikes = ((charge >= brain.threshold) & nerve).astype(jnp.float32)
     charge = jnp.maximum(jnp.where(spikes > 0, 0.0, charge), -3.0)
     rate = 0.7 * state.rate + 0.3 * spikes
-    # a muscle joint follows the nerve cell inside it (junction is 0 where there's no nerve)
-    act = state.act + (rate * brain.junction - state.act) * MUSCLE_RESPONSE
+    # a muscle joint follows the nerve cells in its patch (junction is 0 where there's no nerve)
+    drive = jnp.minimum(jnp.sum(patches(rate * brain.junction), axis=-1) / FIBRE, 1.0).reshape(N)
+    act = state.act + (drive - state.act) * MUSCLE_RESPONSE
     return charge, spikes, rate, act
 
 

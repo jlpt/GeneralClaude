@@ -47,7 +47,17 @@ def unit(v):
     return v / (np.linalg.norm(v) + 1e-9)
 
 
-def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None):
+def nerve_positions(x, angle):
+    """Where each fine cell sits: its joint's position plus its place in the 3 × 3 patch, turned with the body."""
+    f = np.arange(cr.NF)
+    fr, fc = f // cr.WF, f % cr.WF
+    joint = (fr // cr.FINE) * cr.W + fc // cr.FINE
+    ox, oy = (fc % cr.FINE - 1) * sim.CELL / cr.FINE, -(fr % cr.FINE - 1) * sim.CELL / cr.FINE
+    c, s = np.cos(angle), np.sin(angle)
+    return x[joint] + np.stack([c * ox - s * oy, s * ox + c * oy], axis=1)
+
+
+def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None, angle=0.0):
     """Draw one creature. x is (N, 2) joint positions in metres; to_px turns a position into pixels."""
     alive = np.asarray(body.alive)
     tissue = np.asarray(body.tissue)
@@ -86,6 +96,7 @@ def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None):
     alpha = ImageChops.lighter(mask, edge)
     size = (x1 - x0, y1 - y0)
     img.paste(body_img.resize(size, Image.LANCZOS), (x0, y0), alpha.resize(size, Image.LANCZOS))
+    wired = np.asarray(cr.patches(body.nerve)).reshape(cr.N, -1).any(axis=1)      # a nerve reaches this joint
     # 2. muscles: a band across each muscle joint, on the side that shortens as it pulls
     d = ImageDraw.Draw(img)
     for j in np.flatnonzero(joint_on & (np.asarray(bones.joint_bend) != 0)):
@@ -99,7 +110,7 @@ def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None):
         m1 = x[p] + 0.55 * u + off * side * cw(unit(u))
         m2 = x[p] + 0.55 * v + off * side * ccw(unit(v))
         width = max(int(radius * (0.7 + 0.8 * k)), 2)
-        colour = mix(MUSCLE_SOFT, MUSCLE_HARD, k * 1.5) if body.nerve[p] else MUSCLE_IDLE
+        colour = mix(MUSCLE_SOFT, MUSCLE_HARD, k * 1.5) if wired[p] else MUSCLE_IDLE
         q1, q2 = to_px(*m1), to_px(*m2)
         d.line([q1, q2], fill=colour, width=width)
         for q in (q1, q2):
@@ -109,18 +120,24 @@ def draw_creature(img, x, to_px, body, bones, act, brain, spikes=None):
         cx, cy = pts[i]
         r = radius * 0.45
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=JOINT)
-    nerve = np.asarray(body.nerve)
-    weights = np.asarray(brain.weights)
-    wired = (weights != 0) | (weights.T != 0)
-    for i, j in zip(cr.PAIR_I, cr.PAIR_J):
-        if i < j and wired[i, j]:
-            d.line([tuple(pts[i]), tuple(pts[j])], fill=NERVE, width=2)
+    nerve = np.asarray(body.nerve).reshape(-1)
+    weights = np.asarray(brain.weights).reshape(cr.NF, -1)
+    spots = np.array([to_px(*p) for p in nerve_positions(x, angle)])
     for i in np.flatnonzero(nerve):
-        cx, cy = pts[i]
-        if spikes is not None and spikes[i] > 0:
-            r = cell_px * 0.3
+        r, c = i // cr.WF, i % cr.WF
+        for o, (dy, dx) in enumerate(cr.OFFSETS):
+            rr, cc = r + dy, c + dx
+            j = rr * cr.WF + cc
+            if 0 <= rr < cr.HF and 0 <= cc < cr.WF and j > i and nerve[j] and (weights[i, o] != 0 or weights[j, 7 - o] != 0):
+                d.line([tuple(spots[i]), tuple(spots[j])], fill=NERVE, width=1)
+    fine_px = cell_px / cr.FINE
+    fired = np.asarray(spikes).reshape(-1) if spikes is not None else np.zeros(cr.NF)
+    for i in np.flatnonzero(nerve):
+        cx, cy = spots[i]
+        if fired[i] > 0:
+            r = fine_px * 0.55
             d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=FIRE)
-        r = cell_px * 0.12
+        r = fine_px * 0.22
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=NERVE)
 
 
@@ -153,6 +170,7 @@ def life_frames(genome, nudge, seconds, every=2):
     body, brain = cr.develop(jnp.asarray(genome))
     setup, frames = jax.jit(sim.record, static_argnums=(3,))(body, brain, jax.random.PRNGKey(nudge), seconds)
     x, act, spikes, walked, fallen = (np.asarray(a) for a in frames)
+    angles = np.asarray(jax.vmap(lambda xt: sim.tilt(setup, xt))(frames[0]))
     on = np.asarray(setup.point_on)
     start_x = float(setup.start_x)
     ground_y = SIZE[1] - 60
@@ -175,7 +193,7 @@ def life_frames(genome, nudge, seconds, every=2):
         sx = px(start_x, 0)[0]
         d.line([(sx, ground_y - 24), (sx, ground_y)], fill=FIRE, width=3)
         fired = np.maximum(spikes[t], spikes[t - 1]) if t > 0 else spikes[t]    # frames skip every other tick
-        draw_creature(img, x[t], px, body, setup.bones, act[t], brain, fired)
+        draw_creature(img, x[t], px, body, setup.bones, act[t], brain, fired, angles[t])
         d.text((16, 14), f'walked {walked[t]:+.2f} m    {(t + 1) * sim.DT:4.1f} s', fill=INK, font=FONT)
         d.text((16, 32), 'violet = nerves, flashing green when they fire', fill=MUTED, font=FONT)
         if fallen[t]:
@@ -195,6 +213,7 @@ def main():
     genome = np.load(args.genome)
     body, _ = cr.develop(jnp.asarray(genome))
     print('Body (B bone, M muscle joint; lower case where a nerve runs):\n' + cr.describe(body))
+    print(f'{int(body.alive.sum())} joints, {int(body.nerve.sum())} nerve cells')
     frames, durations = [], []
     if not args.no_growth:
         grown = growth_frames(genome)

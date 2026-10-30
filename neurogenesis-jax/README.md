@@ -1,14 +1,17 @@
 # Neurogenesis (JAX)
 
 A creature grows from a single cell. One cellular automaton grows a **jointed body and, inside it, a
-nervous system**. Every living cell becomes a joint of a skeleton, joined by a bone to the neighbour it
-grew from, so thin lines of cells become limbs. Bone cells are rigid joints and muscle cells are hinges.
-Some cells also grow a nerve cell. Nerve cells are the only neurons, and a signal can only pass between
-nerve cells that touch, so **a joint only bends if a nerve reaches it and fires**. The growth rule
-decides limb lengths, where the joints are, where the nerves run and where they meet (the brain).
+nervous system**. The growth runs on a fine grid, and every 3 × 3 patch of living cells becomes a joint of
+a skeleton, joined by a bone to the patch it grew from, so thin lines of patches become limbs. Bone
+joints are rigid and muscle joints are hinges. Any fine cell can also grow a nerve cell, so nerve cells
+are a third the size of joints and a body can hold up to 1,260 of them. Nerve cells are the only
+neurons, and a signal can only pass between nerve cells that touch, so **a joint only bends if a nerve
+reaches it and fires**. The growth rule decides limb lengths, where the joints are, where the nerves run
+and where they pile up into a brain.
 
-The job is to walk forward. Evolution improves the numbers that define the growth rule. Written in JAX,
-so a whole population is grown and simulated in parallel on a GPU.
+Nothing is designed in advance: evolution starts from a single cell and a random growth rule, and its
+job is to walk forward. Written in JAX, so a whole population is grown and simulated in parallel on a
+GPU.
 
 **Watch it in a browser:** `web/neurogenesis-walker.html` is the same simulation in JavaScript, with
 evolution running in background workers while the best creature so far walks. Open it in any browser.
@@ -53,12 +56,14 @@ python render.py runs/first/best.npy --out creature.gif          # watch it grow
 
 `render.py` draws bones as pale, rounded limbs and fills in solid patches of bone. A muscle joint is a
 dark dot, with its muscle drawn as a red band on the side it pulls; the band darkens and thickens as it
-contracts, and stays dull if no nerve reaches the joint. On top is the nervous system: violet fibres
-between wired nerve cells, and a green flash when a nerve cell fires.
+contracts, and stays dull if no nerve reaches the joint. On top is the nervous system: a small violet dot
+for each nerve cell, at its place inside its joint, violet fibres between wired nerve cells, and a green
+flash when a nerve cell fires.
 
 `evolve.py` prints one line per generation (metres walked) and writes `best.npy`, `mean.npy`, `log.csv`
 and `config.json` into the run folder. Useful options: `--pop`, `--gens`, `--seconds` (length of each
-life), `--sigma` (size of the random changes), `--lr`, `--seed`. A genome copied out of the browser
+life), `--sigma` (size of the random changes), `--lr`, `--seed` (which random growth rule it starts
+from), `--init-scale` (how big that rule's weights are: bigger grows bigger random bodies). A genome copied out of the browser
 version can be drawn here too; the page shows how.
 
 ## How it works
@@ -74,8 +79,8 @@ neural network. The last 8 are a wiring bias for each of the 8 neighbour directi
 letters.
 
 ### Growth (`creature.py`)
-The grid is 10 × 14 cells, and each cell holds 16 numbers. Growth starts with one living cell. On each of
-32 steps, every cell at once:
+Growth runs on a 30 × 42 grid of fine cells, and each cell holds 16 numbers. It starts with one living
+cell. On each of 40 steps, every cell at once:
 1. senses its own numbers and how its neighbourhood's numbers change left to right and top to bottom
 2. runs those through the growth rule
 3. adds the result to its own numbers
@@ -84,18 +89,19 @@ A cell lives if it or a neighbour is alive (channel 0 above 0.1). This is a neur
 in [Growing Neural Cellular Automata](https://distill.pub/2020/growing-ca/). Growing robots this way
 has also been studied ([Horibe, Walker & Risi, 2021](https://arxiv.org/abs/2102.02579)).
 
-When growth ends, each cell's numbers are read off:
+When growth ends, the grid is read off. Each 3 × 3 patch is one joint of the body, a 10 × 14 grid of
+joints:
 
 | Channel | Becomes |
 |---|---|
-| 0 | alive or empty (only the piece joined to the seed is kept) |
-| 1–2 | which joint, whichever is larger: bone (rigid) or muscle (bends) |
-| 3 | above 0: a nerve cell grows inside this cell too |
+| 0 | alive or empty; a patch with at least 5 of its 9 cells alive is a joint (only joints joined to the seed are kept) |
+| 1–2 | the patch's joint: bone (rigid) or muscle (bends), whichever its cells add up to more of |
+| 11 | for a muscle joint: which way it bends, and how far (averaged over the patch) |
+| 3 | for each fine cell: above 0, a nerve cell grows there |
 | 4–5 | the nerve cell's spiking threshold and bias |
 | 6–7 | how strongly it feels the pacemaker rhythm and touch |
 | 8–9 | how strongly it sends to and receives from neighbouring nerve cells |
-| 10 | how hard it drives the joint it sits in |
-| 11 | for a muscle joint: which way it bends, and how far |
+| 10 | how hard it drives the joint whose patch it sits in |
 | 12–15 | no fixed meaning; cells use them to signal each other while growing |
 
 The synapse from nerve cell i to a touching nerve cell j has weight 1.5 · tanh(send_i · receive_j +
@@ -119,19 +125,25 @@ Every living cell is a joint: a point mass at its place on the grid, 10 cm from 
   lift a foot to move it.
 
 ### Nervous system
-Every nerve cell is a leaky integrate-and-fire neuron. Each tick (1/30 s):
+The nerve cells form a spiking recurrent neural network. Every nerve cell is a leaky integrate-and-fire
+neuron with weighted synapses to the nerve cells touching it (in both directions, so signals can loop).
+Each tick (1/30 s):
 
 ```
-charge = 0.8 · charge + bias + senses + spikes @ weights
+charge = 0.8 · charge + bias + senses + Σ weight · spike, over the touching nerve cells that just fired
 ```
 
 A nerve cell fires and resets when its charge reaches its threshold. Spikes spread only along chains of
-touching nerve cells, one cell per tick, so a long nerve has a delay, as real ones do. A muscle joint
-follows the recent firing rate of the nerve cell inside it, times that cell's junction strength, with
-about a 0.2 s lag; real muscle is slow too, and this stops evolution winning with tiny fast vibrations.
+touching nerve cells, one cell per tick, so a long nerve has a delay, as real ones do. The weights are
+not trained by gradient descent: they come from growth, and evolution tunes the growth rule.
+
+A muscle joint follows the nerve cells in its patch: their recent firing rates, each times its junction
+strength, added up and divided by 3, so one nerve running straight through a joint can drive it fully.
+It follows with about a 0.2 s lag; real muscle is slow too, and this stops evolution winning with tiny
+fast vibrations.
 
 **Senses** are currents into the nerve cells that can feel them:
-- **touch:** nerve cells in joints touching the ground
+- **touch:** nerve cells in the patch of a joint touching the ground
 - **pacemaker:** a steady rhythm, sin(2π · 1.5 · t), felt by every nerve cell (each with its own
   strength), like the pacemaker cells that keep a heart beating
 
@@ -146,41 +158,29 @@ about a 0.2 s lag; real muscle is slow too, and this stops evolution winning wit
 - A body of fewer than 3 cells scores 0.
 
 ### Evolution (`evolve.py`)
-1. **Starter creature.** Gradient descent trains the growth rule to grow a long, low body with a leg near
-   each end, each leg with a hip and a knee joint, and inside it a brain of six nerve cells with a nerve
-   running along the body and down each leg through the hip to the knee. The pacemaker reaches the two
-   legs' nerves with opposite signs, so the legs take turns. Some random starts miss a detail, so it
-   tries again until the creature grows exactly right; each try takes a few seconds.
-
-   ```
-   ..BBBBbbbBBBB.     B bone, M muscle joint; lower case where a nerve runs
-   ..BbbbbbbbbbB.     (the brain is the cluster in the middle)
-   ...m.......m.. <- hips
-   ...b.......b..
-   ...m.......m.. <- knees
-   ...B.......B..
-   ...B.......B..
-   ```
+1. **A random start.** Evolution starts from a single cell and a random growth rule. About half of random
+   rules grow nothing, so rules are drawn until one grows some kind of body (at least 3 joints). Most are
+   blobs with hundreds of nerve cells that twitch at random.
 2. **OpenAI-ES.** Each generation adds small random noise to the genome to make the population, grows
    and runs every member, and moves the genome toward the noise of the members that walked farthest.
    Noise comes in mirrored pairs (+ε and −ε), and scores are converted to ranks. Each generation's best
    is re-tested 4 times with different nudges, and the best of those is saved as `best.npy`.
 
-Growth rules are sensitive: noise of 0.01 changes a handful of cells of the starter, and 0.05 can wipe
-the body out, so `--sigma` defaults to 0.01.
+Growth rules are sensitive: noise of 0.01 changes a handful of cells, and 0.05 can wipe the body out, so
+`--sigma` defaults to 0.01.
 
 ## Results so far
 
-I could only test on CPUs. The starter drifts 8 cm backwards in 20 s. In the browser version, the same
-code walked better within a minute:
-- On one core, 60 generations of 64 creatures took about a minute. The genome evolution had settled on
-  walks a steady 7 cm every 2 seconds (0.70 m in 20 s, without falling), and the best individuals
-  reached about 3 m. Evolution had reshaped the body: one leg now lies flat like a tail, and it inches
-  forward with the joints near its middle.
-- In a browser with 3 workers, 51 generations took 25 seconds, and the best walker reached 1.25 m.
+I could only test on CPUs, and this version (fine nerve cells, no starter) is new:
+- About half of random growth rules grow a body. They are mostly blobs with dozens to hundreds of nerve
+  cells; a quarter of them twitch enough to move a little.
+- Starting from big blobs is slow: one that filled the whole grid never moved, and a 68-joint blob crept
+  10 cm in 25 generations of 64. Small random starts are being tested now.
+- An earlier version that started from a trained walker (with one nerve cell per joint) reached a steady
+  0.70 m in 20 s within a minute of evolution in a browser, so walking is within reach of this body.
 
-The JavaScript port was checked against this Python code: the same genomes grow identical bodies, nerves
-and skeletons, and walk the same distance to within a millimetre.
+The JavaScript port was checked against this Python code: the same genomes grow identical bodies, nerve
+cells and skeletons, and walk the same distance to within a few millimetres.
 
 ## Could creatures breed?
 
