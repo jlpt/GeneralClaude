@@ -120,6 +120,9 @@ Every living cell is a joint: a point mass at its place on the grid, 10 cm from 
   Bones and joints are split into batches that share no points, so each batch is solved in parallel. A
   joint's angle is held with a linear constraint: with both arms one bone long, a joint at angle θ puts
   its cell at a fixed offset from the midpoint of its two neighbours.
+- **Damping.** Each bone damps the relative motion of its two ends. Without it, a floppy body made of
+  nothing but muscle joints built up a jiggle under its own weight, and friction turned the jiggle into
+  sliding: evolution found a tangle of limbs that slid 9 m in 20 s with every muscle switched off.
 - **Ground.** The ground pushes joints up. Friction follows Coulomb's law: the body's weight is shared
   among the joints touching the ground, and a loaded joint sticks unless pushed hard, so a creature must
   lift a foot to move it.
@@ -159,25 +162,33 @@ fast vibrations.
 
 ### Evolution (`evolve.py`)
 1. **A random start.** Evolution starts from a single cell and a random growth rule. About half of random
-   rules grow nothing, so rules are drawn until one grows some kind of body (at least 3 joints). Most are
-   blobs with hundreds of nerve cells that twitch at random.
+   rules grow nothing, so rules are drawn until one grows a small body of 3 to 30 joints: usually a lump
+   with a few dozen nerve cells that twitches at random.
 2. **OpenAI-ES.** Each generation adds small random noise to the genome to make the population, grows
    and runs every member, and moves the genome toward the noise of the members that walked farthest.
    Noise comes in mirrored pairs (+ε and −ε), and scores are converted to ranks. Each generation's best
    is re-tested 4 times with different nudges, and the best of those is saved as `best.npy`.
+3. **Jumping to champions.** When a generation's best beats the best so far on that re-test, the search
+   jumps to it and carries on from there. From a random start, good walkers are rare lucky finds, and
+   one lucky member barely moves the population's average genome: without the jump, runs stalled.
 
-Growth rules are sensitive: noise of 0.01 changes a handful of cells, and 0.05 can wipe the body out, so
-`--sigma` defaults to 0.01.
+Growth rules are sensitive: noise of 0.05 can wipe a body out. From a random start, `--sigma` 0.02 found
+walkers fastest, so that is the default.
 
 ## Results so far
 
-I could only test on CPUs, and this version (fine nerve cells, no starter) is new:
-- About half of random growth rules grow a body. They are mostly blobs with dozens to hundreds of nerve
-  cells; a quarter of them twitch enough to move a little.
-- Starting from big blobs is slow: one that filled the whole grid never moved, and a 68-joint blob crept
-  10 cm in 25 generations of 64. Small random starts are being tested now.
-- An earlier version that started from a trained walker (with one nerve cell per joint) reached a steady
-  0.70 m in 20 s within a minute of evolution in a browser, so walking is within reach of this body.
+I could only test on CPUs, using the browser version's code (which matches the Python):
+- About half of random growth rules grow a body; small ones are lumps that twitch.
+- Without jumping to champions, three runs from random starts stalled near zero for 50 generations.
+- With the jump, two of three runs of 64 creatures per generation found walkers within 25 to 35
+  generations. One grew from a 6-joint lump into a 29-joint creature with 66 nerve cells that rows
+  itself along with a limb at the back, a steady 0.69 m every 2 s (6.8 m in 20 s), and doesn't move at
+  all with its muscles switched off. The third run was still creeping (0.2 m) after 15 generations, so
+  it's worth trying a few `--seed`s.
+
+On a GPU, `benchmark.py` measures how many creatures per generation your card can test. My estimate for
+an RTX 4080, not measured: 4,096 creatures per generation in roughly 10–20 s, so about 200–400 creatures
+per second.
 
 The JavaScript port was checked against this Python code: the same genomes grow identical bodies, nerve
 cells and skeletons, and walk the same distance to within a few millimetres.
