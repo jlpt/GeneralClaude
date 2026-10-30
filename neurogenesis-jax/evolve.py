@@ -4,11 +4,13 @@
     python evolve.py --out runs/check --small    # a quick check on a CPU
 
 Evolution starts from nothing designed: a single cell and a random growth rule. A random rule grows
-nothing at all about half the time, so random rules are drawn until one grows some kind of body (at
-least 3 joints). From there, an evolution strategy (OpenAI-ES): each generation, make POP copies of the
+nothing at all about half the time, so random rules are drawn until one grows a small body (3 to 30
+joints). From there, an evolution strategy (OpenAI-ES): each generation, make POP copies of the
 current genome with a little random noise added, grow and test every copy, and nudge the genome toward
-the noise of the copies that walked farthest. All copies are grown and simulated in parallel
-(jax.vmap), which is where the GPU earns its keep.
+the noise of the copies that walked farthest. When a copy beats the best walker so far on a re-test, the
+search jumps to it: from a random start, good walkers are rare lucky finds, and one lucky copy barely
+moves the average. All copies are grown and simulated in parallel (jax.vmap), which is where the GPU
+earns its keep.
 
 Scores are metres walked to the right. Each generation's farthest walker is re-tested 4 times (with
 different starting nudges), and the best of those is saved. The run folder gets best.npy (that best
@@ -33,16 +35,16 @@ TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test runs: each starts with a
 
 # ---------- the start: a random growth rule ----------
 
-def random_start(key, scale=0.15, attempts=500):
-    """A random growth rule that grows some kind of body from the single seed cell."""
+def random_start(key, scale=0.1, smallest=3, largest=30, attempts=1000):
+    """A random growth rule that grows a small body (3 to 30 joints) from the single seed cell."""
     grows = jax.jit(lambda g: jnp.sum(cr.develop(g)[0].alive))
     for attempt in range(1, attempts + 1):
         key, k = jax.random.split(key)
         genome = cr.flatten(cr.init_params(k, scale))
-        if int(grows(genome)) >= 3:
-            print(f'  random growth rule number {attempt} grows a body')
+        if smallest <= int(grows(genome)) <= largest:
+            print(f'  random growth rule number {attempt} grows a small body')
             return genome
-    raise RuntimeError('no random growth rule grew a body; try another --seed or --init-scale')
+    raise RuntimeError('no random growth rule grew a small body; try another --seed or --init-scale')
 
 
 def adam(grad, m, v, t, lr, b1=0.9, b2=0.999):
@@ -94,12 +96,12 @@ def main():
     ap.add_argument('--out', default='runs/first')
     ap.add_argument('--pop', type=int, default=512, help='creatures per generation (even)')
     ap.add_argument('--gens', type=int, default=500)
-    ap.add_argument('--sigma', type=float, default=0.01, help='size of the random changes (0.01 changes about 4 cells of the starter body)')
+    ap.add_argument('--sigma', type=float, default=0.02, help='size of the random changes')
     ap.add_argument('--lr', type=float, default=0.005)
     ap.add_argument('--seconds', type=float, default=sim.EPISODE_SECONDS, help='length of each life')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--resume', help='a mean.npy to continue from')
-    ap.add_argument('--init-scale', type=float, default=0.15, help='size of the random starting growth rule\'s weights')
+    ap.add_argument('--init-scale', type=float, default=0.1, help='size of the random starting growth rule\'s weights')
     ap.add_argument('--small', action='store_true', help='tiny settings for a CPU check')
     args = ap.parse_args()
     if args.small:
@@ -136,6 +138,7 @@ def main():
         if champion_test > best_score:
             best_score = champion_test
             np.save(os.path.join(args.out, 'best.npy'), np.asarray(champion))
+            mean = champion                     # a new champion: carry on searching from it
         np.save(os.path.join(args.out, 'mean.npy'), np.asarray(mean))
         took = time.time() - t0
         log.write(f'{gen},{float(fitness.max()):.4f},{float(fitness.mean()):.4f},{champion_test:.4f},{best_score:.4f},{took:.2f}\n')

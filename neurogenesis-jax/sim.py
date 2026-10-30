@@ -13,7 +13,8 @@ So a thin line of cells is a limb, stiff along its bone cells and bending at its
 
 Bones and joints are solved with position-based dynamics. They're split into batches in which no two
 share a point, so each batch is solved fully in parallel (good for a GPU) and later batches see earlier
-fixes, which converges fast. A joint's angle is held with a linear constraint (see _hold_angle), which
+fixes, which converges fast. Each bone also damps the relative motion of its two ends; without that,
+floppy bodies build up a jiggle under their own weight, and evolution used it to slide along. A joint's angle is held with a linear constraint (see _hold_angle), which
 settles much faster than correcting the angle directly. The ground pushes joints up. Friction follows
 Coulomb's law: the body's weight is shared among the joints touching the ground, and a loaded joint
 sticks unless pushed hard, so to travel a creature has to lift and push.
@@ -59,6 +60,7 @@ ITERATIONS = 2              # passes over all bones and joints per substep; fewe
 BEND_RANGE = 1.2            # radians (about 70°) a fully active muscle bends its joint
 MUSCLE_RESPONSE = 0.15      # fraction of the way a muscle moves toward its drive each tick
 FIBRE = 3                   # firing nerve cells in a joint's patch needed to drive it fully
+BONE_DAMPING = 0.3          # fraction of the relative motion of a bone's two ends removed each substep
 STATIC_FRICTION, KINETIC_FRICTION = 1.2, 0.8
 
 # nervous system
@@ -268,6 +270,12 @@ def _substep(setup: Setup, x, px, target):
         return x.at[:, 1].set(x[:, 1] - below), depth - below
 
     x, depth = jax.lax.fori_loop(0, ITERATIONS, solve, (x, jnp.zeros(N)))
+    # Every bone damps how fast its two ends move relative to each other, which stops the jiggling that
+    # floppy bodies otherwise build up under their own weight (evolution found it and slid along on it).
+    for idx in LINK_BATCHES:
+        a, b = LINK_A[idx], LINK_B[idx]
+        fix = (BONE_DAMPING / 2 * live[idx])[:, None] * ((x[b] - px[b]) - (x[a] - px[a]))
+        px = px.at[a].add(-fix).at[b].add(fix)
     # Coulomb friction. The body's weight is shared among the joints touching the ground, in proportion to
     # how hard the ground pushed back on each; friction can stop a joint sliding up to the share it carries.
     depth = depth * setup.point_on
