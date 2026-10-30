@@ -23,13 +23,17 @@ cd ~/neurogenesis-jax
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install -U "jax[cuda13]"
+pip install -U "jax[cuda12]"
 ```
 
 Creating and activating the environment prints nothing; `(.venv)` at the start of the prompt shows
-it worked. On Linux, do the same without WSL2. For a CPU-only install, skip the last line. Check the
-[JAX installation guide](https://docs.jax.dev/en/latest/installation.html) for the current CUDA extra if
-`cuda13` doesn't suit your driver. `python3 -c "import jax; print(jax.devices())"` should list your GPU.
+it worked. On Linux, do the same without WSL2. For a CPU-only install, skip the last line.
+
+Use `cuda12`, not `cuda13`. Ubuntu 22.04 comes with Python 3.10, and the newest JAX for Python 3.10
+(0.6.2) has no `cuda13` option, so asking for it silently installs JAX without GPU support. `cuda12`
+works with any recent NVIDIA driver. The code is tested on JAX 0.6.2 and newer. Run `python benchmark.py`:
+the first line should name your GPU. If it says CPU, check that `nvidia-smi` works inside Ubuntu, and see
+the [JAX installation guide](https://docs.jax.dev/en/latest/installation.html).
 
 ## Use
 
