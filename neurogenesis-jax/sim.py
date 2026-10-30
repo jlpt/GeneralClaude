@@ -22,11 +22,14 @@ Senses, as currents into each cell's neuron (scaled by that cell's gain for the 
 
 Survival. Before the clock starts, the creature settles for SETTLE_SECONDS with its muscles off, so a
 body that would topple over has already done so (otherwise evolution grows tall bodies that fall onto
-fruit). Then energy starts at 1 and drains every tick, faster for bigger bodies and while muscles work;
+fruit). Then energy starts at 1 and drains every tick, faster for bodies bigger than the starter (but
+never slower for smaller ones, or evolution shrinks creatures until they outlive the clock) and while
+muscles work;
 each fruit eaten adds FRUIT_ENERGY. At zero the creature dies and stops. Eaten fruit regrows nearby.
 
 Score. Fruit eaten, plus the fraction of the time it stayed alive, plus a little for distance travelled
-(so early creatures that merely move beat ones that don't, before any can reach fruit).
+(so early creatures that merely move beat ones that don't, before any can reach fruit). A body of fewer
+than 3 cells scores 0.
 """
 
 from typing import NamedTuple
@@ -58,7 +61,7 @@ FRUIT = 4                   # fruit lying in the world at any time
 FRUIT_ENERGY = 0.4
 EAT_REACH = 0.08            # metres: a body point this close to a fruit (and near the ground) eats it
 IDLE_LIFE = 12.0            # seconds an idle starter-sized creature survives on a full stomach
-STARTER_CELLS = 27          # bigger bodies burn energy faster in proportion (half of the drain scales with size)
+STARTER_CELLS = 27          # each cell beyond this many adds half a starter's worth of drain per starter size
 MOVE_COST = 0.5             # working every muscle flat out drains energy 1.5 times as fast
 SETTLE_SECONDS = 3.0        # time to fall into a resting pose before the clock starts
 NUDGE = 0.09                # m/s sideways push at the start of settling, so balanced-on-a-knife-edge bodies fall too
@@ -240,7 +243,7 @@ def feed(setup: Setup, state: State, x, act):
     fresh = middle + side * jax.random.uniform(k2, (FRUIT,), minval=1.0, maxval=3.0)
     fruit = jnp.where(eaten | lost, fresh, state.fruit)
     working = jnp.sum(act * setup.muscle[:N]) / jnp.maximum(jnp.sum(setup.muscle), 1.0)
-    drain = DT / IDLE_LIFE * ((0.5 + 0.5 * setup.size) + MOVE_COST * working)
+    drain = DT / IDLE_LIFE * (1 + 0.5 * jnp.maximum(setup.size - 1, 0.0) + MOVE_COST * working)
     energy = jnp.minimum(state.energy + FRUIT_ENERGY * jnp.sum(eaten) - drain, 1.0)
     return fruit, energy, jnp.sum(eaten).astype(jnp.float32), key
 
@@ -273,7 +276,8 @@ def score(body: Body, brain: Brain, key, seconds=EPISODE_SECONDS):
     setup, final = life(body, brain, key, seconds)
     travelled = jnp.abs(_centre_x(final.x, setup.point_on) - setup.start_x)
     survived = final.alive_ticks / ticks_for(seconds)
-    return final.eaten + survived + 0.2 * jnp.minimum(travelled, 5.0)
+    has_body = jnp.sum(body.alive) >= 3         # a growth rule that kills its seed gets nothing
+    return jnp.where(has_body, final.eaten + survived + 0.2 * jnp.minimum(travelled, 5.0), 0.0)
 
 
 def record(body: Body, brain: Brain, key, seconds=EPISODE_SECONDS):
