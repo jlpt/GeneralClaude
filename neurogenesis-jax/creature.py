@@ -5,11 +5,14 @@ network that every cell applies on every step, reading its own state and its 8 n
 writing a change to its own. Growth starts from a single living cell. When growth ends, each cell's
 numbers are read off as:
 
-  - alive or empty, and which tissue it is: bone (stiff), muscle (contracts) or eye (sees food)
+  - alive or empty, and which tissue it is: bone (a rigid joint), muscle (a joint that bends) or eye
+  - for a muscle, which way and how far it bends its joint
   - its neuron: spiking threshold, bias, and how strongly it responds to the beat, touch, sight, hunger
   - its wiring: how strongly it sends to and receives from its neighbours
 
-So the same numbers shape the body and the brain. Everything is a fixed-size array, which is what lets
+Every living cell becomes a joint of the skeleton, joined by a bone to its parent: the neighbour one
+step nearer the seed. So the bones form a tree branching out from the seed, and a thin line of cells
+is a limb. The same numbers shape the body, place its joints and muscles, and wire the brain. Everything is a fixed-size array, which is what lets
 JAX grow and test thousands of creatures in parallel on a GPU.
 """
 
@@ -21,7 +24,7 @@ import numpy as np
 from jax.flatten_util import ravel_pytree
 
 H, W = 10, 14            # the grid the creature grows on (rows, columns); row 0 is the top
-N = H * W                # one cell, one voxel of body, one neuron
+N = H * W                # one cell, one joint of the skeleton, one neuron
 C = 16                   # numbers each cell carries
 HIDDEN = 32              # size of the growth rule's hidden layer
 GROW_STEPS = 32
@@ -33,10 +36,12 @@ BONE, MUSCLE, EYE = 1, 2, 3                  # tissue: the largest of these thre
 THRESH, BIAS = 4, 5                          # spiking settings
 BEAT, TOUCH, SIGHT, HUNGER = 6, 7, 8, 9      # how strongly the neuron responds to each sense
 SEND, RECV = 10, 11                          # wiring: strength out of / into this cell
-# Channels 12–15 have no fixed meaning: cells use them to signal each other while growing.
+BEND = 12                                    # a muscle joint: which way it bends, and how far
+# Channels 13–15 have no fixed meaning: cells use them to signal each other while growing.
 
 TISSUES = ('bone', 'muscle', 'eye')
 OFFSETS = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0)]
+DIRS = ((-1, 0), (1, 0), (0, -1), (0, 1))   # up, down, left, right: the order a cell picks its parent in
 
 
 def _neighbour_pairs():
@@ -126,6 +131,8 @@ def grow_history(params, steps=GROW_STEPS):
 class Body(NamedTuple):
     alive: jnp.ndarray     # (N,) bool: part of the creature
     tissue: jnp.ndarray    # (N,) int: 0 bone, 1 muscle, 2 eye
+    parent: jnp.ndarray    # (N,) int: the neighbour one step nearer the seed (the seed is its own parent)
+    bend: jnp.ndarray      # (N,) −1 to 1: which way and how far a muscle bends its joint
 
 
 class Brain(NamedTuple):
@@ -137,17 +144,28 @@ class Brain(NamedTuple):
 
 def read_body(s):
     alive = s[..., ALIVE] > 0.1
-    # Keep only the piece joined to the seed (side by side, not just corner to corner).
-    start = jnp.zeros((H, W), bool).at[SEED].set(True) & alive
+    # Steps from the seed to every living cell, moving side by side (not corner to corner). Cells that
+    # can't be reached are not part of the creature.
+    far = N + 1
+    start = jnp.where(alive & (jnp.zeros((H, W), bool).at[SEED].set(True)), 0, far)
 
-    def spread(_, part):
-        p = jnp.pad(part, 1)
-        grown = part | p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]
-        return grown & alive
+    def neighbours(d):
+        p = jnp.pad(d, 1, constant_values=far)
+        return [p[1 + dy:1 + dy + H, 1 + dx:1 + dx + W] for dy, dx in DIRS]
 
-    connected = jax.lax.fori_loop(0, N, spread, start)
+    def spread(_, d):
+        return jnp.where(alive, jnp.minimum(d, jnp.min(jnp.stack(neighbours(d)), axis=0) + 1), far)
+
+    steps = jax.lax.fori_loop(0, N, spread, start)
+    connected = steps < far
+    # Each cell's parent is its first neighbour (up, down, left, right) one step nearer the seed.
+    nearer = jnp.stack([n == steps - 1 for n in neighbours(steps)])          # (4, H, W)
+    shift = jnp.array([dy * W + dx for dy, dx in DIRS])[jnp.argmax(nearer, axis=0)]
+    index = jnp.arange(N).reshape(H, W)
+    parent = jnp.where(connected & (steps > 0), index + shift, index)
     tissue = jnp.argmax(s[..., [BONE, MUSCLE, EYE]], axis=-1)
-    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N))
+    return Body(alive=connected.reshape(N), tissue=tissue.reshape(N), parent=parent.reshape(N),
+                bend=jnp.tanh(s[..., BEND]).reshape(N))
 
 
 def read_brain(s, body, params):
@@ -172,7 +190,7 @@ def develop(genome):
 
 
 def describe(body):
-    """A text picture of a body: . empty, B bone, M muscle, E eye."""
+    """A text picture of a body: . empty, B bone, M muscle (a bending joint), E eye."""
     alive = np.asarray(body.alive).reshape(H, W)
     tissue = np.asarray(body.tissue).reshape(H, W)
     return '\n'.join(''.join('BME'[tissue[r, c]] if alive[r, c] else '.' for c in range(W)) for r in range(H))
