@@ -9,12 +9,16 @@ neurons, and a signal can only pass between nerve cells that touch, so **a joint
 reaches it and fires**. The growth rule decides limb lengths, where the joints are, where the nerves run
 and where they pile up into a brain.
 
-Nothing is designed in advance: evolution starts from a single cell and a random growth rule, and its
-job is to walk forward. Written in JAX, so a whole population is grown and simulated in parallel on a
-GPU.
+Nothing is designed in advance: evolution starts from a single cell and a random growth rule. To stay
+alive, a creature has to **find fruit**: some joints grow into eyes that see fruit ahead, every nerve
+cell can feel hunger, and energy drains faster when muscles work. Written in JAX, so a whole population
+is grown and simulated in parallel on a GPU.
 
-**Watch it in a browser:** `web/neurogenesis-walker.html` is the same simulation in JavaScript, with
-evolution running in background workers while the best creature so far walks. Open it in any browser.
+**Watch it in a browser:** `web/neurogenesis-forager.html` is the same simulation in JavaScript, with
+evolution running in background workers while the best creature so far looks for fruit. It also has a
+genome bench: every one of the genome's numbers as a heatmap you can click and edit, a dial per channel,
+and a Grow button that grows and runs your edited genome. Open it in any browser.
+(`web/neurogenesis-walker.html` is the earlier walking version; its genomes don't fit the current code.)
 
 ## Setup
 
@@ -51,16 +55,19 @@ python benchmark.py                              # is the GPU being used, and ho
 python evolve.py --out runs/first                # sized for a GPU: 512 creatures per generation, 500 generations
 python evolve.py --out runs/check --small        # a quick CPU check: 32 creatures, 15 generations, 8 s lives
 python evolve.py --out runs/more --resume runs/first/mean.npy    # carry on from where a run stopped
-python render.py runs/first/best.npy --out creature.gif          # watch it grow and walk
+python render.py runs/first/best.npy --out creature.gif          # watch it grow and look for fruit
+python render.py runs/first/best.npy --world 7                   # in another world (fruit elsewhere)
 ```
 
 `render.py` draws bones as pale, rounded limbs and fills in solid patches of bone. A muscle joint is a
 dark dot, with its muscle drawn as a red band on the side it pulls; the band darkens and thickens as it
-contracts, and stays dull if no nerve reaches the joint. On top is the nervous system: a small violet dot
-for each nerve cell, at its place inside its joint, violet fibres between wired nerve cells, and a green
-flash when a nerve cell fires.
+contracts, and stays dull if no nerve reaches the joint. An eye is a white eyeball looking away from the
+body's middle. On top is the nervous system: a small violet dot for each nerve cell, at its place inside
+its joint, violet fibres between wired nerve cells, and a green flash when a nerve cell fires. Fruit are
+orange dots on the ground, with an arrow at the edge for fruit off screen, and the bar at the top right
+is the creature's energy.
 
-`evolve.py` prints one line per generation (metres walked) and writes `best.npy`, `mean.npy`, `log.csv`
+`evolve.py` prints one line per generation (scores) and writes `best.npy`, `mean.npy`, `log.csv`
 and `config.json` into the run folder. Useful options: `--pop`, `--gens`, `--seconds` (length of each
 life), `--sigma` (size of the random changes), `--lr`, `--seed` (which random growth rule it starts
 from), `--init-scale` (how big that rule's weights are: bigger grows bigger random bodies). A genome copied out of the browser
@@ -71,15 +78,15 @@ version can be drawn here too; the page shows how.
 The code is in three files, each with notes at the top:
 - **`creature.py`**: the growth rule, and how a grown grid becomes a skeleton and a nervous system
 - **`sim.py`**: physics, the nervous system, senses and the score
-- **`evolve.py`**: the starter creature and evolution
+- **`evolve.py`**: the random start and evolution
 
 ### The genome
-A flat list of about 2,100 numbers. Almost all of them are the weights of the growth rule, a tiny
-neural network. The last 8 are a wiring bias for each of the 8 neighbour directions. There are no DNA
-letters.
+A flat list of 2,344 numbers: a wiring bias for each of the 8 neighbour directions, then the weights of
+the growth rule, a tiny neural network (54 inputs → 32 hidden units → 18 outputs, plus the hidden units'
+biases). There are no DNA letters.
 
 ### Growth (`creature.py`)
-Growth runs on a 30 × 42 grid of fine cells, and each cell holds 16 numbers. It starts with one living
+Growth runs on a 30 × 42 grid of fine cells, and each cell holds 18 numbers. It starts with one living
 cell. On each of 40 steps, every cell at once:
 1. senses its own numbers and how its neighbourhood's numbers change left to right and top to bottom
 2. runs those through the growth rule
@@ -95,14 +102,15 @@ joints:
 | Channel | Becomes |
 |---|---|
 | 0 | alive or empty; a patch with at least 5 of its 9 cells alive is a joint (only joints joined to the seed are kept) |
-| 1–2 | the patch's joint: bone (rigid) or muscle (bends), whichever its cells add up to more of |
+| 1, 2, 12 | the patch's joint: bone (rigid), muscle (bends) or eye (rigid, sees), whichever its cells add up to most of |
 | 11 | for a muscle joint: which way it bends, and how far (averaged over the patch) |
 | 3 | for each fine cell: above 0, a nerve cell grows there |
 | 4–5 | the nerve cell's spiking threshold and bias |
 | 6–7 | how strongly it feels the pacemaker rhythm and touch |
+| 13–14 | how strongly it feels sight (in an eye) and hunger |
 | 8–9 | how strongly it sends to and receives from neighbouring nerve cells |
 | 10 | how hard it drives the joint whose patch it sits in |
-| 12–15 | no fixed meaning; cells use them to signal each other while growing |
+| 15–17 | no fixed meaning; cells use them to signal each other while growing |
 
 The synapse from nerve cell i to a touching nerve cell j has weight 1.5 · tanh(send_i · receive_j +
 direction bias). Cells without a nerve have no neuron at all.
@@ -123,6 +131,12 @@ Every living cell is a joint: a point mass at its place on the grid, 10 cm from 
 - **Damping.** Each bone damps the relative motion of its two ends. Without it, a floppy body made of
   nothing but muscle joints built up a jiggle under its own weight, and friction turned the jiggle into
   sliding: evolution found a tangle of limbs that slid 9 m in 20 s with every muscle switched off.
+- **No free turning.** Bones and joints are forces inside the body, so they can't turn it as a whole.
+  But when a joint can't reach its angle because the rest of the body won't let it, each pass over the
+  bones and joints went round a small loop of shapes and came back turned a little, every substep.
+  Evolution found this free motor at once: a 10-joint body held its muscles still and rolled along at up
+  to 6 m/s, eating every fruit. Each pass's turn of the whole body is now taken back out; hand-made legs
+  walk just as far as before.
 - **Ground.** The ground pushes joints up. Friction follows Coulomb's law: the body's weight is shared
   among the joints touching the ground, and a loaded joint sticks unless pushed hard, so a creature must
   lift a foot to move it.
@@ -145,39 +159,64 @@ strength, added up and divided by 3, so one nerve running straight through a joi
 It follows with about a 0.2 s lag; real muscle is slow too, and this stops evolution winning with tiny
 fast vibrations.
 
-**Senses** are currents into the nerve cells that can feel them:
+**Senses** are currents into the nerve cells that can feel them, each nerve cell with its own strength:
 - **touch:** nerve cells in the patch of a joint touching the ground
-- **pacemaker:** a steady rhythm, sin(2π · 1.5 · t), felt by every nerve cell (each with its own
-  strength), like the pacemaker cells that keep a heart beating
+- **pacemaker:** a steady rhythm, sin(2π · 1.5 · t), felt by every nerve cell, like the pacemaker cells
+  that keep a heart beating
+- **sight:** nerve cells in an eye. Each eye looks away from the body's middle and sees fruit ahead of
+  it, nearer fruit brighter (1.5 m makes it 1/e as bright), so an eye on each end tells left from right
+- **hunger:** 1 − energy, felt by every nerve cell
 
-### The score
-- Before the clock starts, each creature gets a tiny random sideways nudge and 3 s to settle with its
-  muscles off, so a body that would topple over has already done so.
-- Its middle is then tracked for 20 s as it moves right. **The slower half of the 20 s counts three times
-  as much as the faster half**, so a steady walker keeps its full distance and one big lunge keeps only
-  half. Evolution's first walkers lunged forward once and stopped.
-- **Falling over scores 0**: turning more than 45° from the pose it settled in. Without this, evolution
-  grew bodies that threw themselves forward and lay there.
-- A body of fewer than 3 cells scores 0.
+### The world and the score
+- Before the clock starts, each creature gets a tiny sideways nudge and 3 s to settle with its muscles
+  off, so a body that would topple over has already done so.
+- Four fruit then lie beyond its left or right end, farther away than the creature is tall plus 0.2–1.2 m,
+  so falling over can't reach one. A joint near the ground within 8 cm of a fruit eats it, and a new fruit
+  appears 0.5–2.5 m beyond a random end. Fruit more than 6 m away is moved back near.
+- Energy starts full and drains with time: a full stomach lasts 12 s, less for bodies over 20 joints and
+  for busy muscles (working every muscle flat out drains 1.25 times as fast). A fruit gives 0.4. At zero
+  energy the creature dies where it lies.
+- **Score = fruit eaten + the fraction of the 20 s it stayed alive + 0.25 per metre travelled (at most
+  1).** The distance part gives evolution a first step: moving at all, before it ever reaches a fruit.
+- A world is a number. Fruit positions and the nudge come from an integer hash of the world number, the
+  same in Python and JavaScript, so a world looks the same in both. A body of fewer than 3 joints scores 0.
 
 ### Evolution (`evolve.py`)
 1. **A random start.** Evolution starts from a single cell and a random growth rule. About half of random
-   rules grow nothing, so rules are drawn until one grows a small body of 3 to 30 joints: usually a lump
-   with a few dozen nerve cells that twitches at random.
+   rules grow nothing, so rules are drawn until one grows a small body of 3 to 30 joints with nerves
+   reaching at least two of its muscle joints: usually a lump with a few dozen nerve cells that twitches
+   at random.
 2. **OpenAI-ES.** Each generation adds small random noise to the genome to make the population, grows
-   and runs every member, and moves the genome toward the noise of the members that walked farthest.
-   Noise comes in mirrored pairs (+ε and −ε), and scores are converted to ranks. Each generation's best
-   is re-tested 4 times with different nudges, and the best of those is saved as `best.npy`.
+   and runs every member in one world, and moves the genome toward the noise of the members that scored
+   best. Noise comes in mirrored pairs (+ε and −ε), and scores are converted to ranks. Each generation's
+   best is re-tested in 4 fixed worlds (1000–1003), and the best of those is saved as `best.npy`.
 3. **Jumping to champions.** When a generation's best beats the best so far on that re-test, the search
-   jumps to it and carries on from there. From a random start, good walkers are rare lucky finds, and
+   jumps to it and carries on from there. From a random start, good creatures are rare lucky finds, and
    one lucky member barely moves the population's average genome: without the jump, runs stalled.
 
 Growth rules are sensitive: noise of 0.05 can wipe a body out. From a random start, `--sigma` 0.02 found
-walkers fastest, so that is the default.
+walkers fastest in the walking version, so that is the default.
 
 ## Results so far
 
-I could only test on CPUs, using the browser version's code (which matches the Python):
+I could only test on CPUs, using the browser version's code (which matches the Python).
+
+Food version (runs of 64 creatures per generation, 120 generations, 20 s lives):
+- From random starts that only had to grow 3 to 30 joints, three runs never ate a fruit: the best moved
+  0.3–0.4 m once and then sat still. Two of the three starts had zero or one muscle joint, so they could
+  hardly move whatever the score rewarded. Evolution now starts from a random rule whose body also has
+  nerves reaching at least two muscle joints.
+- With that start, one run of three found a forager at generation 6, shown below; the others crept
+  0.3–0.4 m. It's worth trying a few `--seed`s, and a GPU can afford far bigger populations.
+- The forager: 12 joints (4 of them muscle), 10 nerve cells, 18 synapses, no eyes. In 20 worlds it was
+  never tested on, it eats 2.15 fruit on average and stays alive 91% of the time (resting creatures
+  manage 60%). Switching parts off shows how it works: with its muscles off it doesn't move, blinding it
+  changes nothing (it has no eyes), and **with hunger switched off it never moves at all**. It rests
+  until it gets hungry, walks, and eats the fruit lying in its path; eating calms it down. That's a real,
+  if simple, behaviour, a bit like a worm that roams when it's hungry. Draw it with
+  `python render.py examples/forager.npy`, or load it in the browser page ("Load an evolved forager").
+
+Walking version (before food, the score was distance walked right):
 - About half of random growth rules grow a body; small ones are lumps that twitch.
 - Without jumping to champions, three runs from random starts stalled near zero for 50 generations.
 - With the jump, two of three runs of 64 creatures per generation found walkers within 25 to 35
@@ -185,13 +224,28 @@ I could only test on CPUs, using the browser version's code (which matches the P
   itself along with a limb at the back, a steady 0.69 m every 2 s (6.8 m in 20 s), and doesn't move at
   all with its muscles switched off. The third run was still creeping (0.2 m) after 15 generations, so
   it's worth trying a few `--seed`s.
+- Replayed after the fix for the free solver motor (see **No free turning**), that walker still walks
+  6.4 m, and another 12 m walker still walks 10 m. A third, 21 m walker turned out to depend on the motor:
+  with the fix it falls over.
 
 On a GPU, `benchmark.py` measures how many creatures per generation your card can test. My estimate for
 an RTX 4080, not measured: 4,096 creatures per generation in roughly 10–20 s, so about 200–400 creatures
 per second.
 
 The JavaScript port was checked against this Python code: the same genomes grow identical bodies, nerve
-cells and skeletons, and walk the same distance to within a few millimetres.
+cells and skeletons, see the same fruit in the same places, eat the same fruit and get the same scores.
+
+## Where is the brain?
+
+There is no central brain unless evolution builds one. Wiring is purely local (a nerve cell connects only
+to the nerve cells touching it), and walking can be done by local rhythms, the way a jellyfish's nerve
+net or a worm's spinal circuits work. A brain pays when information from far apart has to be combined:
+with an eye on each end, turning toward food means comparing the two sides, which needs a long nerve or a
+hub where nerves meet. Making spikes or nerve cells cost energy would push the same way.
+
+Without learning during a life (the synapse weights are fixed at birth), the best to hope for is reactive
+and rhythmic behaviour: walking, and steering toward what the eyes see, roughly what the 302 neurons of
+the worm *C. elegans* manage. Bigger runs on a GPU are the way to find out how far it gets.
 
 ## Could creatures breed?
 
@@ -216,7 +270,9 @@ crossing two species. Breeding works within a lineage, and lineages drift apart 
 - Breeding: crossover between close relatives, with species kept apart by genetic distance.
 - Uneven ground or pushes, so that touch feedback through the nerves matters more.
 - An energy cost per nerve cell or per spike, as real brains are expensive.
+- Synapses that change during a life (Hebbian plasticity), so a creature can learn, not only react.
 - A bigger grid and more growth steps, for bigger bodies and bigger brains.
 
 Earlier versions are in the git history: soft bodies with a neuron in every cell and fruit to find, the
-same soft bodies with a grown nervous system, and jointed skeletons with a neuron in every cell.
+same soft bodies with a grown nervous system, jointed skeletons with a neuron in every cell, and the
+jointed walker with fine nerves that this food version grew from.

@@ -5,7 +5,7 @@
 
 Evolution starts from nothing designed: a single cell and a random growth rule. A random rule grows
 nothing at all about half the time, so random rules are drawn until one grows a small body (3 to 30
-joints). From there, an evolution strategy (OpenAI-ES): each generation, make POP copies of the
+joints) with nerves reaching at least two of its muscle joints. From there, an evolution strategy (OpenAI-ES): each generation, make POP copies of the
 current genome with a little random noise added, grow and test every copy, and nudge the genome toward
 the noise of the copies that scored best. When a copy beats the best walker so far on a re-test, the
 search jumps to it: from a random start, good walkers are rare lucky finds, and one lucky copy barely
@@ -35,14 +35,21 @@ TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test worlds: fruit placed dif
 
 # ---------- the start: a random growth rule ----------
 
-def random_start(key, scale=0.1, smallest=3, largest=30, attempts=1000):
-    """A random growth rule that grows a small body (3 to 30 joints) from the single seed cell."""
-    grows = jax.jit(lambda g: jnp.sum(cr.develop(g)[0].alive))
+def random_start(key, scale=0.1, smallest=3, largest=30, attempts=5000):
+    """A random growth rule that grows a small body (3 to 30 joints) from the single seed cell, with at
+    least two muscle joints that a nerve reaches. A body that can't move gives evolution nothing to work
+    with: in three test runs from starts without that, none moved more than 0.4 m in 120 generations."""
+    def grows(g):
+        body = cr.develop(g)[0]
+        reached = jnp.any(cr.patches(body.nerve).reshape(cr.N, -1), axis=1)
+        return jnp.sum(body.alive), jnp.sum(body.alive & (body.tissue == 1) & reached)
+    grows = jax.jit(grows)
     for attempt in range(1, attempts + 1):
         key, k = jax.random.split(key)
         genome = cr.flatten(cr.init_params(k, scale))
-        if smallest <= int(grows(genome)) <= largest:
-            print(f'  random growth rule number {attempt} grows a small body')
+        joints, wired = (int(n) for n in grows(genome))
+        if smallest <= joints <= largest and wired >= 2:
+            print(f'  random growth rule number {attempt} grows a small body with nerves reaching its muscles')
             return genome
     raise RuntimeError('no random growth rule grew a small body; try another --seed or --init-scale')
 
