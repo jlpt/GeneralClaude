@@ -2,6 +2,7 @@
 
     python render.py runs/first/best.npy                 # writes creature.gif
     python render.py runs/first/best.npy --out life.gif --seconds 30 --world 7
+    python render.py runs/throw/best.npy --task throw    # a creature from the throwing task
 
 Bones are pale, rounded limbs, and solid patches of bone are filled in. A muscle joint is a dark dot,
 with its muscle drawn as a red band on the side it pulls: the band turns deeper red, thickens and
@@ -9,7 +10,8 @@ shortens as the muscle contracts, and stays dull if no nerve reaches the joint. 
 eyeball looking away from the body's middle. On top is the nervous system: violet fibres between wired
 nerve cells, a violet dot for each nerve cell, and a green flash when one fires. Fruit are orange dots
 on the ground (an arrow at the edge points to fruit off screen), and the bar at the top right is the
-creature's energy.
+creature's energy. In the throwing task the ball is blue, and a blue tick on the ground marks where it last
+left the creature.
 """
 
 import argparse
@@ -21,6 +23,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 import creature as cr
 import sim
+import throw
 
 SIZE = (640, 360)
 SUPERSAMPLE = 2
@@ -40,6 +43,7 @@ FIRE = (18, 181, 83)
 EYE_WHITE, PUPIL = (255, 255, 255), (30, 28, 36)
 FRUIT, LEAF = (236, 120, 30), (60, 150, 60)
 ENERGY_FULL, ENERGY_LOW = (40, 160, 80), (200, 50, 40)
+BALL, BALL_EDGE = (70, 120, 205), (30, 60, 120)
 FONT = ImageFont.load_default(size=14)
 
 
@@ -243,12 +247,49 @@ def life_frames(genome, world, seconds, every=2):
     return images
 
 
+def throw_frames(genome, world, seconds, every=2):
+    body, brain = cr.develop(jnp.asarray(genome))
+    setup, frames = jax.jit(throw.record, static_argnums=(3,))(body, brain, world, seconds)
+    x, act, spikes, ball, release, best = (np.asarray(a) for a in frames)
+    angles = np.asarray(jax.vmap(lambda xt: sim.tilt(setup, xt))(frames[0]))
+    on = np.asarray(setup.point_on)
+    ground_y = SIZE[1] - 60
+    cam = float(x[0, on, 0].mean())
+    images = []
+    for t in range(0, len(x), every):
+        # follow the creature, or the ball once it's flying away
+        target = float(ball[t, 0]) if abs(ball[t, 0] - x[t, on, 0].mean()) > 1.0 else float(x[t, on, 0].mean())
+        cam += (target - cam) * 0.15
+        px = lambda X, Y: (SIZE[0] / 2 + (X - cam) * SCALE, ground_y - Y * SCALE)
+        img = Image.new('RGB', SIZE, SKY)
+        d = ImageDraw.Draw(img)
+        left = cam - SIZE[0] / 2 / SCALE
+        for k in range(int(np.floor(left * 2)), int(np.ceil((left + SIZE[0] / SCALE) * 2)) + 1):
+            gx = px(k / 2, 0)[0]
+            d.line([(gx, ground_y), (gx, ground_y + (8 if k % 2 == 0 else 4))], fill=GROUND)
+            if k % 2 == 0:
+                d.text((gx - 8, ground_y + 12), f'{k // 2} m', fill=MUTED, font=FONT)
+        d.line([(0, ground_y), (SIZE[0], ground_y)], fill=GROUND, width=2)
+        rx = px(float(release[t]), 0)[0]
+        d.line([(rx, ground_y - 14), (rx, ground_y)], fill=BALL, width=3)
+        fired = np.maximum(spikes[t], spikes[t - 1]) if t > 0 else spikes[t]
+        draw_creature(img, x[t], px, body, setup.bones, act[t], brain, fired, angles[t])
+        bx, by = px(*ball[t])
+        r = sim.BALL_RADIUS * SCALE
+        d.ellipse([bx - r, by - r, bx + r, by + r], fill=BALL, outline=BALL_EDGE, width=2)
+        d.text((16, 14), f'best throw {best[t]:.2f} m    {(t + 1) * sim.DT:4.1f} s', fill=INK, font=FONT)
+        d.text((16, 32), 'blue tick = where the ball last left the creature', fill=MUTED, font=FONT)
+        images.append(img)
+    return images
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('genome', help='a .npy file saved by evolve.py')
     ap.add_argument('--out', default='creature.gif')
-    ap.add_argument('--world', type=int, default=1000, help='which world: where the fruit lie and which way the start nudge goes')
-    ap.add_argument('--seconds', type=float, default=sim.EPISODE_SECONDS)
+    ap.add_argument('--task', choices=['food', 'throw'], default='food', help='which task the creature evolved for')
+    ap.add_argument('--world', type=int, default=1000, help='which world: where the fruit (or ball) lie and which way the start nudge goes')
+    ap.add_argument('--seconds', type=float, help='length of the life (default: 20 for food, 10 for throw)')
     ap.add_argument('--no-growth', action='store_true', help='skip the growing part')
     args = ap.parse_args()
     genome = np.load(args.genome)
@@ -260,7 +301,8 @@ def main():
         grown = growth_frames(genome)
         frames += grown
         durations += [70] * (len(grown) - 1) + [900]
-    lived = life_frames(genome, args.world, args.seconds)
+    seconds = args.seconds or (throw.EPISODE_SECONDS if args.task == 'throw' else sim.EPISODE_SECONDS)
+    lived = (throw_frames if args.task == 'throw' else life_frames)(genome, args.world, seconds)
     frames += lived
     durations += [int(2 * sim.DT * 1000)] * len(lived)
     frames[0].save(args.out, save_all=True, append_images=frames[1:], duration=durations, loop=0)

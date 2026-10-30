@@ -18,6 +18,7 @@ is grown and simulated in parallel on a GPU.
 evolution running in background workers while the best creature so far looks for fruit. It also has a
 genome bench: every one of the genome's numbers as a heatmap you can click and edit, a dial per channel,
 and a Grow button that grows and runs your edited genome. Open it in any browser.
+`web/neurogenesis-thrower.html` is the same for the throwing task (see below).
 (`web/neurogenesis-walker.html` is the earlier walking version; its genomes don't fit the current code.)
 
 ## Setup
@@ -57,6 +58,8 @@ python evolve.py --out runs/check --small        # a quick CPU check: 32 creatur
 python evolve.py --out runs/more --resume runs/first/mean.npy    # carry on from where a run stopped
 python render.py runs/first/best.npy --out creature.gif          # watch it grow and look for fruit
 python render.py runs/first/best.npy --world 7                   # in another world (fruit elsewhere)
+python evolve.py --out runs/throw --task throw                   # the other task: throw a ball
+python render.py runs/throw/best.npy --task throw
 ```
 
 `render.py` draws bones as pale, rounded limbs and fills in solid patches of bone. A muscle joint is a
@@ -75,9 +78,10 @@ version can be drawn here too; the page shows how.
 
 ## How it works
 
-The code is in three files, each with notes at the top:
+The code is in four files, each with notes at the top:
 - **`creature.py`**: the growth rule, and how a grown grid becomes a skeleton and a nervous system
-- **`sim.py`**: physics, the nervous system, senses and the score
+- **`sim.py`**: physics, the nervous system, senses, and the food task and its score
+- **`throw.py`**: the throwing task
 - **`evolve.py`**: the random start and evolution
 
 ### The genome
@@ -181,6 +185,24 @@ fast vibrations.
 - A world is a number. Fruit positions and the nudge come from an integer hash of the world number, the
   same in Python and JavaScript, so a world looks the same in both. A body of fewer than 3 joints scores 0.
 
+### The throwing task (`throw.py`, `--task throw`)
+A ball 10 cm across, half a joint's weight. After the creature settles, the ball is dropped onto the top
+of its body (above which joint depends on the world number) and given a second to settle too. The
+creature has no hands, so it has to fling the ball off with its body.
+- **Score: the longest throw in 10 s**: how far the ball travels through the air (more than 1 cm off the
+  ground) after it last left the creature, in either direction. Carrying it while walking earns nothing,
+  and so does rolling, kicking or shoving it along the ground.
+- **Why the ball starts on the creature.** With the ball on the ground and ground distance counting at
+  all, evolution's best "throwers" kicked it along the ground at 7 m/s and never lifted it. Counting only
+  flight stopped that, but then nothing scored at all, since random creatures never lift a ball, and
+  evolution had nothing to start from. On the creature's back, even a ball that rolls off flies a little,
+  and flinging it sends it farther. Picking the ball up off the ground could come back once throwers exist.
+- **No free speed.** Joints hold their angles with unlimited force, so pressing the ball into the ground
+  or pinching it between joints could shoot it out at any speed. The ball can leave the joints it touches
+  at most twice as fast as the fastest of them moved (a light ball hit by a heavy limb), and never faster
+  than 8 m/s. It slides to a stop on the ground.
+- Senses: touch includes touching the ball, eyes see the ball, and hunger stays at 0.
+
 ### Evolution (`evolve.py`)
 1. **A random start.** Evolution starts from a single cell and a random growth rule. About half of random
    rules grow nothing, so rules are drawn until one grows a small body of 3 to 30 joints with nerves
@@ -216,6 +238,16 @@ Food version (runs of 64 creatures per generation, 120 generations, 20 s lives):
   if simple, behaviour, a bit like a worm that roams when it's hungry. Draw it with
   `python render.py examples/forager.npy`, or load it in the browser page ("Load an evolved forager").
 
+Throwing task (three runs of 64 creatures per generation, 100 generations, 10 s lives): all three
+learned to throw. Their bodies grew from 3–30 joints to 80–130, almost all muscle, and they fling the
+ball by whipping the whole body, timed by the pacemaker, with limb tips reaching 5–8 m/s. Their best
+throws in the test worlds were 3.7, 4.0 and 5.6 m; over 20 worlds they had never seen, they averaged
+0.9, 2.5 and 1.4 m. With their muscles switched off, all three score 0. The 2.5 m one also uses its
+eyes (blinded, it averages 2.0 m). It's `examples/thrower.npy`
+(`python render.py examples/thrower.npy --task throw`), and the browser page can load it. Since muscles
+cost nothing and have unlimited force here, long chains of muscle make very good whips; a cost for muscle
+work would push toward more economical throws.
+
 Walking version (before food, the score was distance walked right):
 - About half of random growth rules grow a body; small ones are lumps that twitch.
 - Without jumping to champions, three runs from random starts stalled near zero for 50 generations.
@@ -234,6 +266,8 @@ per second.
 
 The JavaScript port was checked against this Python code: the same genomes grow identical bodies, nerve
 cells and skeletons, see the same fruit in the same places, eat the same fruit and get the same scores.
+In the throwing task they agree to within a fraction of a millimetre, except where a flailing body's
+chaos amplifies the tiny rounding differences between the two (one test throw of twelve: 0.51 vs 0.62 m).
 
 ## Where is the brain?
 

@@ -74,6 +74,12 @@ MUSCLE_RESPONSE = 0.15      # fraction of the way a muscle moves toward its driv
 FIBRE = 3                   # firing nerve cells in a joint's patch needed to drive it fully
 BONE_DAMPING = 0.3          # fraction of the relative motion of a bone's two ends removed each substep
 STATIC_FRICTION, KINETIC_FRICTION = 1.2, 0.8
+# a ball, for the throwing task (throw.py)
+BALL_RADIUS = 0.05
+BALL_WEIGHT = 0.5           # a joint weighs 1
+BALL_FRICTION = 0.8         # on the ground: a pushed ball stops within centimetres, a thrown one rolls a little
+BALL_MAX_SPEED = 8.0        # m/s, in any case
+BALL_KICK = 2.0             # the ball can leave a joint at most this many times as fast as the joint moves
 
 # nervous system and senses
 LEAK = 0.8
@@ -289,10 +295,13 @@ def think(brain: Brain, state: State, nerve, pace, touch, sight, hunger):
     return charge, spikes, rate, act
 
 
-def physics(setup: Setup, x, px, act):
+def physics(setup: Setup, x, px, act, ball=None):
+    """One tick of physics. ball, if given, is (position, position one substep ago), and comes back moved too."""
     bones = setup.bones
     target = bones.joint_rest + bones.joint_bend * act[JOINT_P]      # muscles bend their joints
-    return jax.lax.fori_loop(0, SUBSTEPS, lambda _, xs: _substep(setup, *xs, target), (x, px))
+    if ball is None:
+        return jax.lax.fori_loop(0, SUBSTEPS, lambda _, xs: _substep(setup, *xs, target), (x, px))
+    return jax.lax.fori_loop(0, SUBSTEPS, lambda _, s: _substep(setup, s[0], s[1], target, s[2]), (x, px, ball))
 
 
 def _hold_angle(x, bones: Skeleton, target, idx):
@@ -326,7 +335,19 @@ def _no_turn(x, before, point_on):
     return x - turned * jnp.stack([-r[:, 1], r[:, 0]], axis=1)
 
 
-def _substep(setup: Setup, x, px, target):
+def _push_ball(x, ball, point_on):
+    """Joints and the ball can't overlap: push each touching pair apart along the line between them, the
+    lighter ball moving more. The ball moves by the average of its pushes."""
+    d = ball[None, :] - x
+    dist = jnp.linalg.norm(d, axis=1) + 1e-9
+    overlap = jnp.maximum(RADIUS + BALL_RADIUS - dist, 0.0) * point_on
+    push = (overlap / dist)[:, None] * d
+    share = (1 / BALL_WEIGHT) / (1 / BALL_WEIGHT + 1)
+    ball = ball + share * jnp.sum(push, axis=0) / jnp.maximum(jnp.sum(overlap > 0), 1)
+    return x - (1 - share) * push, ball, overlap > 0
+
+
+def _substep(setup: Setup, x, px, target, ball=None):
     dt = DT / SUBSTEPS
     bones = setup.bones
     v = (x - px) * DAMPING ** (1 / SUBSTEPS)
@@ -335,9 +356,17 @@ def _substep(setup: Setup, x, px, target):
     x = jnp.where(setup.point_on[:, None], x, px)
     live = bones.link_on.astype(jnp.float32)
     joint_live = bones._replace(joint_on=bones.joint_on.astype(jnp.float32))
+    if ball is not None:
+        bx, bpx = ball
+        bv = (bx - bpx) * DAMPING ** (1 / SUBSTEPS)
+        bpx = bx
+        bx = bx + bv + jnp.array([0.0, -GRAVITY * dt * dt])
+        coming = jnp.linalg.norm(bx - bpx)          # how far it would go this substep untouched
+    else:
+        bx = jnp.zeros(2)
 
     def solve(_, carry):
-        x, depth = carry
+        x, depth, bx, contact = carry
         before = x
         for idx in LINK_BATCHES:                # bones keep their length
             a, b = LINK_A[idx], LINK_B[idx]
@@ -348,10 +377,23 @@ def _substep(setup: Setup, x, px, target):
         for idx in JOINT_BATCHES:               # joints keep (or, for muscles, bend to) their angle
             x = _hold_angle(x, joint_live, target, idx)
         x = _no_turn(x, before, setup.point_on)
+        if ball is not None:                    # the ball pushes from outside, so it can turn the body
+            x, bx, touch = _push_ball(x, bx, setup.point_on)
+            bx = bx.at[1].set(jnp.maximum(bx[1], BALL_RADIUS))
+            contact = contact | touch
         below = jnp.minimum(x[:, 1] - RADIUS, 0.0)
-        return x.at[:, 1].set(x[:, 1] - below), depth - below
+        return x.at[:, 1].set(x[:, 1] - below), depth - below, bx, contact
 
-    x, depth = jax.lax.fori_loop(0, ITERATIONS, solve, (x, jnp.zeros(N)))
+    x, depth, bx, contact = jax.lax.fori_loop(0, ITERATIONS, solve, (x, jnp.zeros(N), bx, jnp.zeros(N, bool)))
+    if ball is not None:
+        # Joints hold their angles with unlimited force, so pressing the ball into the ground or pinching it
+        # between joints could shoot it out at any speed, and evolution found that at once. So the ball can
+        # leave the joints it touched at most BALL_KICK times as fast as the fastest of them moved (a light
+        # ball hit by a heavy limb), unless it was already going faster.
+        hit = jnp.max(jnp.where(contact, jnp.linalg.norm(x - px, axis=1), 0.0))
+        step = bx - bpx
+        limit = jnp.maximum(coming, BALL_KICK * hit)
+        bx = jnp.where(jnp.any(contact), bpx + step * jnp.minimum(1.0, limit / (jnp.linalg.norm(step) + 1e-9)), bx)
     # Every bone damps how fast its two ends move relative to each other, which stops the jiggling that
     # floppy bodies otherwise build up under their own weight (evolution found it and slid along on it).
     for idx in LINK_BATCHES:
@@ -368,7 +410,16 @@ def _substep(setup: Setup, x, px, target):
     skid = (depth > 0) & ~stick
     new_x0 = jnp.where(stick, px[:, 0], jnp.where(skid, x[:, 0] - jnp.sign(slide) * KINETIC_FRICTION * load, x[:, 0]))
     x = x.at[:, 0].set(new_x0)
-    return jnp.where(setup.point_on[:, None], x, px), px
+    x = jnp.where(setup.point_on[:, None], x, px)
+    if ball is None:
+        return x, px
+    # the ball slides to a stop on the ground, and never moves faster than BALL_MAX_SPEED
+    slide = bx[0] - bpx[0]
+    slowed = jnp.sign(slide) * jnp.maximum(jnp.abs(slide) - BALL_FRICTION * GRAVITY * dt * dt, 0.0)
+    bx = bx.at[0].set(jnp.where(bx[1] <= BALL_RADIUS + 1e-6, bpx[0] + slowed, bx[0]))
+    step = bx - bpx
+    bx = bpx + step * jnp.minimum(1.0, BALL_MAX_SPEED * dt / (jnp.linalg.norm(step) + 1e-9))
+    return x, px, (bx, bpx)
 
 
 def feed(setup: Setup, state: State, x, act):

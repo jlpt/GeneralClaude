@@ -1,7 +1,8 @@
 """Evolve creatures that grow a body and a nervous system, and must find fruit to stay alive.
 
-    python evolve.py --out runs/first            # sized for a GPU
-    python evolve.py --out runs/check --small    # a quick check on a CPU
+    python evolve.py --out runs/first                  # sized for a GPU
+    python evolve.py --out runs/check --small          # a quick check on a CPU
+    python evolve.py --out runs/throw --task throw     # the other task: throw a ball as far as possible
 
 Evolution starts from nothing designed: a single cell and a random growth rule. A random rule grows
 nothing at all about half the time, so random rules are drawn until one grows a small body (3 to 30
@@ -12,7 +13,8 @@ search jumps to it: from a random start, good walkers are rare lucky finds, and 
 moves the average. All copies are grown and simulated in parallel (jax.vmap), which is where the GPU
 earns its keep.
 
-Scores are fruit eaten + the fraction of the time alive + a little for distance travelled (see sim.py).
+Scores are fruit eaten + the fraction of the time alive + a little for distance travelled (see sim.py),
+or with --task throw, the longest throw of a ball in metres (see throw.py).
 Each generation's best is re-tested in 4 fixed worlds, and the best of those is saved. The run folder gets best.npy (that best
 creature), mean.npy (the current genome, to resume from), log.csv and config.json. Draw one with
 render.py.
@@ -29,6 +31,9 @@ import numpy as np
 
 import creature as cr
 import sim
+import throw
+
+TASKS = {'food': sim, 'throw': throw}
 
 TEST_WORLDS = jnp.arange(1000, 1004)      # the re-test worlds: fruit placed differently in each
 
@@ -68,14 +73,14 @@ def centered_ranks(x):
     return ranks / (x.size - 1) - 0.5
 
 
-def evaluate(genome, key, seconds):
+def evaluate(genome, world, seconds, task='food'):
     body, brain = cr.develop(genome)
-    return sim.score(body, brain, key, seconds)
+    return TASKS[task].score(body, brain, world, seconds)
 
 
-def make_generation(pop, sigma, lr, seconds, decay=0.005):
+def make_generation(pop, sigma, lr, seconds, task='food', decay=0.005):
     half = pop // 2
-    many = jax.vmap(evaluate, in_axes=(0, None, None))
+    many = jax.vmap(lambda g, w: evaluate(g, w, seconds, task), in_axes=(0, None))
 
     @jax.jit
     def generation(mean, m, v, t, key):
@@ -84,7 +89,7 @@ def make_generation(pop, sigma, lr, seconds, decay=0.005):
         eps = jax.random.normal(k_noise, (half, cr.GENOME_SIZE))
         eps = jnp.concatenate([eps, -eps])                     # mirrored pairs cancel out noise
         genomes = mean + sigma * eps
-        fitness = many(genomes, world, seconds)
+        fitness = many(genomes, world)
         grad = -(centered_ranks(fitness) @ eps) / (pop * sigma) + decay * mean
         step, m, v = adam(grad, m, v, t, lr)
         return mean - step, m, v, fitness, genomes[jnp.argmax(fitness)]
@@ -92,10 +97,10 @@ def make_generation(pop, sigma, lr, seconds, decay=0.005):
     return generation
 
 
-def make_test(seconds):
+def make_test(seconds, task='food'):
     @jax.jit
     def test(genome):
-        return jnp.mean(jax.vmap(lambda w: evaluate(genome, w, seconds))(TEST_WORLDS))
+        return jnp.mean(jax.vmap(lambda w: evaluate(genome, w, seconds, task))(TEST_WORLDS))
     return test
 
 
@@ -106,14 +111,17 @@ def main():
     ap.add_argument('--gens', type=int, default=500)
     ap.add_argument('--sigma', type=float, default=0.02, help='size of the random changes')
     ap.add_argument('--lr', type=float, default=0.005)
-    ap.add_argument('--seconds', type=float, default=sim.EPISODE_SECONDS, help='length of each life')
+    ap.add_argument('--task', choices=sorted(TASKS), default='food', help='find fruit, or throw a ball')
+    ap.add_argument('--seconds', type=float, help='length of each life (default: 20 for food, 10 for throw)')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--resume', help='a mean.npy to continue from')
     ap.add_argument('--init-scale', type=float, default=0.1, help='size of the random starting growth rule\'s weights')
     ap.add_argument('--small', action='store_true', help='tiny settings for a CPU check')
     args = ap.parse_args()
+    if args.seconds is None:
+        args.seconds = TASKS[args.task].EPISODE_SECONDS
     if args.small:
-        args.pop, args.gens, args.seconds = 32, 15, 8.0
+        args.pop, args.gens, args.seconds = 32, 15, min(args.seconds, 8.0)
 
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, 'config.json'), 'w') as f:
@@ -131,8 +139,8 @@ def main():
     print('Where evolution starts (B bone, M muscle joint, E eye; lower case where a nerve runs):\n' + cr.describe(body))
     print(f'{int(body.alive.sum())} joints, {int(body.nerve.sum())} nerve cells')
 
-    generation = make_generation(args.pop, args.sigma, args.lr, args.seconds)
-    test = make_test(args.seconds)
+    generation = make_generation(args.pop, args.sigma, args.lr, args.seconds, args.task)
+    test = make_test(args.seconds, args.task)
     m = v = jnp.zeros_like(mean)
     best_score = -np.inf
     log = open(os.path.join(args.out, 'log.csv'), 'a')
@@ -153,7 +161,8 @@ def main():
         log.flush()
         print(f'gen {gen:4d}  score: best {float(fitness.max()):5.2f}  mean {float(fitness.mean()):5.2f}  '
               f'best re-tested {champion_test:5.2f}  best so far {best_score:5.2f}  ({took:.1f}s)')
-    print(f'Done. Draw the best creature with:  python render.py {os.path.join(args.out, "best.npy")}')
+    task = ' --task throw' if args.task == 'throw' else ''
+    print(f'Done. Draw the best creature with:  python render.py {os.path.join(args.out, "best.npy")}{task}')
 
 
 if __name__ == '__main__':
