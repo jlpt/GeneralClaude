@@ -181,17 +181,26 @@ the body out, so `--sigma` defaults to 0.01.
 
 ## Speed and results so far
 
-On one CPU core here, an 8-second life takes about 35 ms. Generations of 128 creatures with 20 s lives
-took about 13 s each on this 4-core CPU. A GPU runs the population in parallel, which is what the
-default of 512 creatures is for.
+On this 4-core CPU, a generation of 128 creatures with 20 s lives takes about 25 s, about twice as long
+as the earlier soft-body version: jointed limbs need smaller physics steps to hold a body up. A GPU runs
+the whole population in parallel, which is what the default of 512 creatures is for; `benchmark.py`
+shows what your card manages.
 
-I could only test on a CPU. In a run of 128 creatures per generation with 20 s lives, the champion's
-score on the fixed test worlds rose from 0.92 to 1.19 in 40 generations (the starter scores 0.54). That
-is slow progress, and why the defaults assume a GPU. Along the way, evolution found three loopholes, all
-now closed:
+I could only test on a CPU. In a 40-generation run of 128 creatures, the champion's average on the
+four test worlds rose from 0.65 to 2.9 by generation 22. Evolution reshaped the body. It dropped the
+eyes, turned one leg into a column of muscle joints two cells wide, and folded the long body down
+into a second leg, so it walks like an upside-down V. It only walks one way: in the two test worlds
+with fruit on that side it eats 3–4 fruit and lives the full 20 s, and in the other two it starves.
+Using its eyes to pick a direction is the next thing for longer GPU runs to find.
+
+Along the way, evolution found four loopholes, all now closed:
 - toppling onto fruit
+- lunging onto fruit with a long body
 - shrinking to outlive the clock
 - having no body at all
+
+The first version of this project used soft bodies made of square cells instead of a skeleton; it's
+in the git history.
 
 ## Ideas for next steps
 
