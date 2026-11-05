@@ -1,57 +1,58 @@
-#ifndef NEURON_H
-#define NEURON_H
+#pragma once
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
-#include "module.h"
-#include <cmath>
-struct Neuron; // Forward declaration for Connection
-// Declaration in the header
+
+// A synapse packed into 4 bytes: a 24-bit target neuron index and an 8-bit
+// weight in [-1, 1].
 class Connection {
 public:
-    uint8_t destNeuron[3];  // 3 bytes for a 24-bit index
-    int8_t weight;          // Stored as an 8-bit quantized value
-    float lastWeightDelta = 0.0f; // Added to track recent weight change
+    static constexpr uint32_t kMaxNeurons = 1u << 24;
 
-    Connection(float weightVal, uint32_t destNeuronValue);
-    void setWeight(float f);
-    float getWeight() const;
-    void setDestNeuron(uint32_t value);
-    uint32_t getDestNeuron() const;
+    Connection(uint32_t target, float weight) {
+        SetTarget(target);
+        SetWeight(weight);
+    }
+
+    uint32_t Target() const {
+        return uint32_t(target_[0]) | (uint32_t(target_[1]) << 8) | (uint32_t(target_[2]) << 16);
+    }
+    void SetTarget(uint32_t target) {
+        target_[0] = uint8_t(target & 0xFF);
+        target_[1] = uint8_t((target >> 8) & 0xFF);
+        target_[2] = uint8_t((target >> 16) & 0xFF);
+    }
+
+    float Weight() const { return weight_ / 127.0f; }
+    void SetWeight(float weight) {
+        weight_ = int8_t(std::lround(std::clamp(weight, -1.0f, 1.0f) * 127.0f));
+    }
+
+private:
+    uint8_t target_[3];
+    int8_t weight_;
 };
-inline float sigmoid(float x) {
-    return 1.0f / (1.0f + std::expf(-x));
-}
+static_assert(sizeof(Connection) == 4, "Connection should pack into 4 bytes");
 
+enum class NeuronType : uint8_t { Input, Output, Hidden };
+
+// A leaky integrate-and-fire neuron.
+//  - Input neurons charge up from their sensor value and spike at a rate
+//    proportional to it.
+//  - Hidden neurons leak, sum the weights of incoming spikes, spike when the
+//    potential reaches the threshold, then reset and stay silent for
+//    `refractoryPeriod` steps.
+//  - Output neurons never spike; their potential is a smoothed 0..1 level
+//    that the body reads.
 struct Neuron {
-
-    enum class NeuronType {
-        Input,
-        Output,
-        Normal
-    };
-
-public:
-    bool thresholdReached = false;
-    int delay = 0;
-    int delayTime = 1;
-    NeuronType type;
-    float thresholdMax;
-    float thresholdMin;
-    Module* module;
-    float activation = 0.0f;
-   
-    float inputSum = 0.0f;  // collects weighted inputs before sigmoid
-    float x, y;
-    
-uint8_t refactoryPeriod;
-uint8_t refactory = 0;
-
-std::vector<Connection> connections;
-
-Neuron();
-Neuron(float param_x, float param_y, uint8_t param_refactoryPeriod, NeuronType type, float thresholdMin, float thresholdMax);
-
-void update();
-void Propagate(std::vector<Neuron>& neurons);
+    NeuronType type = NeuronType::Hidden;
+    uint8_t refractoryPeriod = 0;
+    uint8_t refractory = 0;   // silent steps remaining
+    bool spiked = false;      // fired on the most recent step
+    float potential = 0.0f;
+    float threshold = 1.0f;
+    float layoutX = 0.0f;     // position in the brain diagram, 0..1
+    float layoutY = 0.0f;
+    std::vector<Connection> connections;  // outgoing synapses
 };
-#endif

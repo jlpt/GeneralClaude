@@ -1,25 +1,31 @@
-#ifndef MODULE_H
-#define MODULE_H
-
+#pragma once
 #include <memory>
 
-class Organism;      // Forward declaration
-class NeuralNetwork; // Forward declaration
+class Organism;
+class World;
 
+// A body part that connects the brain to the world. Sensors write to input
+// neurons, actuators read output neurons. Organism::AddModule gives each
+// module its own block of inputs/outputs, starting at firstInput/firstOutput.
 class Module {
 public:
-    int input;
-    int output;
-    int inputStartingNeuron;
-    int outputStartingNeuron;
     virtual ~Module() = default;
+    virtual std::unique_ptr<Module> Clone() const = 0;
 
-    // Clone creates a new copy of the module with updated pointers.
-    virtual std::unique_ptr<Module> Clone(Organism* newOrganism, NeuralNetwork* newNetwork) const = 0;
+    virtual int InputCount() const { return 0; }
+    virtual int OutputCount() const { return 0; }
+    virtual void Sense(Organism& /*self*/, const World& /*world*/) {}  // write inputs
+    virtual void Act(Organism& /*self*/, World& /*world*/) {}          // read outputs
 
-    virtual void Update() = 0;
-   
-      
+    int firstInput = 0;
+    int firstOutput = 0;
 };
 
-#endif // MODULE_H
+// Base class that implements Clone() by copying the concrete module.
+template <typename Derived>
+class ModuleBase : public Module {
+public:
+    std::unique_ptr<Module> Clone() const override {
+        return std::make_unique<Derived>(static_cast<const Derived&>(*this));
+    }
+};

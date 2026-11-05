@@ -1,42 +1,51 @@
 #pragma once
-#include "neural_network.h"
-#include "is_clickable.h"
-#include "food_sensor.h"
-#include <vector>
-#include "raylib.h"
+#include <cstdint>
 #include <memory>
-class Organism : public IsClickable ,public Entity{
+#include <vector>
+#include "module.h"
+#include "neural_network.h"
 
-	
-public: 
-	float x;
-	float y;
-	int size;
-	int input;
-	int output;
-	float health;
-	float air;
-	float mutationRate = 1.0f;
-	bool alive = true;
-	int foodEaten = 0;
-	int generation = 0;
-	int inputsUsed = 0;
-	int outputsUsed = 0;
-	Color color;
-	std::unique_ptr<NeuralNetwork> network;
-	std::vector<std::unique_ptr<Module>> modules;
-	Organism(float x, float y, int size);
+struct Config;
+class World;
 
+struct Rgb {
+    uint8_t r = 255, g = 255, b = 255;
+};
 
-	
-	void InitNetwork(int neurons, int connections, int inputs, int outputs);
-	void AddModule(std::unique_ptr<Module> module);
+class Organism {
+public:
+    Organism(uint64_t id, float x, float y, const Config& cfg);
+    Organism(Organism&&) noexcept = default;
+    Organism& operator=(Organism&&) noexcept = default;
+    Organism(const Organism&) = delete;
+    Organism& operator=(const Organism&) = delete;
 
-	void Draw();
-	void Update();
-	void DrawNetwork();
-	
-	void Click() override;
-	std::unique_ptr<Organism> Reproduce();
+    // Adds a module and gives it the next free block of inputs/outputs.
+    // Add all modules before creating the brain.
+    void AddModule(std::unique_ptr<Module> module);
+    int InputsUsed() const { return inputsUsed_; }
+    int OutputsUsed() const { return outputsUsed_; }
 
+    // One step of life: sense -> think -> act -> burn health and air.
+    void Update(World& world);
+
+    // A mutated copy of this organism.
+    Organism MakeOffspring(uint64_t childId, const Config& cfg) const;
+
+    uint64_t id;
+    float x, y;
+    float radius;
+    float health;
+    float air;
+    int foodEaten = 0;     // since the last reproduction
+    int generation = 0;
+    float mutationRate = 1.0f;
+    bool alive = true;
+    Rgb color;             // drifts slowly, so related organisms look alike
+    NeuralNetwork brain;
+    std::vector<std::unique_ptr<Module>> modules;
+
+private:
+    int inputsUsed_ = 0;
+    int outputsUsed_ = 0;
 };

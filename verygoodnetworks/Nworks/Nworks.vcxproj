@@ -105,7 +105,6 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>C:\Users\kcjan\OneDrive\Desktop\c++ libraries\raylib-5.5_win64_msvc16\include</AdditionalIncludeDirectories>
-      <OpenMPSupport>true</OpenMPSupport>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -136,55 +135,29 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="AirSensor.cpp" />
-    <ClCompile Include="badfood_sensor.cpp" />
-    <ClCompile Include="bad_food.cpp" />
-    <ClCompile Include="block.cpp" />
-    <ClCompile Include="bullet.cpp" />
-    <ClCompile Include="food.cpp" />
-    <ClCompile Include="game.cpp" />
-    <ClCompile Include="health_sensor.cpp" />
-    <ClCompile Include="is_clickable.cpp" />
-    <ClCompile Include="movement_module.cpp" />
+    <ClCompile Include="actuators.cpp" />
+    <ClCompile Include="headless.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="neural_network.cpp" />
-    <ClCompile Include="neuron.cpp" />
     <ClCompile Include="organism.cpp" />
-    <ClCompile Include="food_sensor.cpp" />
-    <ClCompile Include="organism_sensor.cpp" />
-    <ClCompile Include="player.cpp" />
-    <ClCompile Include="position_sensor.cpp" />
-    <ClCompile Include="slice.cpp" />
-    <ClCompile Include="slice_sensor.cpp" />
-    <ClCompile Include="slider.cpp" />
-    <ClCompile Include="slice_module.cpp" />
-    <ClCompile Include="teleport_module.cpp" />
-    <ClCompile Include="world_gen.cpp" />
+    <ClCompile Include="random.cpp" />
+    <ClCompile Include="render.cpp" />
+    <ClCompile Include="sensors.cpp" />
+    <ClCompile Include="world.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="air_sensor.h" />
-    <ClInclude Include="badfood_sensor.h" />
-    <ClInclude Include="bad_food.h" />
-    <ClInclude Include="block.h" />
-    <ClInclude Include="bullet.h" />
-    <ClInclude Include="entity.h" />
-    <ClInclude Include="food.h" />
-    <ClInclude Include="health_sensor.h" />
+    <ClInclude Include="actuators.h" />
+    <ClInclude Include="config.h" />
+    <ClInclude Include="headless.h" />
     <ClInclude Include="module.h" />
-    <ClInclude Include="is_clickable.h" />
-    <ClInclude Include="movement_module.h" />
-    <ClInclude Include="mover.h" />
     <ClInclude Include="neural_network.h" />
     <ClInclude Include="neuron.h" />
     <ClInclude Include="organism.h" />
-    <ClInclude Include="food_sensor.h" />
-    <ClInclude Include="organism_sensor.h" />
-    <ClInclude Include="player.h" />
-    <ClInclude Include="position_sensor.h" />
-    <ClInclude Include="slice.h" />
-    <ClInclude Include="slice_module.h" />
-    <ClInclude Include="slice_sensor.h" />
-    <ClInclude Include="teleport_module.h" />
-    <ClInclude Include="world_gen.h" />
+    <ClInclude Include="random.h" />
+    <ClInclude Include="render.h" />
+    <ClInclude Include="sensors.h" />
+    <ClInclude Include="slider.h" />
+    <ClInclude Include="world.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
