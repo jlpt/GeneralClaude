@@ -84,15 +84,41 @@ void DrawWorld(const World& world, uint64_t glowId, uint64_t selectedId) {
         DrawLineEx({s.x1, s.y1}, {s.x2, s.y2}, Slice::kWidth, Color{255, 255, 255, alpha});
         DrawLineEx({s.x1, s.y1}, {s.x2, s.y2}, Slice::kWidth - 1.0f, Color{0, 0, 0, alpha});
     }
+    // Season patches: the blooming one is outlined strongly.
+    if (cfg.seasons) {
+        for (int p = 0; p < World::kPatchCount; ++p) {
+            const bool blooming = p == world.Season();
+            DrawCircleV({world.PatchX(p), world.PatchY(p)}, cfg.patchRadius, Fade(DARKGREEN, blooming ? 0.25f : 0.08f));
+        }
+    }
+
     for (const Resource& r : world.food) DrawDisc({r.x, r.y}, r.radius, RED);
     for (const Resource& r : world.airPockets) DrawDisc({r.x, r.y}, r.radius, BLUE);
 
+    // Springs: the bright centre shrinks as the water runs out.
+    for (const Spring& s : world.springs) {
+        DrawDisc({s.x, s.y}, s.radius, DARKBLUE);
+        const float fill = std::sqrt(std::clamp(s.water / cfg.springCapacity, 0.0f, 1.0f));
+        DrawCircleV({s.x, s.y}, s.radius * fill, BLUE);
+    }
+
+    const uint64_t focusId = selectedId ? selectedId : glowId;
     for (const Organism& o : world.organisms) {
         const Vector2 center{o.x, o.y};
         if (o.id == glowId) DrawCircleV(center, o.radius + 32.0f, ToColor(o.color, 192));
         if (o.id == selectedId) DrawRing(center, o.radius + 5.0f, o.radius + 8.0f, 0.0f, 360.0f, 32, WHITE);
+        if (o.id == focusId && cfg.vision) DrawCircleLines(int(o.x), int(o.y), cfg.visionRange, Fade(WHITE, 0.4f));
         DrawDisc(center, o.radius, ToColor(o.color));
     }
+}
+
+void DrawWorldStats(const World& world, int x, int y) {
+    DrawText(TextFormat("Difficulty: %.0f%%", world.difficulty * 100.0f), x, y, 18, WHITE);
+    if (world.cfg.seasons) {
+        DrawText(TextFormat("Season: %d of %d", world.Season() + 1, World::kPatchCount), x, y + 20, 18, WHITE);
+    }
+    DrawText(TextFormat("Biggest brain ever: %s", WithCommas((long long)world.stats.largestBrainEver).c_str()), x,
+             y + 40, 18, WHITE);
 }
 
 void DrawBrain(const NeuralNetwork& brain, Rectangle area) {

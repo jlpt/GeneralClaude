@@ -1,14 +1,17 @@
 #pragma once
 #include <cstdint>
 
-// Every tunable number in the simulation lives here. The defaults reproduce
-// the original setup.
+// Every tunable number in the simulation lives here.
+//
+// To get the original world back, set brainCostPerNeuron and
+// brainCostPerSynapse to 0 and turn off vision, springs and seasons.
 struct Config {
     // --- World ---
     float worldWidth = 1300.0f;
     float worldHeight = 768.0f;
 
-    // Area where random organisms, food and the first air pockets appear.
+    // Area where random organisms appear, and where food and air pockets
+    // appear when seasons/springs are off.
     float spawnMinX = 40.0f;
     float spawnMaxX = 700.0f;
     float spawnMinY = 80.0f;
@@ -16,10 +19,16 @@ struct Config {
     float airSpawnMaxX = 300.0f;  // later air pockets start in [spawnMinX, airSpawnMaxX]
 
     // --- Population ---
-    int minPopulation = 15;            // below this, one random organism spawns per step
+    int minPopulation = 15;            // below this, one organism is added per step
+    // Refill the population mostly with mutated copies of recent parents (a
+    // "seed bank") instead of random brains, so a crash doesn't throw away
+    // everything evolution has found.
+    bool refillFromSurvivors = true;
+    int survivorArchiveSize = 50;      // recent parents remembered
+    float randomRefillShare = 0.2f;    // fraction of refills that are brand-new random brains
     float organismRadius = 12.0f;
-    float maxHealth = 5000.0f;         // steps an organism lasts without eating food
-    float maxAir = 10000.0f;           // steps an organism lasts without an air pocket
+    float maxHealth = 5000.0f;         // steps an organism lasts without eating (before brain cost)
+    float maxAir = 10000.0f;           // steps an organism lasts without air
     int foodToReproduce = 3;
     float moveSpeed = 3.0f;
     float offspringSpread = 20.0f;     // children appear up to this far from the parent
@@ -27,7 +36,11 @@ struct Config {
     // --- Brains ---
     int initialHiddenNeurons = 43;
     int initialConnections = 600;
-    float brainCostPerSynapse = 0.0f;  // extra health lost per step per synapse (0 = brains are free)
+    // Brains burn energy: every step, health drops by an extra
+    // neurons * brainCostPerNeuron + synapses * brainCostPerSynapse.
+    // The starting brain costs about 25% extra; a brain has to earn its size.
+    float brainCostPerNeuron = 0.002f;
+    float brainCostPerSynapse = 0.0002f;
 
     // --- Leaky integrate-and-fire neurons ---
     float membraneLeak = 0.95f;        // potential is multiplied by this every step
@@ -51,34 +64,61 @@ struct Config {
     float removeConnectionChance = 0.005f;
     float thresholdChance = 0.02f;
 
-    // --- Resources ---
+    // --- Food ---
     int initialFood = 100;
     int maxFood = 100;
-    float foodSpawnChance = 0.015f;    // per step
+    float foodSpawnChance = 0.03f;     // per step (the original was 0.015, before brains cost energy)
     float foodRadius = 5.0f;
+
+    // --- Air pockets (used when springs are off) ---
     int initialAirPockets = 10;
     int maxAirPockets = 50;
     float airSpawnChance = 0.015f;     // per step
     float airPocketRadius = 8.0f;
 
-    // Curriculum: as the leading generation grows, new food spawns further
-    // left and new air pockets further right, so organisms must travel
-    // between them (eventually beyond the range of their senses).
-    float foodDriftPerGeneration = 0.5f;
+    // --- Curriculum ---
+    // Difficulty (0..1) rises while the population sustains itself (no
+    // random spawns needed) and falls back when it collapses.
+    int curriculumWindow = 20000;      // steps between difficulty updates
+    float curriculumStep = 0.025f;     // change per update
+    int curriculumBackoffSpawns = 10;  // random spawns in one window that count as a collapse
+    // With seasons off: food shifts left and air pockets right by difficulty * these.
     float foodDriftMax = 400.0f;
-    float airDriftPerGeneration = 5.0f;
     float airDriftMax = 1000.0f;
 
-    // --- Senses ---
-    float resourceSensorRange = 500.0f;
-    float organismSensorRange = 600.0f;
-    float sliceSensorRange = 600.0f;
+    // --- Stage 2: vision ---
+    // The view around an organism is split into `visionSectors` slices. For
+    // each slice, three inputs report how close the nearest food, air source
+    // and other organism are (1 = touching, 0 = nothing within visionRange).
+    bool vision = true;                // false = the original nearest-food/air sensors
+    int visionSectors = 8;             // up to 32
+    float visionRange = 300.0f;
+    float resourceSensorRange = 500.0f;  // range of the original sensors
 
-    // --- Optional features (off in the original setup) ---
-    bool organismSensor = false;  // sense the nearest other organism (+5 inputs)
+    // --- Stage 3: springs and seasons ---
+    // Springs: three fixed air sources, further apart than organisms can see.
+    // Each holds a limited amount of air and refills slowly, so a crowd can
+    // drain one and has to remember where the others are.
+    bool springs = true;               // replaces air pockets
+    float springRadius = 18.0f;
+    float springCapacity = 30000.0f;   // air stored when full
+    float springRecharge = 15.0f;      // air regained per step
+
+    // Seasons: food blooms in one of three patches, and the patch moves on
+    // every `seasonLength` steps. Uneaten food rots. Difficulty sets how much
+    // food grows in the patch versus scattered anywhere (0 = all scattered).
+    bool seasons = true;
+    int seasonLength = 8000;
+    float patchRadius = 150.0f;
+    int foodLifetime = 6000;           // steps before uneaten food rots (seasons only)
+
+    // --- Optional features ---
+    bool organismSensor = false;  // original nearest-organism sensor (+5 inputs); vision already sees organisms
     bool positionSensor = false;  // sense own x/y position (+2 inputs)
     bool slices = false;          // organisms can cut lines that kill (+8 inputs, +4 outputs)
     int sliceCooldown = 10;       // steps between cuts
+    float sliceSensorRange = 600.0f;
+    float organismSensorRange = 600.0f;
 
     uint32_t seed = 0;            // 0 = pick a random seed
 };

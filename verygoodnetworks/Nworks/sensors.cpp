@@ -52,12 +52,62 @@ void WritePoint(Organism& self, int first, float dx, float dy, float range) {
 
 }  // namespace
 
+void VisionSensor::Sense(Organism& self, const World& world) {
+    constexpr float kPi = 3.14159265359f;
+    const float range = world.cfg.visionRange;
+    const float rangeSq = range * range;
+    float seen[kKinds][kMaxSectors] = {};
+
+    auto look = [&](int kind, float x, float y, float radius) {
+        const float dx = x - self.x;
+        const float dy = y - self.y;
+        const float distSq = dx * dx + dy * dy;
+        if (distSq >= rangeSq) return;
+        const float closeness = 1.0f - std::max(0.0f, std::sqrt(distSq) - radius) / range;
+        // atan2 is -pi at due left and increases clockwise on screen (y points down).
+        int sector = int((std::atan2(dy, dx) + kPi) / (2.0f * kPi) * float(sectors_));
+        sector = std::clamp(sector, 0, sectors_ - 1);
+        seen[kind][sector] = std::max(seen[kind][sector], closeness);
+    };
+
+    for (const Resource& r : world.food) look(0, r.x, r.y, r.radius);
+    for (const Resource& r : world.airPockets) look(1, r.x, r.y, r.radius);
+    for (const Spring& s : world.springs) {
+        if (s.water >= 1.0f) look(1, s.x, s.y, s.radius);
+    }
+    for (const Organism& other : world.organisms) {
+        if (other.id != self.id) look(2, other.x, other.y, other.radius);
+    }
+
+    for (int kind = 0; kind < kKinds; ++kind) {
+        for (int s = 0; s < sectors_; ++s) self.brain.SetInput(firstInput + kind * sectors_ + s, seen[kind][s]);
+    }
+}
+
 void FoodSensor::Sense(Organism& self, const World& world) {
     SenseNearestResource(self, firstInput, world.food, world.cfg.resourceSensorRange);
 }
 
 void AirPocketSensor::Sense(Organism& self, const World& world) {
-    SenseNearestResource(self, firstInput, world.airPockets, world.cfg.resourceSensorRange);
+    // Springs count as air too, so this sensor still works with springs on.
+    const float range = world.cfg.resourceSensorRange;
+    float bestSq = range * range;
+    float bestDx = 0.0f, bestDy = 0.0f;
+    bool found = false;
+    auto consider = [&](float x, float y) {
+        const float dx = x - self.x, dy = y - self.y;
+        if (dx * dx + dy * dy < bestSq) {
+            bestSq = dx * dx + dy * dy;
+            bestDx = dx;
+            bestDy = dy;
+            found = true;
+        }
+    };
+    for (const Resource& r : world.airPockets) consider(r.x, r.y);
+    for (const Spring& s : world.springs) {
+        if (s.water >= 1.0f) consider(s.x, s.y);
+    }
+    WriteDirection(self, firstInput, found, bestDx, bestDy, range);
 }
 
 void OrganismSensor::Sense(Organism& self, const World& world) {

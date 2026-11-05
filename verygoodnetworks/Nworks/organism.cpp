@@ -34,7 +34,8 @@ void Organism::Update(World& world) {
 
     x = std::clamp(x, 0.0f, cfg.worldWidth);
     y = std::clamp(y, 0.0f, cfg.worldHeight);
-    health -= 1.0f + cfg.brainCostPerSynapse * float(brain.SynapseCount());
+    health -= 1.0f + cfg.brainCostPerNeuron * float(brain.NeuronCount()) +
+              cfg.brainCostPerSynapse * float(brain.SynapseCount());
     air -= 1.0f;
 }
 
