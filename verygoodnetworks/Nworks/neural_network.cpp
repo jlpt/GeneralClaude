@@ -47,6 +47,7 @@ NeuralNetwork::NeuralNetwork(int numInputs, int numOutputs, int numHidden, int n
 
     inputDrive_.assign(size_t(numInputs), 0.0f);
     incoming_.assign(neurons_.size(), 0.0f);
+    if (cfg.plasticity) learningRate_ = rng::Float(0.0f, cfg.maxInitialLearningRate);
 
     // AddConnection skips self-loops, so allow a few retries.
     for (int added = 0, attempts = 0; added < numConnections && attempts < numConnections * 4; ++attempts) {
@@ -62,13 +63,39 @@ float NeuralNetwork::Input(int index) const { return inputDrive_[size_t(index)];
 
 float NeuralNetwork::Output(int index) const { return neurons_[size_t(numInputs_ + index)].potential; }
 
+float NeuralNetwork::LearnedChange(size_t neuron, size_t connection) const {
+    if (neuron >= plastic_.size() || connection >= plastic_[neuron].size()) return 0.0f;
+    return plastic_[neuron][connection].learned;
+}
+
+void NeuralNetwork::PrepareScratch(bool plastic) {
+    if (incoming_.size() != neurons_.size()) incoming_.resize(neurons_.size());
+    std::fill(incoming_.begin(), incoming_.end(), 0.0f);
+    fired_.resize(neurons_.size());
+    if (!plastic) return;
+    plastic_.resize(neurons_.size());
+    for (size_t i = 0; i < neurons_.size(); ++i) {
+        if (plastic_[i].size() != neurons_[i].connections.size()) plastic_[i].assign(neurons_[i].connections.size(), {});
+    }
+}
+
 void NeuralNetwork::Step(const Config& cfg) {
+    const bool plastic = cfg.plasticity;
+    PrepareScratch(plastic);
+    ++clock_;
+
     // 1. Deliver the spikes fired on the previous step. Doing this as a
     //    separate pass means update order doesn't matter.
-    std::fill(incoming_.begin(), incoming_.end(), 0.0f);
-    for (const Neuron& n : neurons_) {
+    for (size_t i = 0; i < neurons_.size(); ++i) {
+        const Neuron& n = neurons_[i];
+        fired_[i] = n.spiked ? 1 : 0;
         if (!n.spiked) continue;
-        for (const Connection& c : n.connections) incoming_[c.Target()] += c.Weight();
+        for (size_t k = 0; k < n.connections.size(); ++k) {
+            const Connection& c = n.connections[k];
+            float weight = c.Weight();
+            if (plastic) weight = std::clamp(weight + plastic_[i][k].learned, -1.0f, 1.0f);
+            incoming_[c.Target()] += weight;
+        }
     }
 
     // 2. Integrate and fire.
@@ -102,6 +129,72 @@ void NeuralNetwork::Step(const Config& cfg) {
             break;
         }
     }
+
+    // 3. Learn.
+    if (plastic && learningRate_ > 0.0f) Learn(cfg);
+}
+
+namespace {
+
+// Eligibility older than this many steps counts as zero.
+constexpr uint32_t kTraceWindow = 64;
+// Forgetting is applied in batches every this many steps.
+constexpr uint32_t kForgetEvery = 64;
+
+// decay^age for age < kTraceWindow, cached for the current decay value.
+const float* DecayTable(float decay) {
+    static float cachedDecay = -1.0f;
+    static float table[kTraceWindow];
+    if (decay != cachedDecay) {
+        cachedDecay = decay;
+        float value = 1.0f;
+        for (uint32_t age = 0; age < kTraceWindow; ++age, value *= decay) table[age] = value;
+    }
+    return table;
+}
+
+}  // namespace
+
+void NeuralNetwork::Learn(const Config& cfg) {
+    // Three-factor rule: a synapse becomes eligible when its source spiked
+    // just before its target responded; the reward signal then turns
+    // eligibility into a lasting (but slowly fading) weight change.
+    // Work is only done for spikes, during rewards, and every kForgetEvery steps.
+    const float* decay = DecayTable(cfg.traceDecay);
+    auto eligibility = [&](const Plastic& p) {
+        const uint32_t age = clock_ - p.traceStep;
+        return age < kTraceWindow ? p.trace * decay[age] : 0.0f;
+    };
+
+    for (size_t i = 0; i < neurons_.size(); ++i) {
+        if (!fired_[i]) continue;
+        const auto& connections = neurons_[i].connections;
+        for (size_t k = 0; k < connections.size(); ++k) {
+            const Neuron& target = neurons_[connections[k].Target()];
+            const float response = target.type == NeuronType::Output ? target.potential : (target.spiked ? 1.0f : 0.0f);
+            if (response <= 0.0f) continue;
+            Plastic& p = plastic_[i][k];
+            p.trace = eligibility(p) + response;
+            p.traceStep = clock_;
+        }
+    }
+
+    if (std::fabs(reward_) > 1e-3f) {
+        const float scale = learningRate_ * reward_;
+        for (auto& synapses : plastic_) {
+            for (Plastic& p : synapses) {
+                const float e = eligibility(p);
+                if (e > 0.0f) p.learned = std::clamp(p.learned + scale * e, -1.0f, 1.0f);
+            }
+        }
+    }
+
+    if (clock_ % kForgetEvery == 0) {
+        const float keep = std::pow(1.0f - cfg.learnedForgetting, float(kForgetEvery));
+        for (auto& synapses : plastic_) {
+            for (Plastic& p : synapses) p.learned *= keep;
+        }
+    }
 }
 
 void NeuralNetwork::ResetState() {
@@ -111,12 +204,16 @@ void NeuralNetwork::ResetState() {
         n.refractory = 0;
     }
     std::fill(inputDrive_.begin(), inputDrive_.end(), 0.0f);
+    plastic_.clear();  // learning is not inherited
+    reward_ = 0.0f;
+    clock_ = 0;
 }
 
 size_t NeuralNetwork::MemoryBytes() const {
     size_t bytes = sizeof(*this) + neurons_.capacity() * sizeof(Neuron) +
-                   (inputDrive_.capacity() + incoming_.capacity()) * sizeof(float);
+                   (inputDrive_.capacity() + incoming_.capacity()) * sizeof(float) + fired_.capacity();
     for (const Neuron& n : neurons_) bytes += n.connections.capacity() * sizeof(Connection);
+    for (const auto& p : plastic_) bytes += p.capacity() * sizeof(Plastic);
     return bytes;
 }
 
@@ -128,6 +225,7 @@ void NeuralNetwork::Mutate(int mutations, const Config& cfg) {
     const float addConnection = removeNeuron + cfg.addConnectionChance;
     const float removeConnection = addConnection + cfg.removeConnectionChance;
     const float threshold = removeConnection + cfg.thresholdChance;
+    const float learning = threshold + (cfg.plasticity ? cfg.learningRateChance : 0.0f);
 
     for (int i = 0; i < mutations; ++i) {
         const float roll = rng::Float(0.0f, 1.0f);
@@ -136,8 +234,13 @@ void NeuralNetwork::Mutate(int mutations, const Config& cfg) {
         else if (roll < addConnection) AddConnection();
         else if (roll < removeConnection) RemoveConnection();
         else if (roll < threshold) ModifyThreshold(cfg);
+        else if (roll < learning) ModifyLearningRate(cfg);
         else ModifyWeight(cfg);
     }
+}
+
+void NeuralNetwork::ModifyLearningRate(const Config& cfg) {
+    learningRate_ = std::clamp(learningRate_ + rng::Float(-cfg.learningRateStep, cfg.learningRateStep), 0.0f, 0.5f);
 }
 
 int NeuralNetwork::RandomSource() const {

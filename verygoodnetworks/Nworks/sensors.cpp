@@ -52,36 +52,72 @@ void WritePoint(Organism& self, int first, float dx, float dy, float range) {
 
 }  // namespace
 
-void VisionSensor::Sense(Organism& self, const World& world) {
+// Which of `sectors` equal slices (dx, dy) falls in. atan2 is -pi at due left
+// and increases clockwise on screen, because y points down.
+static int SectorOf(float dx, float dy, int sectors) {
     constexpr float kPi = 3.14159265359f;
+    const int sector = int((std::atan2(dy, dx) + kPi) / (2.0f * kPi) * float(sectors));
+    return std::clamp(sector, 0, sectors - 1);
+}
+
+VisionSensor::VisionSensor(int sectors, const Config& cfg) : sectors_(sectors) {
+    const bool used[int(Seen::Count)] = {true, cfg.poison, true, true, cfg.cooperativeFood, cfg.predators};
+    for (int kind = 0; kind < int(Seen::Count); ++kind) slot_[kind] = used[kind] ? kinds_++ : -1;
+}
+
+void VisionSensor::Sense(Organism& self, const World& world) {
     const float range = world.cfg.visionRange;
     const float rangeSq = range * range;
-    float seen[kKinds][kMaxSectors] = {};
+    float seen[int(Seen::Count)][kMaxSectors] = {};
 
-    auto look = [&](int kind, float x, float y, float radius) {
+    auto look = [&](Seen kind, float x, float y, float radius) {
+        const int slot = slot_[int(kind)];
         const float dx = x - self.x;
         const float dy = y - self.y;
         const float distSq = dx * dx + dy * dy;
-        if (distSq >= rangeSq) return;
+        if (slot < 0 || distSq >= rangeSq) return;
         const float closeness = 1.0f - std::max(0.0f, std::sqrt(distSq) - radius) / range;
-        // atan2 is -pi at due left and increases clockwise on screen (y points down).
-        int sector = int((std::atan2(dy, dx) + kPi) / (2.0f * kPi) * float(sectors_));
-        sector = std::clamp(sector, 0, sectors_ - 1);
-        seen[kind][sector] = std::max(seen[kind][sector], closeness);
+        float& cell = seen[slot][SectorOf(dx, dy, sectors_)];
+        cell = std::max(cell, closeness);
     };
 
-    for (const Resource& r : world.food) look(0, r.x, r.y, r.radius);
-    for (const Resource& r : world.airPockets) look(1, r.x, r.y, r.radius);
+    for (const Resource& r : world.food) look(r.kind == 1 ? Seen::FoodB : Seen::FoodA, r.x, r.y, r.radius);
+    for (const Resource& r : world.airPockets) look(Seen::Air, r.x, r.y, r.radius);
     for (const Spring& s : world.springs) {
-        if (s.water >= 1.0f) look(1, s.x, s.y, s.radius);
+        if (s.water >= 1.0f) look(Seen::Air, s.x, s.y, s.radius);
     }
     for (const Organism& other : world.organisms) {
-        if (other.id != self.id) look(2, other.x, other.y, other.radius);
+        if (other.id != self.id) look(Seen::Creature, other.x, other.y, other.radius);
+    }
+    for (const Resource& r : world.bigFood) look(Seen::BigFood, r.x, r.y, r.radius);
+    for (int i = 0; i < world.ActivePredators(); ++i) {
+        const Predator& p = world.predators[size_t(i)];
+        look(Seen::Predator, p.x, p.y, world.cfg.predatorRadius);
     }
 
-    for (int kind = 0; kind < kKinds; ++kind) {
+    for (int kind = 0; kind < kinds_; ++kind) {
         for (int s = 0; s < sectors_; ++s) self.brain.SetInput(firstInput + kind * sectors_ + s, seen[kind][s]);
     }
+}
+
+void HearingSensor::Sense(Organism& self, const World& world) {
+    const float range = world.cfg.hearingRange;
+    float loudest[4] = {};
+    for (const Organism& other : world.organisms) {
+        if (other.id == self.id || other.signal <= 0.0f) continue;
+        const float dx = other.x - self.x;
+        const float dy = other.y - self.y;
+        const float distSq = dx * dx + dy * dy;
+        if (distSq >= range * range) continue;
+        float& cell = loudest[SectorOf(dx, dy, 4)];
+        cell = std::max(cell, other.signal * (1.0f - std::sqrt(distSq) / range));
+    }
+    for (int i = 0; i < 4; ++i) self.brain.SetInput(firstInput + i, loudest[i]);
+}
+
+void TasteSensor::Sense(Organism& self, const World& /*world*/) {
+    self.brain.SetInput(firstInput + 0, std::max(0.0f, self.reward));
+    self.brain.SetInput(firstInput + 1, std::max(0.0f, -self.reward));
 }
 
 void FoodSensor::Sense(Organism& self, const World& world) {

@@ -40,6 +40,8 @@ public:
     int foodEaten = 0;     // since the last reproduction
     int generation = 0;
     float mutationRate = 1.0f;
+    float signal = 0.0f;   // 0..1, what the SignalModule is broadcasting
+    float reward = 0.0f;   // + after good food, - after poison; fades every step
     bool alive = true;
     Rgb color;             // drifts slowly, so related organisms look alike
     NeuralNetwork brain;

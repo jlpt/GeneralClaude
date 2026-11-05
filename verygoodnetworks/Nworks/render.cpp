@@ -92,7 +92,7 @@ void DrawWorld(const World& world, uint64_t glowId, uint64_t selectedId) {
         }
     }
 
-    for (const Resource& r : world.food) DrawDisc({r.x, r.y}, r.radius, RED);
+    for (const Resource& r : world.food) DrawDisc({r.x, r.y}, r.radius, r.kind == 1 ? PURPLE : RED);
     for (const Resource& r : world.airPockets) DrawDisc({r.x, r.y}, r.radius, BLUE);
 
     // Springs: the bright centre shrinks as the water runs out.
@@ -102,23 +102,34 @@ void DrawWorld(const World& world, uint64_t glowId, uint64_t selectedId) {
         DrawCircleV({s.x, s.y}, s.radius * fill, BLUE);
     }
 
+    for (const Resource& r : world.bigFood) DrawDisc({r.x, r.y}, r.radius, GOLD);
+
     const uint64_t focusId = selectedId ? selectedId : glowId;
     for (const Organism& o : world.organisms) {
         const Vector2 center{o.x, o.y};
         if (o.id == glowId) DrawCircleV(center, o.radius + 32.0f, ToColor(o.color, 192));
         if (o.id == selectedId) DrawRing(center, o.radius + 5.0f, o.radius + 8.0f, 0.0f, 360.0f, 32, WHITE);
         if (o.id == focusId && cfg.vision) DrawCircleLines(int(o.x), int(o.y), cfg.visionRange, Fade(WHITE, 0.4f));
+        if (o.signal > 0.05f) DrawCircleV(center, o.radius + 10.0f, Fade(YELLOW, 0.6f * o.signal));  // calling
         DrawDisc(center, o.radius, ToColor(o.color));
+    }
+
+    // Predators: dark red, with an eye showing which way they're heading.
+    for (int i = 0; i < world.ActivePredators(); ++i) {
+        const Predator& p = world.predators[size_t(i)];
+        const float r = cfg.predatorRadius;
+        DrawDisc({p.x, p.y}, r, p.rest > 0 ? Fade(MAROON, 0.5f) : MAROON);
+        DrawCircleV({p.x + std::cos(p.heading) * r * 0.5f, p.y + std::sin(p.heading) * r * 0.5f}, r * 0.3f, WHITE);
     }
 }
 
 void DrawWorldStats(const World& world, int x, int y) {
-    DrawText(TextFormat("Difficulty: %.0f%%", world.difficulty * 100.0f), x, y, 18, WHITE);
-    if (world.cfg.seasons) {
-        DrawText(TextFormat("Season: %d of %d", world.Season() + 1, World::kPatchCount), x, y + 20, 18, WHITE);
-    }
-    DrawText(TextFormat("Biggest brain ever: %s", WithCommas((long long)world.stats.largestBrainEver).c_str()), x,
-             y + 40, 18, WHITE);
+    int line = 0;
+    auto text = [&](const char* s) { DrawText(s, x, y + 17 * line++, 16, WHITE); };
+    text(TextFormat("Difficulty: %.0f%%", world.difficulty * 100.0f));
+    if (world.cfg.seasons) text(TextFormat("Season: %d of %d", world.Season() + 1, World::kPatchCount));
+    if (world.cfg.poison) text(TextFormat("Poisonous now: %s", world.PoisonKind() == 1 ? "purple" : "red"));
+    text(TextFormat("Biggest brain ever: %s", WithCommas((long long)world.stats.largestBrainEver).c_str()));
 }
 
 void DrawBrain(const NeuralNetwork& brain, Rectangle area) {

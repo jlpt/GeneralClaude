@@ -29,8 +29,10 @@ void Organism::AddModule(std::unique_ptr<Module> module) {
 void Organism::Update(World& world) {
     const Config& cfg = world.cfg;
     for (auto& module : modules) module->Sense(*this, world);
+    brain.SetReward(reward);
     brain.Step(cfg);
     for (auto& module : modules) module->Act(*this, world);
+    reward *= cfg.rewardDecay;
 
     x = std::clamp(x, 0.0f, cfg.worldWidth);
     y = std::clamp(y, 0.0f, cfg.worldHeight);

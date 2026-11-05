@@ -5,11 +5,19 @@
 #include "config.h"
 #include "organism.h"
 
-// Food (restores health) or an air pocket (restores air).
+// Food (restores health), big food, or an air pocket (restores air).
 struct Resource {
     float x, y;
     float radius;
     uint64_t bornStep = 0;  // for rotting food
+    uint8_t kind = 0;       // food colour, 0 or 1 (with poison on, one of them is poisonous)
+};
+
+// Hunts organisms; not evolved.
+struct Predator {
+    float x, y;
+    float heading;  // radians, used while wandering
+    int rest = 0;   // steps left resting after a catch
 };
 
 // A fixed air source with limited, slowly refilling capacity.
@@ -41,6 +49,10 @@ struct WorldStats {
     uint64_t births = 0;   // offspring from reproduction
     uint64_t spawned = 0;  // organisms added to keep the population up (from the seed bank or random)
     uint64_t deaths = 0;
+    uint64_t eatenByPredators = 0;
+    uint64_t poisonBites = 0;
+    uint64_t goodBites = 0;
+    uint64_t bigFoodShared = 0;   // big food items opened together
     size_t largestBrainEver = 0;  // neurons
 };
 
@@ -64,11 +76,18 @@ public:
     float PatchX(int patch) const;
     float PatchY(int patch) const;
 
+    // With poison on: which food colour (0 or 1) is poisonous right now.
+    int PoisonKind() const;
+    int ActivePredators() const;  // the first ActivePredators() entries of `predators` are hunting
+    float PredatorSpeed() const;
+
     Config cfg;
     std::vector<Organism> organisms;
     std::vector<Resource> food;
+    std::vector<Resource> bigFood;
     std::vector<Resource> airPockets;
     std::vector<Spring> springs;
+    std::vector<Predator> predators;
     std::vector<Slice> slices;
     WorldStats stats;
     float difficulty = 0.0f;  // 0..1, see Config's curriculum settings
@@ -86,7 +105,11 @@ private:
     void AddBodyModules(Organism& o) const;
     void RememberParent(const Organism& parent);
     void SpawnFood();
+    void SpawnBigFood();
     void SpawnAirPocket();
+    void EatFood(Organism& o);
+    void ShareBigFood();
+    void MovePredators();
     void UpdateCurriculum();
     Resource RandomResource(float maxX, float radius) const;
 

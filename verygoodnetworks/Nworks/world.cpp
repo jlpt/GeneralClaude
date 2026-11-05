@@ -54,7 +54,7 @@ float Slice::DistanceTo(float x, float y) const {
 
 World::World(const Config& config) : cfg(config) {
     rng::Seed(cfg.seed);
-    for (int i = 0; i < cfg.initialFood; ++i) SpawnFood();
+    for (int i = 0; i < cfg.initialFood * (cfg.poison ? 2 : 1); ++i) SpawnFood();
     if (cfg.springs) {
         for (const auto& pos : kSpringLayout) {
             springs.push_back(
@@ -63,6 +63,12 @@ World::World(const Config& config) : cfg(config) {
     } else {
         for (int i = 0; i < cfg.initialAirPockets; ++i)
             airPockets.push_back(RandomResource(cfg.spawnMaxX, cfg.airPocketRadius));
+    }
+    if (cfg.predators) {
+        for (int i = 0; i < cfg.predatorCount; ++i) {
+            predators.push_back(Predator{rng::Float(0.0f, cfg.worldWidth), rng::Float(0.0f, cfg.worldHeight),
+                                         rng::Float(0.0f, kTwoPi)});
+        }
     }
 }
 
@@ -74,7 +80,11 @@ void World::Step() {
                  slices.end());
 
     if (int(organisms.size()) < cfg.minPopulation) RefillPopulation();
-    if (int(food.size()) < cfg.maxFood && rng::Chance(cfg.foodSpawnChance)) SpawnFood();
+    const int foodColours = cfg.poison ? 2 : 1;  // poison lookalikes come on top of normal food
+    if (int(food.size()) < cfg.maxFood * foodColours && rng::Chance(cfg.foodSpawnChance * float(foodColours)))
+        SpawnFood();
+    if (cfg.cooperativeFood && int(bigFood.size()) < cfg.maxBigFood && rng::Chance(cfg.bigFoodSpawnChance))
+        SpawnBigFood();
     if (!cfg.springs && int(airPockets.size()) < cfg.maxAirPockets && rng::Chance(cfg.airSpawnChance))
         SpawnAirPocket();
     if (cfg.seasons && cfg.foodLifetime > 0) {
@@ -97,10 +107,7 @@ void World::Step() {
             }
         }
 
-        if (const int eaten = Consume(food, o); eaten > 0) {
-            o.health = cfg.maxHealth;
-            o.foodEaten += eaten;
-        }
+        EatFood(o);
         if (Consume(airPockets, o) > 0) o.air = cfg.maxAir;
         for (Spring& s : springs) {
             if (!Touching(o, s.x, s.y, s.radius)) continue;
@@ -118,6 +125,8 @@ void World::Step() {
             ++stats.births;
         }
     }
+    ShareBigFood();
+    MovePredators();
 
     const size_t before = organisms.size();
     organisms.erase(std::remove_if(organisms.begin(), organisms.end(), [](const Organism& o) { return !o.alive; }),
@@ -175,21 +184,132 @@ void World::RememberParent(const Organism& parent) {
 
 void World::AddBodyModules(Organism& o) const {
     if (cfg.vision) {
-        o.AddModule(std::make_unique<VisionSensor>(std::clamp(cfg.visionSectors, 1, VisionSensor::kMaxSectors)));
+        o.AddModule(
+            std::make_unique<VisionSensor>(std::clamp(cfg.visionSectors, 1, VisionSensor::kMaxSectors), cfg));
     } else {
         o.AddModule(std::make_unique<FoodSensor>());
         o.AddModule(std::make_unique<AirPocketSensor>());
     }
     o.AddModule(std::make_unique<VitalsSensor>());
+    if (cfg.poison || cfg.plasticity) o.AddModule(std::make_unique<TasteSensor>());
+    if (cfg.signals) o.AddModule(std::make_unique<HearingSensor>());
     if (cfg.organismSensor) o.AddModule(std::make_unique<OrganismSensor>());
     if (cfg.positionSensor) o.AddModule(std::make_unique<PositionSensor>());
     if (cfg.slices) o.AddModule(std::make_unique<SliceSensor>());
     o.AddModule(std::make_unique<MovementModule>());
+    if (cfg.signals) o.AddModule(std::make_unique<SignalModule>());
     if (cfg.slices) o.AddModule(std::make_unique<SliceModule>());
 }
 
+void World::EatFood(Organism& o) {
+    const int poisonKind = cfg.poison ? PoisonKind() : -1;
+    for (auto it = food.begin(); it != food.end();) {
+        if (!Touching(o, it->x, it->y, it->radius)) {
+            ++it;
+            continue;
+        }
+        if (it->kind == poisonKind) {
+            o.health -= cfg.poisonDamage * difficulty * cfg.maxHealth;  // grows with the curriculum
+            o.reward = std::max(-1.0f, o.reward - 1.0f);
+            ++stats.poisonBites;
+        } else {
+            o.health = cfg.maxHealth;
+            ++o.foodEaten;
+            o.reward = std::min(1.0f, o.reward + 1.0f);
+            ++stats.goodBites;
+        }
+        it = food.erase(it);
+    }
+}
+
+void World::ShareBigFood() {
+    std::vector<Organism*> touching;
+    for (auto it = bigFood.begin(); it != bigFood.end();) {
+        touching.clear();
+        for (Organism& o : organisms) {
+            if (o.alive && Touching(o, it->x, it->y, it->radius)) touching.push_back(&o);
+        }
+        if (int(touching.size()) < cfg.bigFoodPartners) {
+            ++it;
+            continue;
+        }
+        for (Organism* o : touching) {
+            o->health = cfg.maxHealth;
+            o->foodEaten += cfg.bigFoodValue;
+            o->reward = 1.0f;
+        }
+        ++stats.bigFoodShared;
+        it = bigFood.erase(it);
+    }
+}
+
+void World::MovePredators() {
+    const float speed = PredatorSpeed();
+    const float sightSq = cfg.predatorSight * cfg.predatorSight;
+    const int active = ActivePredators();
+    for (int i = 0; i < active; ++i) {
+        Predator& p = predators[size_t(i)];
+        if (p.rest > 0) {
+            --p.rest;
+            continue;
+        }
+        const Organism* target = nullptr;
+        float bestSq = sightSq;
+        for (const Organism& o : organisms) {
+            const float dx = o.x - p.x, dy = o.y - p.y;
+            if (o.alive && dx * dx + dy * dy < bestSq) {
+                bestSq = dx * dx + dy * dy;
+                target = &o;
+            }
+        }
+        if (target) {
+            // Chase at full speed.
+            const float dx = target->x - p.x, dy = target->y - p.y;
+            const float length = std::max(1e-3f, std::sqrt(dx * dx + dy * dy));
+            p.x += dx / length * speed;
+            p.y += dy / length * speed;
+            p.heading = std::atan2(dy, dx);
+        } else {
+            // Wander at half speed, bouncing off the walls.
+            p.heading += rng::Float(-0.3f, 0.3f);
+            p.x += std::cos(p.heading) * speed * 0.5f;
+            p.y += std::sin(p.heading) * speed * 0.5f;
+            if (p.x < 0.0f || p.x > cfg.worldWidth) p.heading = kTwoPi * 0.5f - p.heading;
+            if (p.y < 0.0f || p.y > cfg.worldHeight) p.heading = -p.heading;
+        }
+        p.x = std::clamp(p.x, 0.0f, cfg.worldWidth);
+        p.y = std::clamp(p.y, 0.0f, cfg.worldHeight);
+
+        for (Organism& o : organisms) {
+            if (o.alive && Touching(o, p.x, p.y, cfg.predatorRadius)) {
+                o.alive = false;
+                ++stats.eatenByPredators;
+                p.rest = cfg.predatorRest;
+                break;
+            }
+        }
+    }
+}
+
+void World::SpawnBigFood() {
+    const float margin = 30.0f;
+    bigFood.push_back(Resource{rng::Float(margin, cfg.worldWidth - margin), rng::Float(margin, cfg.worldHeight - margin),
+                               cfg.bigFoodRadius, stats.steps, 0});
+}
+
+int World::PoisonKind() const {
+    if (cfg.poisonSwapInterval <= 0) return 0;
+    return int((stats.steps / uint64_t(cfg.poisonSwapInterval)) % 2);
+}
+
+int World::ActivePredators() const {
+    return std::min(int(predators.size()), int(std::lround(difficulty * float(cfg.predatorCount))));
+}
+
+float World::PredatorSpeed() const { return cfg.predatorBaseSpeed + difficulty * cfg.predatorExtraSpeed; }
+
 void World::SpawnFood() {
-    Resource r{0.0f, 0.0f, cfg.foodRadius, stats.steps};
+    Resource r{0.0f, 0.0f, cfg.foodRadius, stats.steps, 0};
     if (cfg.seasons) {
         const float margin = 20.0f;
         if (rng::Chance(difficulty)) {
@@ -209,6 +329,7 @@ void World::SpawnFood() {
         r = RandomResource(cfg.spawnMaxX, cfg.foodRadius);
         r.x = std::max(0.0f, r.x - difficulty * cfg.foodDriftMax);
     }
+    if (cfg.poison) r.kind = uint8_t(rng::Int(0, 1));
     food.push_back(r);
 }
 
@@ -220,7 +341,7 @@ void World::SpawnAirPocket() {
 
 Resource World::RandomResource(float maxX, float radius) const {
     return Resource{rng::Float(cfg.spawnMinX, maxX), rng::Float(cfg.spawnMinY, cfg.spawnMaxY), radius,
-                    stats.steps};
+                    stats.steps, 0};
 }
 
 int World::Season() const {

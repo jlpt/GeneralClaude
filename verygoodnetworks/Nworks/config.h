@@ -4,7 +4,8 @@
 // Every tunable number in the simulation lives here.
 //
 // To get the original world back, set brainCostPerNeuron and
-// brainCostPerSynapse to 0 and turn off vision, springs and seasons.
+// brainCostPerSynapse to 0, turn off vision, springs and seasons, and turn
+// off everything in stage 4.
 struct Config {
     // --- World ---
     float worldWidth = 1300.0f;
@@ -111,6 +112,60 @@ struct Config {
     int seasonLength = 8000;
     float patchRadius = 150.0f;
     int foodLifetime = 6000;           // steps before uneaten food rots (seasons only)
+
+    // --- Stage 4a: signals ---
+    // One output broadcasts a 0..1 signal (it costs energy to call); four
+    // inputs hear the loudest nearby call from the left, up, right and down.
+    bool signals = true;
+    float hearingRange = 400.0f;
+    float signalCost = 0.1f;           // extra health lost per step at full volume
+
+    // --- Stage 4b: cooperative food ---
+    // Big food (gold) is worth bigFoodValue food each, but only opens when
+    // at least bigFoodPartners organisms touch it at the same time.
+    bool cooperativeFood = true;
+    int maxBigFood = 4;
+    float bigFoodSpawnChance = 0.002f;
+    float bigFoodRadius = 16.0f;
+    int bigFoodPartners = 2;
+    int bigFoodValue = 2;
+
+    // --- Stage 4c: predators ---
+    // Predators chase the nearest organism they can see and kill on contact.
+    // They arrive with the curriculum (the first at 25% difficulty, the
+    // second at 75%) and get faster as it gets harder.
+    bool predators = true;
+    int predatorCount = 2;             // at 100% difficulty
+    float predatorRadius = 14.0f;
+    float predatorSight = 200.0f;
+    float predatorBaseSpeed = 0.8f;
+    float predatorExtraSpeed = 2.2f;   // added at 100% difficulty (organisms top out at 3 per axis)
+    int predatorRest = 1000;           // steps a predator rests after a catch
+
+    // --- Stage 4d: poison lookalikes ---
+    // Food comes in two colours. One is poisonous, and which one swaps every
+    // poisonSwapInterval steps: about once per lifetime, too often for
+    // evolution to hard-wire, so it pays to learn. The lookalikes are extra:
+    // food spawns twice as often (and up to twice maxFood), so there is as
+    // much good food as without poison.
+    bool poison = true;
+    int poisonSwapInterval = 10000;
+    float poisonDamage = 0.4f;         // fraction of maxHealth lost per poisonous bite at 100% difficulty
+                                       // (it scales with difficulty; bad bites always taste bad)
+
+    // --- Stage 4e: lifetime learning ---
+    // Synapses change during life by a reward-modulated Hebbian rule: a
+    // synapse whose spike helped its target fire becomes "eligible", and
+    // eligible synapses strengthen after a reward (good food) or weaken after
+    // a punishment (poison). Each brain's learning rate is a gene; what it
+    // learns is not inherited.
+    bool plasticity = true;
+    float traceDecay = 0.9f;           // how long a pairing stays eligible (per step)
+    float learnedForgetting = 0.0002f; // learned changes fade by this fraction per step (half-life ~3,500 steps)
+    float rewardDecay = 0.9f;          // the reward/punishment signal fades by this per step
+    float maxInitialLearningRate = 0.05f;
+    float learningRateStep = 0.01f;    // largest change from one learning-rate mutation
+    float learningRateChance = 0.02f;  // chance a mutation changes the learning rate
 
     // --- Optional features ---
     bool organismSensor = false;  // original nearest-organism sensor (+5 inputs); vision already sees organisms

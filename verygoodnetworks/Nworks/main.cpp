@@ -10,7 +10,7 @@ namespace {
 
 constexpr int kScreenWidth = 1666;
 constexpr int kScreenHeight = 768;
-constexpr Rectangle kBrainArea{1390.0f, 150.0f, 200.0f, 530.0f};
+constexpr Rectangle kBrainArea{1390.0f, 150.0f, 200.0f, 520.0f};
 
 void PanCamera(Camera2D& camera) {
     const float speed = 4.0f / camera.zoom;
@@ -73,7 +73,7 @@ int RunWindow() {
             DrawOrganismStats(*focus, 1400, 16);
         }
         DrawPopulationStats(world, 20, 730);
-        DrawWorldStats(world, 1400, 706);
+        DrawWorldStats(world, 1400, 694);
         if (hovered) DrawTooltip(*hovered, mouse);
 
         fpsSlider.Draw(TextFormat("Target FPS: %d", fpsSlider.Value()));
