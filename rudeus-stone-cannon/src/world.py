@@ -1,7 +1,7 @@
 """Backdrop: night sky, moon, mountains, the plain, grass and the target crag."""
 import math
 import numpy as np
-from canvas import (C, XS, YS, W, H, CW, CH, M, v2, disc, ellipse, polygon, nb, outline_of, dilate4,
+from canvas import (Scene, C, L, XS, YS, W, H, CW, CH, M, v2, disc, ellipse, polygon, nb, outline_of, dilate4,
                     line_pts, smooth01)
 
 RNG = np.random.default_rng(7)
@@ -75,10 +75,10 @@ def _crag_cells():
     tone = np.zeros(len(pts))
     for i, (px, py) in enumerate(pts):
         tone[i] = 2.5 - (px - 256) / 20.0 + r.uniform(-0.5, 0.5) - max(0, (py - 135) / 25)
-    return mask, idx, tone
+    return mask, idx, tone, pts
 
 
-CRAG_MASK, CRAG_CELL, CRAG_TONE = _crag_cells()
+CRAG_MASK, CRAG_CELL, CRAG_TONE, CRAG_SEEDS = _crag_cells()
 RAMP_RK = ["rk1", "rk2", "rk3", "rk4", "rk5"]
 
 
@@ -172,9 +172,9 @@ def draw_land(sc, f, dark=0.0):
         sc.put_px(xs, ys, C[col] * k, "Land")
 
 
-def draw_crag(sc, f, hit=None, dark=0.0):
-    """hit: None or dict(t=frames since impact) to carve the hole, cracks and the
-    fresh rock face."""
+def _crag(sc, hit=None, dark=0.0):
+    """hit: None or dict(crack=0..1, spread=0..1, heat=0..1, hole=0..1) for the hole, cracks and
+    the fresh rock face."""
     k = 1 - 0.35 * dark
     m = CRAG_MASK
     lvl = np.clip(np.round(CRAG_TONE[CRAG_CELL]), 0, 4).astype(int)
@@ -201,21 +201,22 @@ def draw_crag(sc, f, hit=None, dark=0.0):
         sc.put_px([x, x], [163 - h // 2, 163 - h // 2 - 1], C["gr3"] * k, "Crag")
     if hit is None:
         return
-    t = hit["t"]
     hc = HOLE
+    hs = hit.get("hole", 1.0)
     # fresh fractured face around the hole
-    bite = polygon([hc + v2((math.cos(a) * r, math.sin(a) * r * 1.1)) for a, r in zip(
+    bite = polygon([hc + v2((math.cos(a) * r * hs, math.sin(a) * r * 1.1 * hs)) for a, r in zip(
         np.linspace(0, 2 * math.pi, 12, endpoint=False), [11, 8, 10, 12, 9, 13, 10, 8, 11, 9, 12, 10])]) & m
     sc.put(bite, C["rk4"] * k, "Crag")
     sc.put(bite & ~nb(bite, 1, 1), C["rk5"] * k, "Crag")
     sc.put(outline_of(bite) & m, C["rk1"] * k, "Crag")
     # radiating cracks
     r = np.random.default_rng(21)
-    grow = min(1.0, (t + 1) / 4)
+    grow = hit.get("crack", 1.0)
+    spread = hit.get("spread", 0.0)
     for j in range(9):
         a = j / 9 * 2 * math.pi + r.uniform(-0.3, 0.3)
         p = hc.copy()
-        ln = r.uniform(14, 34) * grow
+        ln = r.uniform(14, 34) * grow * (1 + 2.2 * spread)
         for s in range(5):
             a += r.uniform(-0.5, 0.5)
             q = p + v2((math.cos(a), math.sin(a) * 1.2)) * ln / 5
@@ -226,11 +227,11 @@ def draw_crag(sc, f, hit=None, dark=0.0):
             sc.put_px(xs[inside2] + 1, ys[inside2] + 1, C["rk3"] * k, "Crag")
             p = q
     # the hole itself, with a molten rim that cools
-    hole = ellipse(hc, 4.6, 5.4)
+    hole = ellipse(hc, 0.6 + 5.4 * hs, 0.8 + 6.0 * hs)
     sc.put(hole, C["rk0"], "Crag")
-    sc.put(hole & ellipse(hc + v2((1.4, 0.4)), 3.0, 3.6), C["st0"], "Crag")
+    sc.put(hole & ellipse(hc + v2((1.4, 0.4)), 3.4 * hs, 4.0 * hs), C["st0"], "Crag")
     rim = outline_of(hole) | (outline_of(dilate4(hole)) & ((XS + YS) % 2 == 0))
-    heat = max(0.0, 1 - t / 30)
+    heat = hit.get("heat", 0.0)
     if heat > 0:
         cols = ["mg7", "mg6", "mg5", "mg4", "mg3", "mg2", "mg1"]
         ci = min(len(cols) - 1, int((1 - heat) * len(cols)))
@@ -239,6 +240,71 @@ def draw_crag(sc, f, hit=None, dark=0.0):
         sc.light(np.clip(1 - np.hypot(XS - hc[0], YS - hc[1]) / 16, 0, 1) ** 2 * heat, C["mg3"], 0.9)
     else:
         sc.put(rim & m, C["rk2"] * k, "Crag")
+
+
+
+
+def draw_crag(sc, f, hit=None, dark=0.0, dx=0, collapse=None):
+    """dx: horizontal shudder. collapse: frames since the crag started to fall apart (its Voronoi
+    blocks drop away, nearest the hole first)."""
+    if dx == 0 and collapse is None:
+        _crag(sc, hit, dark)
+        return
+    tmp = Scene()
+    _crag(tmp, hit, dark)
+    m = tmp.owner == L["Crag"]
+    if collapse is None:
+        sc.put_rgb(np.roll(m, dx, 1), np.roll(tmp.rgb, dx, 1), "Crag")
+        return
+    stump = m & (YS >= 152)
+    sc.put_rgb(stump, tmp.rgb, "Crag")
+    ys, xs = np.nonzero(m & ~stump)
+    cells = CRAG_CELL[ys, xs]
+    order = np.argsort(cells, kind="stable")
+    ys, xs, cells = ys[order], xs[order], cells[order]
+    bounds = np.searchsorted(cells, np.arange(len(CRAG_SEEDS) + 1))
+    for cid in range(len(CRAG_SEEDS)):
+        a, b = bounds[cid], bounds[cid + 1]
+        if a == b:
+            continue
+        cx, cy = CRAG_SEEDS[cid]
+        delay = math.hypot(cx - HOLE[0], (cy - HOLE[1]) * 0.8) / 10.0
+        tt = collapse - delay
+        oy = ox = 0
+        if tt > 0:
+            oy = 0.5 * 0.5 * tt * tt
+            ox = (cx - HOLE[0]) * 0.035 * tt + ((cid * 7) % 5 - 2) * 0.25 * tt
+        py, px = ys[a:b] + int(round(oy)), xs[a:b] + int(round(ox))
+        ok = (py >= 0) & (py < CH) & (px >= 0) & (px < CW) & (py < 166 + M)
+        if not ok.any():
+            continue
+        sc.rgb[py[ok], px[ok]] = tmp.rgb[ys[a:b][ok], xs[a:b][ok]]
+        sc.owner[py[ok], px[ok]] = L["Crag"]
+        sc.dith[py[ok], px[ok]] = 0
+
+
+RUBBLE = [(240 + i * 4.1 + ((i * 37) % 7) - 3, 160 - 9 * math.sin(math.pi * i / 18) - ((i * 13) % 5),
+           3.5 + (i * 29 % 4)) for i in range(19)]
+
+
+def draw_rubble(sc, grow, dark=0.0):
+    """Heap of broken rock where the crag stood (grow 0..1)."""
+    if grow <= 0:
+        return
+    k = 1 - 0.35 * dark
+    heap = np.zeros((CH, CW), bool)
+    for i, (x, y, r) in enumerate(RUBBLE):
+        rr = r * min(1.0, grow * 1.4 - i * 0.02)
+        if rr <= 0.5:
+            continue
+        heap |= ellipse((x, y + (1 - grow) * 6), rr * 1.3, rr)
+    heap &= YS < 167
+    sc.put(outline_of(heap) & (YS < 167), C["rk0"] * k, "Crag")
+    sc.put(heap, C["rk2"] * k, "Crag")
+    for i, (x, y, r) in enumerate(RUBBLE):
+        lob = ellipse((x - r * 0.3, y + (1 - grow) * 6 - r * 0.35), r * 0.8, r * 0.55) & heap
+        sc.put(lob, C["rk3" if i % 3 else "rk4"] * k, "Crag")
+    sc.put(heap & ~nb(heap, -1, -1), C["rk5"] * k, "Crag")
 
 
 def draw_grass_fg(sc, f, blast=0.0, blast_x=80, dark=0.0):

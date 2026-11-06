@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from canvas import W, H, LAYERS, P, hexc
-from anim import N, DURATIONS, render
+from anim import N, DURATIONS, render, SEGMENTS, S, LEN
 from ase_writer import write_aseprite
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -35,16 +35,17 @@ palette_rgba = [(r, g, b, 255) for r, g, b in palette]
 palette_names = [named.get(c, "") for c in palette]
 
 # ---------------------------------------------------------------- .aseprite
-TAGS = [
-    dict(name="Idle", **{"from": 0, "to": 11}, color=(98, 200, 120)),
-    dict(name="Raise Arms", **{"from": 12, "to": 19}, color=(120, 170, 255)),
-    dict(name="Gather", **{"from": 20, "to": 49}, color=(255, 170, 60)),
-    dict(name="Form Bullet", **{"from": 50, "to": 67}, color=(255, 120, 40)),
-    dict(name="Impact Frame", **{"from": 68, "to": 69}, color=(240, 240, 240)),
-    dict(name="Fire", **{"from": 70, "to": 72}, color=(255, 230, 120)),
-    dict(name="Impact", **{"from": 73, "to": 99}, color=(220, 80, 60)),
-    dict(name="Recover", **{"from": 100, "to": N - 1}, color=(140, 140, 200)),
-]
+TAG_NAMES = {
+    "idle": "Idle", "raise": "Raise Arms", "gather": "Gather", "form": "Form Bullet", "spinup": "Spin Up",
+    "cutin": "Close-up: Spin", "lock": "Lock On", "iframe": "Impact Frame", "fire": "Fire",
+    "track": "Tracking Shot", "arrive": "Arrive", "drill": "Drill", "blast": "Breakthrough",
+    "collapse": "Collapse", "reveal": "Reveal", "face": "Close-up: Sukuna", "sign": "Hand Sign",
+    "expand": "Domain Expansion", "shrine": "Malevolent Shrine", "slash": "Dismantle", "finale": "Finale",
+}
+TAG_COLORS = [(98, 200, 120), (120, 170, 255), (255, 170, 60), (255, 120, 40), (255, 200, 90), (240, 240, 240),
+              (220, 80, 60), (200, 120, 255)]
+TAGS = [dict(name=TAG_NAMES[n], **{"from": S[n], "to": S[n] + LEN[n] - 1}, color=TAG_COLORS[i % len(TAG_COLORS)])
+        for i, (n, _) in enumerate(SEGMENTS)]
 
 
 def split_layers(img, own):

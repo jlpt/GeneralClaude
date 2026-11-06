@@ -58,11 +58,21 @@ P = {
     "pa0": "241a14", "pa1": "3e2e22", "pa2": "5a4430",
     "bt0": "1a100c", "bt1": "38241a", "bt2": "5a3c28",
     "be0": "3a2414", "be1": "6a4426", "gold": "e8c462",
+    # Sukuna
+    "ph0": "4a1626", "ph1": "8e3448", "ph2": "c85a72", "ph3": "ec8ea2", "ph4": "ffc4d0",
+    "ki0": "2a2832", "ki1": "6e6a78", "ki2": "a8a4b2", "ki3": "d8d4de", "ki4": "f6f4f8",
+    "ob0": "100c12", "ob1": "2c2430", "ob2": "4a3c4c",
+    "re0": "5a0a12", "re1": "b0141e", "re2": "ff3a3a", "re3": "ff9a8a",
+    # Malevolent Shrine domain
+    "dm0": "080306", "dm1": "1a0508", "dm2": "330a0e", "dm3": "5a0f14", "dm4": "8a1a1c", "dm5": "c0282a",
+    "dm6": "ff5a46",
+    "bn0": "4a3e36", "bn1": "8a7c6a", "bn2": "c8bca4", "bn3": "efe6d2",
 }
 C = {k: np.array(hexc(v), np.float32) for k, v in P.items()}
 NAMES = list(P.keys())
 
-LAYERS = ["Sky", "Land", "Crag", "Back FX", "Back arm", "Rudeus", "Front arm", "Magic", "FX"]
+LAYERS = ["Sky", "Land", "Crag", "Domain", "Back FX", "Back arm", "Rudeus", "Front arm", "Sukuna", "Magic", "FX",
+          "Text"]
 L = {n: i for i, n in enumerate(LAYERS)}
 
 
@@ -74,13 +84,16 @@ WARM = _group(["mg", "white"])
 SUBPAL = {
     "Sky": _group(["sky", "star", "moon"]) + WARM + _group(["air"]),
     "Land": _group(["mtn", "gr", "dt", "sky"]) + WARM,
-    "Crag": _group(["rk", "dt", "mtn"]) + WARM,
+    "Crag": _group(["rk", "dt", "mtn"]) + WARM + _group(["dm"]),
     "Back FX": NAMES,
-    "Back arm": _group(["ol", "sk", "rb", "tr"]) + WARM,
-    "Rudeus": _group(["ol", "sk", "hr", "ey", "mo", "rb", "tr", "pa", "bt", "be", "gold"]) + WARM,
-    "Front arm": _group(["ol", "sk", "rb", "tr"]) + WARM,
+    "Back arm": _group(["ol", "sk", "rb", "tr"]) + WARM + _group(["dm", "re"]),
+    "Rudeus": _group(["ol", "sk", "hr", "ey", "mo", "rb", "tr", "pa", "bt", "be", "gold"]) + WARM + _group(["dm", "re"]),
+    "Front arm": _group(["ol", "sk", "rb", "tr"]) + WARM + _group(["dm", "re"]),
+    "Domain": _group(["dm", "bn", "re", "ob", "white", "sky0", "sky1", "rk", "st"]),
+    "Sukuna": _group(["ol", "sk", "ph", "ki", "ob", "re", "white", "mo", "dm"]),
     "Magic": NAMES,
     "FX": NAMES,
+    "Text": NAMES,
 }
 SUBPAL_RGB = {k: np.stack([C[n] for n in v]) for k, v in SUBPAL.items()}
 

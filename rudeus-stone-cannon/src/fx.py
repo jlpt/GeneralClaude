@@ -2,7 +2,7 @@
 launch streaks and the impact explosion."""
 import math
 import numpy as np
-from canvas import (C, XS, YS, W, H, M, CW, CH, v2, rot, unit, disc, ellipse, polygon, nb, outline_of,
+from canvas import (C, L, XS, YS, W, H, M, CW, CH, v2, rot, unit, disc, ellipse, polygon, nb, outline_of,
                     dilate4, line_pts, smooth01, lerp)
 from world import HOLE, GROUND_Y
 
@@ -394,7 +394,7 @@ def aura(sc, f, power):
     """Flickering flame-like outline around Rudeus (pixels owned by his layers)."""
     if power <= 0:
         return
-    body = (sc.owner >= 4) & (sc.owner <= 6)
+    body = (sc.owner >= L["Back arm"]) & (sc.owner <= L["Front arm"])
     r1 = dilate4(body) & ~body
     rr = np.random.default_rng(f)
     col_noise = rr.uniform(0, 1, CW)
@@ -405,7 +405,7 @@ def aura(sc, f, power):
     for k in range(1, hmax + 1):
         flame |= nb(top, 0, k) & (col_noise[None, :] > 0.55 + 0.4 * k / hmax)
     flame &= ~body & ~r1
-    free = sc.owner < 3
+    free = sc.owner < L["Domain"]
     sc.put(flame & free, "mg4" if power > 0.7 else "mg3", "Back FX")
     sc.put(r1 & free & ((XS + YS + f) % 2 == 0), "mg3" if power < 0.7 else "mg4", "Back FX")
     if power > 0.7:
@@ -682,3 +682,76 @@ def ground_dust(sc, t, x0=80, y0=GROUND_Y, direction=-1):
         x = x0 + side * (7 + t * sp)
         puffs.append((v2((x, y0 - 1 - (j % 3) * 0.8 - t * 0.2)), r, k))
     _cloud(sc, puffs, "FX")
+
+
+# ---------------------------------------------------------------- Rudeus' earth wall
+WALL_X0, WALL_X1, WALL_H = 96, 116, 48
+WALL_TOP = [(0, 0), (4, -3), (8, 1), (12, -2), (16, 2), (20, -1)]
+
+
+def earth_wall(sc, rise, cuts, t, layer="FX"):
+    """A slab of stone shoved up from the ground. cuts: list of (t_cut, point, angle); once cut, the
+    pieces slide apart along each cut and the loose ones drop."""
+    if rise <= 0:
+        return
+    gy = GROUND_Y + 2
+    top = gy - WALL_H * smooth01(rise)
+    tx = np.interp(XS - WALL_X0, [p[0] for p in WALL_TOP], [p[1] for p in WALL_TOP])
+    m = (XS >= WALL_X0) & (XS <= WALL_X1) & (YS >= top + tx) & (YS <= gy)
+    sc_t = np.zeros_like(m)
+    rgb = np.zeros((CH, CW, 3), np.float32)
+    rgb[:] = C["rk3"]
+    strata = np.mod(YS - top + (XS * 0.3).astype(int), 7) == 0
+    rgb[strata] = C["rk2"]
+    rgb[m & ~nb(m, -1, 0)] = C["rk5"]
+    rgb[m & ~nb(m, 0, -1)] = C["rk5"]
+    rgb[m & ~nb(m, 1, 0)] = C["rk1"]
+    rgb[m & ((XS - WALL_X0) < 4) & ~strata] = C["rk4"]
+    outline = outline_of(m)
+    # which side of every active cut each pixel is on -> piece id
+    pid = np.zeros((CH, CW), np.int64)
+    offx = np.zeros((CH, CW), np.float32)
+    offy = np.zeros((CH, CW), np.float32)
+    active = [(i, c) for i, c in enumerate(cuts) if t >= c[0]]
+    for i, (tc, pt, a) in active:
+        n = v2((-math.sin(math.radians(a)), math.cos(math.radians(a))))
+        side = ((XS - pt[0]) * n[0] + (YS - pt[1]) * n[1]) > 0
+        pid += side.astype(np.int64) << i
+        sep = min(2.5, (t - tc) * 0.9)
+        offx += np.where(side, 1, -1) * n[0] * sep * 0.5
+        offy += np.where(side, 1, -1) * n[1] * sep * 0.5
+    # loose pieces fall once enough cuts are in
+    if len(active) >= 3:
+        ids = np.unique(pid[m])
+        for pidv in ids:
+            pm = m & (pid == pidv)
+            if (pm & (YS >= gy - 1)).any():
+                continue
+            t0 = max(c[0] for c in cuts[:len(active)]) + 1 + (int(pidv) * 7) % 4
+            if t > t0:
+                drop = 0.35 * (t - t0) ** 2
+                offy[pm] += drop
+                offx[pm] += ((int(pidv) * 13) % 5 - 2) * 0.3 * (t - t0)
+    ys, xs = np.nonzero(m)
+    dy = np.round(offy[ys, xs]).astype(int)
+    dx = np.round(offx[ys, xs]).astype(int)
+    ny, nx = ys + dy, xs + dx
+    ok = (ny >= 0) & (ny < CH) & (nx >= 0) & (nx < CW) & (ny <= gy + M + 4)
+    moved = np.zeros_like(m)
+    moved[ny[ok], nx[ok]] = True
+    out_rgb = np.zeros_like(rgb)
+    out_rgb[ny[ok], nx[ok]] = rgb[ys[ok], xs[ok]]
+    # dark crack where pieces have parted
+    sc.put(outline_of(moved), "rk0", layer)
+    sc.put_rgb(moved, out_rgb, layer)
+    for i, (tc, pt, a) in active:
+        if t - tc <= 1:
+            d = unit(a)
+            xs2, ys2 = line_pts(v2(pt) - d * 30, v2(pt) + d * 30)
+            col = "white" if t == tc else "dm6"
+            sc.put_px(xs2, ys2, col, layer)
+    if rise < 1:
+        # dirt thrown up at the base while it rises
+        for k in range(6):
+            x = WALL_X0 - 3 + k * 5
+            sc.put_px([x, x + 1], [gy - 2 - (k % 3) - rise * 4] * 2, "dt3", layer)

@@ -5,7 +5,7 @@ left of the torso (drawn in front); the far arm is drawn behind the torso.
 """
 import math
 import numpy as np
-from canvas import (C, XS, YS, v2, rot, capsule, disc, ellipse, polygon, nb, outline_of, seg_dist,
+from canvas import (C, L, XS, YS, v2, rot, capsule, disc, ellipse, polygon, nb, outline_of, seg_dist,
                     M, CW, CH)
 
 # ---------------------------------------------------------------- head sprite
@@ -51,6 +51,19 @@ FACES = {
         ".o21kSSSSSSmmmSo..",
         "..o2kkSSSSSmwmSo..",
         "...oo.kkSSSSmSko..",
+        "........kkkkkk....",
+    ],
+    # wide eyes, mouth agape
+    "shock": [
+        "o2232S23SS3SS3S2o.",
+        "o222SoSSSSSSSoSo..",
+        "o222kSSSSSSSSS2o..",
+        "o12kLSeeeSSSeeeo..",
+        "o12kSSegGSSSegGo..",
+        ".o21kSSeesSSSeeSo.",
+        ".o21kSSSSSSSSSSo..",
+        "..o2kkSSSSSmmSSo..",
+        "...oo.kkSSSmmSko..",
         "........kkkkkk....",
     ],
     # calm, eyes open
@@ -287,7 +300,7 @@ def draw_rudeus_full(sc, pose):
     body_mask = tmp.owner >= 0
     draw_arm(sc, b["sh_far"], hf, bf, "Back arm", far=True, sleeve_drop=sl, spread=pose.get("spread", False), thumb_side=-1)
     if pose.get("far_in_front"):
-        sc.put_rgb(body_mask & ~(sc.owner == 4), tmp.rgb, "Rudeus")
+        sc.put_rgb(body_mask & ~(sc.owner == L["Back arm"]), tmp.rgb, "Rudeus")
     else:
         sc.put_rgb(body_mask, tmp.rgb, "Rudeus")
     draw_arm(sc, b["sh_near"], hn, bn, "Front arm", far=False, sleeve_drop=sl, spread=pose.get("spread", False), thumb_side=1)
