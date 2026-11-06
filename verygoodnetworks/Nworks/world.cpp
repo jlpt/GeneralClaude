@@ -209,23 +209,8 @@ void World::AddBodyModules(Organism& o) const {
 void World::EatFood(Organism& o) {
     if (cfg.eatAction && o.eatSignal < 0.5f) return;  // touching food, but not eating
     const int poisonKind = cfg.poison ? PoisonKind() : -1;
-    // With eatAction on, one bite per step: only the nearest touched item.
-    auto onlyBite = food.end();
-    if (cfg.eatAction) {
-        float best = 1e30f;
-        for (auto it = food.begin(); it != food.end(); ++it) {
-            if (!Touching(o, it->x, it->y, it->radius)) continue;
-            const float d = (it->x - o.x) * (it->x - o.x) + (it->y - o.y) * (it->y - o.y);
-            if (d < best) { best = d; onlyBite = it; }
-        }
-        if (onlyBite == food.end()) return;
-    }
-    for (auto it = food.begin(); it != food.end();) {
-        if (cfg.eatAction ? it != onlyBite : !Touching(o, it->x, it->y, it->radius)) {
-            ++it;
-            continue;
-        }
-        if (it->kind == poisonKind) {
+    auto bite = [&](const Resource& r) {
+        if (r.kind == poisonKind) {
             o.health -= cfg.poisonDamage * (cfg.poisonScalesWithDifficulty ? difficulty : 1.0f) * cfg.maxHealth;
             o.reward = std::max(-1.0f, o.reward - 1.0f);
             ++o.poisonBitesInLife;
@@ -237,6 +222,31 @@ void World::EatFood(Organism& o) {
             ++o.goodBitesInLife;
             ++stats.goodBites;
         }
+    };
+    if (cfg.eatAction) {
+        // Eating is a choice: one bite per step, the nearest touched item.
+        auto nearest = food.end();
+        float best = 1e30f;
+        for (auto it = food.begin(); it != food.end(); ++it) {
+            if (!Touching(o, it->x, it->y, it->radius)) continue;
+            const float d = (it->x - o.x) * (it->x - o.x) + (it->y - o.y) * (it->y - o.y);
+            if (d < best) {
+                best = d;
+                nearest = it;
+            }
+        }
+        if (nearest != food.end()) {
+            bite(*nearest);
+            food.erase(nearest);
+        }
+        return;
+    }
+    for (auto it = food.begin(); it != food.end();) {
+        if (!Touching(o, it->x, it->y, it->radius)) {
+            ++it;
+            continue;
+        }
+        bite(*it);
         it = food.erase(it);
     }
 }
