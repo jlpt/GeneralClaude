@@ -31,6 +31,7 @@ struct Config {
     float maxHealth = 5000.0f;         // steps an organism lasts without eating (before brain cost)
     float maxAir = 10000.0f;           // steps an organism lasts without air
     int foodToReproduce = 3;
+    int maxAge = 0;                    // steps; 0 = organisms don't age
     float moveSpeed = 3.0f;
     float offspringSpread = 20.0f;     // children appear up to this far from the parent
 
@@ -152,6 +153,7 @@ struct Config {
     int poisonSwapInterval = 10000;
     float poisonDamage = 0.4f;         // fraction of maxHealth lost per poisonous bite at 100% difficulty
                                        // (it scales with difficulty; bad bites always taste bad)
+    bool poisonScalesWithDifficulty = true;  // false: every poisonous bite costs the full poisonDamage
 
     // --- Stage 4e: lifetime learning ---
     // Synapses change during life by a reward-modulated Hebbian rule: a
@@ -160,6 +162,9 @@ struct Config {
     // a punishment (poison). Each brain's learning rate is a gene; what it
     // learns is not inherited.
     bool plasticity = true;
+    bool learningHasEffect = true;
+    bool learnFromReward = true;       // false: good food doesn't drive learning (experiments)
+    bool learnFromPunishment = true;   // false: poison doesn't drive learning (experiments)     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
     float traceDecay = 0.9f;           // how long a pairing stays eligible (per step)
     float learnedForgetting = 0.0002f; // learned changes fade by this fraction per step (half-life ~3,500 steps)
     float rewardDecay = 0.9f;          // the reward/punishment signal fades by this per step
@@ -171,6 +176,7 @@ struct Config {
     bool organismSensor = false;  // original nearest-organism sensor (+5 inputs); vision already sees organisms
     bool positionSensor = false;  // sense own x/y position (+2 inputs)
     bool slices = false;          // organisms can cut lines that kill (+8 inputs, +4 outputs)
+    bool colourSmell = false;     // +2 inputs: closeness of the nearest red and nearest purple food, from any direction
     int sliceCooldown = 10;       // steps between cuts
     float sliceSensorRange = 600.0f;
     float organismSensorRange = 600.0f;

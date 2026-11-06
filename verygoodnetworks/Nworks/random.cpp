@@ -1,5 +1,7 @@
 #include "random.h"
 
+#include <cmath>
+
 namespace rng {
 namespace {
 
@@ -24,5 +26,11 @@ int Int(int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(engi
 float Float(float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(engine); }
 
 bool Chance(float probability) { return Float(0.0f, 1.0f) < probability; }
+
+int RoundRandomly(float x) {
+    if (x <= 0.0f) return 0;
+    const float whole = std::floor(x);
+    return int(whole) + (Chance(x - whole) ? 1 : 0);
+}
 
 }  // namespace rng

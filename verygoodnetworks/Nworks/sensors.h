@@ -74,6 +74,16 @@ public:
     void Sense(Organism& self, const World& world) override;
 };
 
+// Colour smell: how close the nearest food of each colour is (1 = touching,
+// 0 = nothing within visionRange), whatever the direction. Unlike vision,
+// one input carries "red is near" for every direction, so a single synapse
+// can learn about a colour.
+class ColourSmellSensor : public ModuleBase<ColourSmellSensor> {
+public:
+    int InputCount() const override { return 2; }
+    void Sense(Organism& self, const World& world) override;
+};
+
 // Own position, scaled to 0..1 across the world.
 class PositionSensor : public ModuleBase<PositionSensor> {
 public:

@@ -42,6 +42,8 @@ public:
     float mutationRate = 1.0f;
     float signal = 0.0f;   // 0..1, what the SignalModule is broadcasting
     float reward = 0.0f;   // + after good food, - after poison; fades every step
+    int goodBitesInLife = 0, poisonBitesInLife = 0;  // for experiments
+    int age = 0;           // steps lived
     bool alive = true;
     Rgb color;             // drifts slowly, so related organisms look alike
     NeuralNetwork brain;

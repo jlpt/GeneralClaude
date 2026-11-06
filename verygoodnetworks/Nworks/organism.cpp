@@ -29,7 +29,7 @@ void Organism::AddModule(std::unique_ptr<Module> module) {
 void Organism::Update(World& world) {
     const Config& cfg = world.cfg;
     for (auto& module : modules) module->Sense(*this, world);
-    brain.SetReward(reward);
+    brain.SetReward(reward > 0.0f ? (cfg.learnFromReward ? reward : 0.0f) : (cfg.learnFromPunishment ? reward : 0.0f));
     brain.Step(cfg);
     for (auto& module : modules) module->Act(*this, world);
     reward *= cfg.rewardDecay;
@@ -39,6 +39,7 @@ void Organism::Update(World& world) {
     health -= 1.0f + cfg.brainCostPerNeuron * float(brain.NeuronCount()) +
               cfg.brainCostPerSynapse * float(brain.SynapseCount());
     air -= 1.0f;
+    ++age;
 }
 
 Organism Organism::MakeOffspring(uint64_t childId, const Config& cfg) const {
@@ -49,7 +50,8 @@ Organism Organism::MakeOffspring(uint64_t childId, const Config& cfg) const {
     const bool macro = rng::Chance(cfg.macroMutationChance);
     const float strength = mutationRate * (macro ? cfg.macroMutationMultiplier : 1.0f);
     child.brain = brain;
-    child.brain.Mutate(int(float(brain.SynapseCount()) * cfg.mutationFraction * strength), cfg);
+    // Rounded randomly, so small brains (under 50 synapses) still mutate.
+    child.brain.Mutate(rng::RoundRandomly(float(brain.SynapseCount()) * cfg.mutationFraction * strength), cfg);
     child.brain.ResetState();
 
     // The mutation rate itself is inherited and drifts, so it can evolve.

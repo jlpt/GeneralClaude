@@ -171,6 +171,17 @@ void VitalsSensor::Sense(Organism& self, const World& world) {
     self.brain.SetInput(firstInput + 1, std::min(1.0f, breathLevel / std::max(self.air, 1.0f)));
 }
 
+void ColourSmellSensor::Sense(Organism& self, const World& world) {
+    const float range = world.cfg.visionRange;
+    float nearest[2] = {range, range};
+    for (const Resource& r : world.food) {
+        const float d = std::hypot(r.x - self.x, r.y - self.y);
+        float& slot = nearest[r.kind == 1 ? 1 : 0];
+        slot = std::min(slot, d);
+    }
+    for (int c = 0; c < 2; ++c) self.brain.SetInput(firstInput + c, 1.0f - nearest[c] / range);
+}
+
 void PositionSensor::Sense(Organism& self, const World& world) {
     self.brain.SetInput(firstInput + 0, self.x / world.cfg.worldWidth);
     self.brain.SetInput(firstInput + 1, self.y / world.cfg.worldHeight);

@@ -26,6 +26,10 @@ public:
     // recently eligible synapses, negative reward weakens them.
     void SetReward(float reward) { reward_ = reward; }
     float LearningRate() const { return learningRate_; }
+    void SetLearningRate(float rate) { learningRate_ = rate; }  // for experiments
+    // Hand-building circuits (experiments): add a hidden neuron, wire a synapse.
+    int AddHiddenNeuron(float threshold, int refractoryPeriod);
+    void Connect(int from, int to, float weight);
     float LearnedChange(size_t neuron, size_t connection) const;  // 0 without plasticity
 
     int NumInputs() const { return numInputs_; }

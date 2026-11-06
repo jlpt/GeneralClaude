@@ -35,6 +35,12 @@ add_executable(nworks_headless Nworks/headless_main.cpp)
 target_link_libraries(nworks_headless PRIVATE nworks_core)
 nworks_warnings(nworks_headless)
 
+# Experiment tools (see experiments/README.md).
+add_executable(nworks_exp experiments/exp.cpp)
+target_link_libraries(nworks_exp PRIVATE nworks_core)
+add_executable(nworks_assay experiments/assay.cpp)
+target_link_libraries(nworks_assay PRIVATE nworks_core)
+
 if(NWORKS_BUILD_WINDOW_APP)
   find_package(raylib 5.5 QUIET)
   if(NOT raylib_FOUND)

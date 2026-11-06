@@ -172,6 +172,16 @@ Columns:
 | `shared` | Big food opened together |
 | `eaten` | Killed by predators |
 
+## Experiments
+
+`experiments/` has tools for testing what evolved creatures actually do, and a
+write-up of experiments on when lifetime learning emerges. See
+[`experiments/README.md`](experiments/README.md). The short version: the
+learning rule works, and learning is strongly selected once a brain has
+innate direct sense-to-movement wiring, but evolution from random brains hasn't
+found that wiring. The new Config switches used there all default to the
+original behaviour.
+
 ## Code layout
 
 | File | What it does |

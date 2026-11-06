@@ -117,6 +117,7 @@ void World::Step() {
         }
 
         if (o.health <= 0.0f || o.air <= 0.0f) o.alive = false;
+        if (cfg.maxAge > 0 && o.age >= cfg.maxAge) o.alive = false;
 
         if (o.alive && o.foodEaten >= cfg.foodToReproduce) {
             RememberParent(o);
@@ -157,7 +158,7 @@ void World::RefillPopulation() {
         // A mutated copy of a recent parent, like a seed that waited out the crash.
         const Genome& g = archive_[size_t(rng::Int(0, int(archive_.size()) - 1))];
         o.brain = g.brain;
-        o.brain.Mutate(int(float(o.brain.SynapseCount()) * cfg.mutationFraction * g.mutationRate), cfg);
+        o.brain.Mutate(rng::RoundRandomly(float(o.brain.SynapseCount()) * cfg.mutationFraction * g.mutationRate), cfg);
         o.brain.ResetState();
         o.mutationRate = g.mutationRate;
         o.color = g.color;
@@ -193,6 +194,7 @@ void World::AddBodyModules(Organism& o) const {
     o.AddModule(std::make_unique<VitalsSensor>());
     if (cfg.poison || cfg.plasticity) o.AddModule(std::make_unique<TasteSensor>());
     if (cfg.signals) o.AddModule(std::make_unique<HearingSensor>());
+    if (cfg.colourSmell) o.AddModule(std::make_unique<ColourSmellSensor>());
     if (cfg.organismSensor) o.AddModule(std::make_unique<OrganismSensor>());
     if (cfg.positionSensor) o.AddModule(std::make_unique<PositionSensor>());
     if (cfg.slices) o.AddModule(std::make_unique<SliceSensor>());
@@ -209,13 +211,15 @@ void World::EatFood(Organism& o) {
             continue;
         }
         if (it->kind == poisonKind) {
-            o.health -= cfg.poisonDamage * difficulty * cfg.maxHealth;  // grows with the curriculum
+            o.health -= cfg.poisonDamage * (cfg.poisonScalesWithDifficulty ? difficulty : 1.0f) * cfg.maxHealth;
             o.reward = std::max(-1.0f, o.reward - 1.0f);
+            ++o.poisonBitesInLife;
             ++stats.poisonBites;
         } else {
             o.health = cfg.maxHealth;
             ++o.foodEaten;
             o.reward = std::min(1.0f, o.reward + 1.0f);
+            ++o.goodBitesInLife;
             ++stats.goodBites;
         }
         it = food.erase(it);

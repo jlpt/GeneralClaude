@@ -131,7 +131,7 @@ void NeuralNetwork::Step(const Config& cfg) {
     }
 
     // 3. Learn.
-    if (plastic && learningRate_ > 0.0f) Learn(cfg);
+    if (plastic && learningRate_ > 0.0f && cfg.learningHasEffect) Learn(cfg);
 }
 
 namespace {
@@ -215,6 +215,24 @@ size_t NeuralNetwork::MemoryBytes() const {
     for (const Neuron& n : neurons_) bytes += n.connections.capacity() * sizeof(Connection);
     for (const auto& p : plastic_) bytes += p.capacity() * sizeof(Plastic);
     return bytes;
+}
+
+int NeuralNetwork::AddHiddenNeuron(float threshold, int refractoryPeriod) {
+    Neuron n;
+    n.type = NeuronType::Hidden;
+    n.threshold = threshold;
+    n.refractoryPeriod = uint8_t(refractoryPeriod);
+    n.layoutX = 0.5f;
+    n.layoutY = float(neurons_.size() % 17) / 17.0f;
+    neurons_.push_back(n);
+    incoming_.assign(neurons_.size(), 0.0f);
+    return int(neurons_.size()) - 1;
+}
+
+void NeuralNetwork::Connect(int from, int to, float weight) {
+    neurons_[size_t(from)].connections.emplace_back(uint32_t(to), weight);
+    ++synapseCount_;
+    plastic_.clear();
 }
 
 // --- Mutation ---------------------------------------------------------------
