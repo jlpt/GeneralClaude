@@ -6,6 +6,8 @@
 #include "cuda_runtime.h"
 #include <stdint.h>    // for int8_t, uint32_t
 #include <string>
+#include <cmath>
+#include <cstdlib>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -33,6 +35,54 @@ std::string formatWithCommas(long long value) {
 #define MOTOR_NEURON_UP_START 8
 #define MOTOR_NEURON_DOWN_START 12
 #define MOTOR_NEURON_COUNT 4
+
+//------------------------------------------------------------------------------
+// Weight-space program: "follow the mouse"
+//
+// Nothing is trained. The random network is generated exactly as before, then
+// a small patch is written straight into its weights so that it steers the
+// organism toward the mouse cursor. Press P at runtime to swap between the
+// programmed weights and the original random ones.
+//
+// The circuit reuses neurons 16..20 of each organism as inputs:
+//   16 = "target is LEFT"   17 = "target is RIGHT"
+//   18 = "target is UP"     19 = "target is DOWN"
+//   20 = bias (always 1.0)
+// Each frame the host writes how far the target is in each direction
+// (0..1, where 1 = SENSOR_RANGE_PX or more) into the four sensor neurons.
+//
+// Programmed weights:
+//   * Every random synapse INTO neurons 0..20 gets weight 0, so the 250k-neuron
+//     random reservoir no longer pushes the motors around.
+//   * Each sensor neuron's 500 outgoing slots are rewritten: 100 slots at
+//     weight +1.0 to each of the 4 motor neurons on its side (gain 100).
+//   * The bias neuron gets round(100 * threshold) slots at weight -1.0 onto
+//     each motor neuron, one threshold per neuron in the group of 4.
+//
+// So each frame motor neuron k computes  clamp(a + 100 * (sensor - threshold_k), 0, 1),
+// which is about 1 when the target is farther than threshold_k * SENSOR_RANGE_PX
+// and 0 otherwise. A motor group therefore outputs 0..4 depending on distance:
+// the organism runs at 4 px/frame when far away, slows down as it gets close,
+// and stops within MOTOR_THRESHOLDS[0] * SENSOR_RANGE_PX (4 px) of the target.
+//
+// Besides weights, the program sets refractory periods (also plain data):
+// motor neurons never fire (so they hold their value as readouts), and the
+// sensor and bias neurons can fire every frame.
+//------------------------------------------------------------------------------
+#define SENSOR_LEFT 16
+#define SENSOR_RIGHT 17
+#define SENSOR_UP 18
+#define SENSOR_DOWN 19
+#define BIAS_NEURON 20
+#define INPUT_COUNT 5                 // 4 sensors + bias
+#define SPECIAL_NEURON_COUNT 21       // neurons 0..20 of each organism take part in the program
+#define SENSOR_RANGE_PX 200.0f
+#define SENSOR_GAIN_SYNAPSES 100      // slots from a sensor to each motor neuron it drives
+#define MOTOR_NEVER_FIRES 0x7fffffff  // refractory period that will not run out (~1 year at 60 FPS)
+static const float MOTOR_THRESHOLDS[MOTOR_NEURON_COUNT] = { 0.02f, 0.10f, 0.25f, 0.50f };  // x SENSOR_RANGE_PX = 4, 20, 50, 100 px
+
+static_assert(SENSOR_GAIN_SYNAPSES * MOTOR_NEURON_COUNT <= CONNECTIONS_PER_NEURON, "a sensor neuron has too few slots for its motor synapses");
+static_assert((long long)TOTAL_NEURONS <= (1LL << 24), "packed connections only hold 24-bit destination indices");
 
 // A simple structure to hold neuron drawing info on the CPU (not used in simulation).
 struct NeuronCPU {
@@ -127,6 +177,139 @@ __global__ void computeMotorSignalsKernel(const float* d_activations, float* d_m
     }
 }
 
+// Writes one set of synapse values (programmed or original) into the listed slots.
+// A slot is neuronIndex * CONNECTIONS_PER_NEURON + connectionIndex.
+__global__ void applyWeightPatchKernel(
+    NeuronConnections* d_neuronConns,
+    const unsigned long long* d_slots,
+    const uint32_t* d_values,
+    int editCount
+) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= editCount) return;
+    unsigned long long slot = d_slots[k];
+    d_neuronConns[slot / CONNECTIONS_PER_NEURON].connections[slot % CONNECTIONS_PER_NEURON].data = d_values[k];
+}
+
+// Switches neurons 0..20 of each organism between their programmed and original roles.
+// One block per organism, one thread per special neuron.
+__global__ void setProgramModeKernel(
+    float* d_activations,
+    int* d_refactories,
+    int* d_startRefactories,
+    const int* d_originalStartRefactories,  // ORGANISM_COUNT * SPECIAL_NEURON_COUNT
+    int programmed,
+    int neuronsPerOrganism
+) {
+    int org = blockIdx.x;
+    int local = threadIdx.x;
+    if (local >= SPECIAL_NEURON_COUNT) return;
+    int i = org * neuronsPerOrganism + local;
+    if (programmed) {
+        bool isMotor = local < SENSOR_LEFT;
+        d_startRefactories[i] = isMotor ? MOTOR_NEVER_FIRES : 0;
+        d_refactories[i] = isMotor ? MOTOR_NEVER_FIRES : 0;
+        d_activations[i] = 0.0f;
+    }
+    else {
+        d_startRefactories[i] = d_originalStartRefactories[org * SPECIAL_NEURON_COUNT + local];
+        d_refactories[i] = 0;
+    }
+}
+
+// Copies this frame's sensor readings (and the bias) into neurons 16..20 of each organism.
+__global__ void injectSensorsKernel(float* d_activations, const float* d_inputs, int neuronsPerOrganism) {
+    int org = blockIdx.x;
+    int k = threadIdx.x;
+    if (k < INPUT_COUNT) {
+        d_activations[org * neuronsPerOrganism + SENSOR_LEFT + k] = d_inputs[org * INPUT_COUNT + k];
+    }
+}
+
+//------------------------------------------------------------------------------
+// Builds the weight patch on the host from the freshly generated random weights.
+// Only slots whose value actually changes are recorded, together with their
+// original value, so the patch can be applied and reverted at runtime.
+//------------------------------------------------------------------------------
+struct WeightPatch {
+    std::vector<unsigned long long> slots;
+    std::vector<uint32_t> original;
+    std::vector<uint32_t> programmed;
+    long long zeroedInbound = 0;    // random synapses into neurons 0..20 that were silenced
+    long long rewrittenInputs = 0;  // sensor/bias slots that were rewired
+};
+
+WeightPatch buildFollowTargetPatch(const std::vector<NeuronConnections>& conns) {
+    WeightPatch patch;
+    auto record = [&](unsigned long long neuron, int j, uint32_t newValue, long long& counter) {
+        uint32_t oldValue = conns[neuron].connections[j].data;
+        if (oldValue == newValue) return;
+        patch.slots.push_back(neuron * CONNECTIONS_PER_NEURON + j);
+        patch.original.push_back(oldValue);
+        patch.programmed.push_back(newValue);
+        counter++;
+    };
+
+    for (int org = 0; org < ORGANISM_COUNT; org++) {
+        unsigned long long base = (unsigned long long)org * NEURON_COUNT;
+        for (int local = 0; local < NEURON_COUNT; local++) {
+            unsigned long long neuron = base + local;
+            bool isInput = local >= SENSOR_LEFT && local < SENSOR_LEFT + INPUT_COUNT;
+
+            if (!isInput) {
+                // Silence every synapse that lands on a motor, sensor or bias neuron.
+                for (int j = 0; j < CONNECTIONS_PER_NEURON; j++) {
+                    uint32_t data = conns[neuron].connections[j].data;
+                    uint32_t destLocal = (data >> 8) - (uint32_t)base;
+                    if (destLocal < SPECIAL_NEURON_COUNT) {
+                        record(neuron, j, data & 0xFFFFFF00u, patch.zeroedInbound);
+                    }
+                }
+                continue;
+            }
+
+            // Rewire the input neuron's 500 slots. Unused slots keep their destination, weight 0.
+            std::vector<uint32_t> row(CONNECTIONS_PER_NEURON);
+            for (int j = 0; j < CONNECTIONS_PER_NEURON; j++) {
+                row[j] = conns[neuron].connections[j].data & 0xFFFFFF00u;
+            }
+            int slot = 0;
+            if (local == BIAS_NEURON) {
+                // Inhibit motor neuron k of every group by round(100 * threshold_k).
+                const int groupStarts[4] = { MOTOR_NEURON_LEFT_START, MOTOR_NEURON_RIGHT_START, MOTOR_NEURON_UP_START, MOTOR_NEURON_DOWN_START };
+                int needed = 0;
+                for (int k = 0; k < MOTOR_NEURON_COUNT; k++) needed += 4 * (int)(SENSOR_GAIN_SYNAPSES * MOTOR_THRESHOLDS[k] + 0.5f);
+                if (needed > CONNECTIONS_PER_NEURON) {
+                    std::cerr << "Bias neuron needs " << needed << " slots but only has " << CONNECTIONS_PER_NEURON << std::endl;
+                    std::exit(1);
+                }
+                for (int g = 0; g < 4; g++) {
+                    for (int k = 0; k < MOTOR_NEURON_COUNT; k++) {
+                        int count = (int)(SENSOR_GAIN_SYNAPSES * MOTOR_THRESHOLDS[k] + 0.5f);
+                        for (int c = 0; c < count; c++) {
+                            row[slot++] = packConnection((uint32_t)(base + groupStarts[g] + k), -127);
+                        }
+                    }
+                }
+            }
+            else {
+                // Excite the 4 motor neurons on this sensor's side, SENSOR_GAIN_SYNAPSES slots each.
+                const int sideStart[4] = { MOTOR_NEURON_LEFT_START, MOTOR_NEURON_RIGHT_START, MOTOR_NEURON_UP_START, MOTOR_NEURON_DOWN_START };
+                int motorStart = sideStart[local - SENSOR_LEFT];
+                for (int k = 0; k < MOTOR_NEURON_COUNT; k++) {
+                    for (int c = 0; c < SENSOR_GAIN_SYNAPSES; c++) {
+                        row[slot++] = packConnection((uint32_t)(base + motorStart + k), 127);
+                    }
+                }
+            }
+            for (int j = 0; j < CONNECTIONS_PER_NEURON; j++) {
+                record(neuron, j, row[j], patch.rewrittenInputs);
+            }
+        }
+    }
+    return patch;
+}
+
 //------------------------------------------------------------------------------
 // Main Function
 //------------------------------------------------------------------------------
@@ -176,6 +359,23 @@ int main() {
         }
     }
 
+    // Write the "follow the mouse" program into the weights (see the comment at the top).
+    WeightPatch patch = buildFollowTargetPatch(neuronConns);
+    const int editCount = (int)patch.slots.size();
+    const long long totalSynapses = (long long)TOTAL_NEURONS * CONNECTIONS_PER_NEURON;
+    const double editedPercent = 100.0 * editCount / (double)totalSynapses;
+    std::cout << "Weight patch: " << formatWithCommas(editCount) << " of " << formatWithCommas(totalSynapses)
+        << " synapses edited (" << editedPercent << "%): " << formatWithCommas(patch.zeroedInbound)
+        << " random synapses into neurons 0-" << (SPECIAL_NEURON_COUNT - 1) << " silenced, "
+        << formatWithCommas(patch.rewrittenInputs) << " sensor/bias slots rewired." << std::endl;
+
+    std::vector<int> originalSpecialStart(ORGANISM_COUNT * SPECIAL_NEURON_COUNT);
+    for (int org = 0; org < ORGANISM_COUNT; org++) {
+        for (int k = 0; k < SPECIAL_NEURON_COUNT; k++) {
+            originalSpecialStart[org * SPECIAL_NEURON_COUNT + k] = startRefactories[org * NEURON_COUNT + k];
+        }
+    }
+
     // Device pointers.
     float* d_activations;
     int* d_refactories;
@@ -196,6 +396,36 @@ int main() {
     cudaMemcpy(d_startRefactories, startRefactories.data(), TOTAL_NEURONS * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_neuronConns, neuronConns.data(), TOTAL_NEURONS * sizeof(NeuronConnections), cudaMemcpyHostToDevice);
 
+    // Device copies of the weight patch, the special neurons' original refractory
+    // periods, and the per-frame sensor inputs.
+    unsigned long long* d_patchSlots;
+    uint32_t* d_patchProgrammed;
+    uint32_t* d_patchOriginal;
+    int* d_originalSpecialStart;
+    float* d_inputs;
+    cudaMalloc((void**)&d_patchSlots, editCount * sizeof(unsigned long long));
+    cudaMalloc((void**)&d_patchProgrammed, editCount * sizeof(uint32_t));
+    cudaMalloc((void**)&d_patchOriginal, editCount * sizeof(uint32_t));
+    cudaMalloc((void**)&d_originalSpecialStart, ORGANISM_COUNT * SPECIAL_NEURON_COUNT * sizeof(int));
+    cudaMalloc((void**)&d_inputs, ORGANISM_COUNT * INPUT_COUNT * sizeof(float));
+    cudaMemcpy(d_patchSlots, patch.slots.data(), editCount * sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_patchProgrammed, patch.programmed.data(), editCount * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_patchOriginal, patch.original.data(), editCount * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_originalSpecialStart, originalSpecialStart.data(), ORGANISM_COUNT * SPECIAL_NEURON_COUNT * sizeof(int), cudaMemcpyHostToDevice);
+    std::vector<float> inputs(ORGANISM_COUNT * INPUT_COUNT, 0.0f);
+
+    // Switch between the programmed and the original random weights.
+    auto setProgrammed = [&](bool on) {
+        int patchBlocks = (editCount + 255) / 256;
+        if (patchBlocks > 0) {
+            applyWeightPatchKernel << <patchBlocks, 256 >> > (d_neuronConns, d_patchSlots, on ? d_patchProgrammed : d_patchOriginal, editCount);
+        }
+        setProgramModeKernel << <ORGANISM_COUNT, SPECIAL_NEURON_COUNT >> > (d_activations, d_refactories, d_startRefactories, d_originalSpecialStart, on ? 1 : 0, NEURON_COUNT);
+        cudaDeviceSynchronize();
+    };
+    bool programmed = true;
+    setProgrammed(programmed);
+
     // Initialize Raylib window.
     InitWindow(800, 600, "CUDA Neural Network Simulation (Packed Connections)");
     SetTargetFPS(60);
@@ -214,6 +444,28 @@ int main() {
 
     // Main simulation loop.
     while (!WindowShouldClose()) {
+        if (IsKeyPressed(KEY_P)) {
+            programmed = !programmed;
+            setProgrammed(programmed);
+        }
+
+        // Sense: how far is the target (the mouse) to the left/right/up/down of each organism?
+        if (programmed) {
+            Vector2 target = GetMousePosition();
+            for (int org = 0; org < ORGANISM_COUNT; org++) {
+                float dx = (target.x - organisms[org].circleX) / SENSOR_RANGE_PX;
+                float dy = (target.y - organisms[org].circleY) / SENSOR_RANGE_PX;
+                float* in = &inputs[org * INPUT_COUNT];
+                in[0] = fminf(fmaxf(-dx, 0.0f), 1.0f);  // target is left
+                in[1] = fminf(fmaxf(dx, 0.0f), 1.0f);   // target is right
+                in[2] = fminf(fmaxf(-dy, 0.0f), 1.0f);  // target is up (screen y grows downward)
+                in[3] = fminf(fmaxf(dy, 0.0f), 1.0f);   // target is down
+                in[4] = 1.0f;                           // bias
+            }
+            cudaMemcpy(d_inputs, inputs.data(), ORGANISM_COUNT * INPUT_COUNT * sizeof(float), cudaMemcpyHostToDevice);
+            injectSensorsKernel << <ORGANISM_COUNT, INPUT_COUNT >> > (d_activations, d_inputs, NEURON_COUNT);
+        }
+
         // Propagate neural activations.
         propagateKernel << <blocksPerGrid, threadsPerBlock >> > (d_activations, d_refactories, d_startRefactories, d_neuronConns, TOTAL_NEURONS);
         cudaDeviceSynchronize();
@@ -255,8 +507,17 @@ int main() {
         DrawText(simInfo.c_str(), 10, 10, 20, WHITE);
         DrawFPS(10, 70);
 
-        // Display organism info when hovering.
         Vector2 mousePos = GetMousePosition();
+        if (programmed) {
+            DrawText(TextFormat("PROGRAMMED weights: follows the mouse (%s synapses edited, %.4f%%)  [P] original",
+                formatWithCommas(editCount).c_str(), editedPercent), 10, 40, 20, YELLOW);
+            DrawCircleLines(static_cast<int>(mousePos.x), static_cast<int>(mousePos.y), 6, RED);
+        }
+        else {
+            DrawText("ORIGINAL random weights  [P] programmed", 10, 40, 20, WHITE);
+        }
+
+        // Display organism info when hovering.
         for (int org = 0; org < ORGANISM_COUNT; org++) {
 
             DrawCircle(static_cast<int>(organisms[org].circleX), static_cast<int>(organisms[org].circleY), 16, WHITE);
@@ -354,6 +615,11 @@ int main() {
     cudaFree(d_startRefactories);
     cudaFree(d_neuronConns);
     cudaFree(d_motorSignals);
+    cudaFree(d_patchSlots);
+    cudaFree(d_patchProgrammed);
+    cudaFree(d_patchOriginal);
+    cudaFree(d_originalSpecialStart);
+    cudaFree(d_inputs);
 
     return 0;
 }
