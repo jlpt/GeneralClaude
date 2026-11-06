@@ -36,21 +36,25 @@ meaningless; evolution decides whether they turn into alarm calls, food calls or
 - They arrive with the curriculum: the first at 25% difficulty, the second at 75%.
 - They get faster as difficulty rises, but creatures can still outrun them.
 
-**Poison lookalikes.** Food comes in red and purple. One colour is poisonous, and which one swaps every 10,000 steps, about once per lifetime.
-- That is too often for evolution to hard-wire which colour to avoid.
-- Poison damage grows with difficulty, up to 40% of health per bite.
-- Bad bites always *taste* bad, through two taste inputs.
+**Eating is a choice.** Touching food isn't enough: a creature only eats while its *eat* output is at least 0.5. That turns eating into a decision a brain can get right or wrong.
 
-**Lifetime learning.** Synapses can change during a creature's life by a reward-modulated Hebbian rule:
+**Poison lookalikes.** Food comes in red and purple. Red is poisonous, and a poisonous bite kills.
+- Avoiding red is a matter of survival, so evolution can build it in as an instinct.
+- Bad bites always *taste* bad, through two taste inputs.
+- `--swap-poison` brings back the original design: the poisonous colour swaps every 10,000 steps and damage grows with difficulty, up to 40% of health per bite.
+
+**Lifetime learning (off by default).** With `--plasticity`, synapses change during a creature's life by a reward-modulated Hebbian rule:
 - A synapse whose spike helped its target fire becomes *eligible*.
 - Good food then strengthens recently eligible synapses, and poison weakens them.
 - Each brain's learning rate is a gene, and it can evolve down to zero.
 - What a creature learns is not inherited.
 
-**Curriculum.** A difficulty level (0–100%) controls three things:
+Experiments showed learning only pays on top of innate wiring that evolution doesn't find by itself, so it's off for now. See [`experiments/README.md`](experiments/README.md).
+
+**Curriculum.** A difficulty level (0–100%) controls:
 - how much food grows in the blooming patch versus scattered anywhere
 - how many predators hunt, and how fast
-- how strong poison is
+- how strong poison is, but only with `--swap-poison`
 
 Difficulty rises every 20,000 steps in which the population sustains itself, and falls when it collapses.
 
@@ -60,7 +64,7 @@ brand-new random brains (20%). A crash doesn't throw away what evolution has fou
 
 **Senses and body.** Creatures see in 8 directions. Each direction has an input for six kinds of thing: red food, purple food, air, other creatures, big food and predators. That makes 48 inputs, each saying how close the nearest one is, within 300 px.
 
-On top of vision there are 4 hearing inputs, 2 taste inputs and 2 urgency inputs (hunger, breathlessness). Five outputs control movement (right, left, down, up) and calling.
+On top of vision there are 4 hearing inputs, 2 taste inputs and 2 urgency inputs (hunger, breathlessness). Six outputs control movement (right, left, down, up), calling and eating.
 
 **Brains.** Brains are recurrent networks of leaky integrate-and-fire neurons:
 - Input neurons fire at a rate proportional to their sensor value.
@@ -80,11 +84,13 @@ Related creatures therefore look alike.
 
 Every number above is a setting in [`Nworks/config.h`](Nworks/config.h), and
 every feature can be switched off there. To get the original world back, set the
-brain costs to 0 and turn off vision, springs, seasons and everything in stage 4.
+brain costs to 0, turn off vision, springs, seasons and everything in stage 4, and
+set `eatAction` to false.
 
 ## What the experiments show so far
 
-These are headless runs of 8–12 million steps (5–10 minutes each).
+These are headless runs of 8–12 million steps (5–10 minutes each), made with the
+earlier defaults (poison that swaps colour, eating on contact, learning on).
 
 - **The world is survivable and gets harder.** Lineages last 2,000+ generations, and difficulty climbs to 45–60% with every feature on. It reaches about 100% with stage 4 off.
 - **Brains grow despite the energy cost,** from about 105 to about 140 neurons. A lesion test suggests this is mostly chance, not need. Evolved worlds were copied, and up to 50% of every creature's hidden neurons were removed. The copies with fewer neurons did as well or better. A neuron's cost is too small for selection to remove it in a population of 20–50.
@@ -151,7 +157,10 @@ build/nworks_headless --steps 10000000 --report 1000000 --seed 1   # CMake build
 
 Options:
 - `--stage3` turns off everything from stage 4.
-- `--no-signals`, `--no-coop-food`, `--no-predators`, `--no-poison` and `--no-plasticity` turn off single stage-4 features.
+- `--no-signals`, `--no-coop-food`, `--no-predators` and `--no-poison` turn off single stage-4 features.
+- `--plasticity` turns lifetime learning on (`--no-plasticity` keeps it off).
+- `--eat-on-contact` makes creatures eat any food they touch, as before.
+- `--swap-poison` brings back the swapping, difficulty-scaled poison.
 - `--free-brains`, `--no-vision`, `--no-springs` and `--no-seasons` turn off the earlier features.
 - `--organism-sensor`, `--position-sensor` and `--slices` turn on the extras.
 - A fixed `--seed` repeats a run exactly.
