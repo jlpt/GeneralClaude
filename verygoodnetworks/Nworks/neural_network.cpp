@@ -168,6 +168,7 @@ void NeuralNetwork::Learn(const Config& cfg) {
 
     for (size_t i = 0; i < neurons_.size(); ++i) {
         if (!fired_[i]) continue;
+        if (cfg.plasticInputsOnly && neurons_[i].type != NeuronType::Input) continue;  // only sensory synapses learn
         const auto& connections = neurons_[i].connections;
         for (size_t k = 0; k < connections.size(); ++k) {
             const Neuron& target = neurons_[connections[k].Target()];

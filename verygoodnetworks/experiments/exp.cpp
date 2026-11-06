@@ -53,7 +53,8 @@ bool ApplyOverride(Config& c, const std::string& key, const std::string& value) 
         {"cooperativeFood", &c.cooperativeFood}, {"predators", &c.predators}, {"poison", &c.poison},
         {"plasticity", &c.plasticity}, {"poisonScalesWithDifficulty", &c.poisonScalesWithDifficulty},
         {"colourSmell", &c.colourSmell}, {"learningHasEffect", &c.learningHasEffect},
-        {"learnFromReward", &c.learnFromReward}, {"learnFromPunishment", &c.learnFromPunishment}, {"refillFromSurvivors", &c.refillFromSurvivors},
+        {"learnFromReward", &c.learnFromReward}, {"learnFromPunishment", &c.learnFromPunishment},
+        {"plasticInputsOnly", &c.plasticInputsOnly}, {"refillFromSurvivors", &c.refillFromSurvivors},
     };
     if (auto it = floats.find(key); it != floats.end()) { *it->second = std::stof(value); return true; }
     if (auto it = ints.find(key); it != ints.end()) { *it->second = std::stoi(value); return true; }
@@ -223,8 +224,8 @@ void PrintRow(const World& w, RowState& st) {
         learners += o.brain.LearningRate() > 0.005f ? 1.0 : 0.0;
     }
     const uint64_t p = w.stats.poisonBites - st.poison, g = w.stats.goodBites - st.good;
-    std::printf("%10llu | alive %3zu gen %5d diff %3.0f%% | neurons %6.1f | poison %5.1f%% | by fifth of swap period:",
-                (unsigned long long)w.stats.steps, n, w.MaxGeneration(), w.difficulty * 100.0f,
+    std::printf("%10llu | food %3d | alive %3zu gen %5d diff %3.0f%% | neurons %6.1f | poison %5.1f%% | by fifth of swap period:",
+                (unsigned long long)w.stats.steps, w.cfg.maxFood, n, w.MaxGeneration(), w.difficulty * 100.0f,
                 n ? double(w.TotalNeurons()) / double(n) : 0.0, p + g ? 100.0 * double(p) / double(p + g) : 0.0);
     for (int b = 0; b < 5; ++b) {
         const uint64_t bp = st.phasePoison[b], bg = st.phaseGood[b];
@@ -256,14 +257,26 @@ void PrintRow(const World& w, RowState& st) {
 // poisonous within one life.
 struct Layout {
     int foodA = -1, foodB = -1, sectors = 8, hunger = -1, smellA = -1, smellB = -1, right = -1;
+    int air = -1, bigFood = -1, predator = -1, breath = -1;
 };
 
 Layout FindLayout(const Organism& o, const Config& cfg) {
     Layout L;
     L.sectors = cfg.visionSectors;
     for (const auto& m : o.modules) {
-        if (dynamic_cast<const VisionSensor*>(m.get())) { L.foodA = m->firstInput; L.foodB = m->firstInput + cfg.visionSectors; }
-        if (dynamic_cast<const VitalsSensor*>(m.get())) L.hunger = m->firstInput;
+        if (dynamic_cast<const VisionSensor*>(m.get())) {
+            // Same slot order as VisionSensor: FoodA, FoodB, Air, Creature, BigFood, Predator (unused kinds skipped).
+            const bool used[6] = {true, cfg.poison, true, true, cfg.cooperativeFood, cfg.predators};
+            int slot[6], next = 0;
+            for (int kind = 0; kind < 6; ++kind) slot[kind] = used[kind] ? next++ : -1;
+            auto at = [&](int kind) { return slot[kind] < 0 ? -1 : m->firstInput + slot[kind] * cfg.visionSectors; };
+            L.foodA = at(0);
+            L.foodB = at(1);
+            L.air = at(2);
+            L.bigFood = at(4);
+            L.predator = at(5);
+        }
+        if (dynamic_cast<const VitalsSensor*>(m.get())) { L.hunger = m->firstInput; L.breath = m->firstInput + 1; }
         if (dynamic_cast<const ColourSmellSensor*>(m.get())) { L.smellA = m->firstInput; L.smellB = m->firstInput + 1; }
         if (dynamic_cast<const MovementModule*>(m.get())) L.right = o.brain.NumInputs() + m->firstOutput;
     }
@@ -284,6 +297,10 @@ float SectorAngle(int k, int sectors) { return -3.14159265f + (float(k) + 0.5f) 
 struct HandParams {
     std::string circuit = "direct";
     float wMotor = 0.1f, wFood = 0.3f, wGate = 0.3f, wValue = 0.5f, wSmell = 0.3f, threshold = 1.0f, jitter = 0.2f;
+    // "full" circuit
+    float wNear = 0.3f, wNearMotor = 0.3f, wFar = 0.0f, wInhibit = 0.5f;
+    float wBreath = 0.06f, wMigrate = 0.3f, wAirSeen = 0.08f, wAirGate = 0.05f, wAirMotor = 0.5f;
+    float wFlee = 0.5f, wBigFood = 0.15f;
 };
 
 NeuralNetwork BuildCircuit(const Organism& tmpl, const Config& cfg, const HandParams& hp, uint32_t seed) {
@@ -297,6 +314,47 @@ NeuralNetwork BuildCircuit(const Organism& tmpl, const Config& cfg, const HandPa
         for (int c = 0; c < 2; ++c)
             for (int k = 0; k < L.sectors; ++k)
                 ConnectToward(nn, L, food[c] + k, SectorAngle(k, L.sectors), hp.wMotor * jit(g));
+    } else if (hp.circuit == "full") {
+        // Food: per colour and sector, a weak direct pull plus a "near food" relay
+        // that only fires for close food; relays inhibit each other so the
+        // nearest food wins instead of all pulls cancelling out.
+        std::vector<int> relays;
+        for (int c = 0; c < 2; ++c) {
+            if (food[c] < 0) continue;
+            for (int k = 0; k < L.sectors; ++k) {
+                const float theta = SectorAngle(k, L.sectors);
+                if (hp.wFar > 0.0f) ConnectToward(nn, L, food[c] + k, theta, hp.wFar * jit(g));
+                const int relay = nn.AddHiddenNeuron(hp.threshold, 1);
+                nn.Connect(food[c] + k, relay, hp.wNear * jit(g));
+                ConnectToward(nn, L, relay, theta, hp.wNearMotor);
+                relays.push_back(relay);
+            }
+        }
+        for (int a : relays)
+            for (int b : relays)
+                if (a != b) nn.Connect(a, b, -hp.wInhibit);
+        // Air: when breathless, a "migrate" neuron pushes up-left (toward the
+        // springs from every food patch) and opens per-sector spring relays.
+        if (L.air >= 0) {
+            const int migrate = nn.AddHiddenNeuron(hp.threshold, 1);
+            nn.Connect(L.breath, migrate, hp.wBreath);
+            nn.Connect(migrate, L.right + 3, hp.wMigrate);  // up
+            nn.Connect(migrate, L.right + 1, hp.wMigrate);  // left
+            for (int k = 0; k < L.sectors; ++k) {
+                const int relay = nn.AddHiddenNeuron(hp.threshold, 1);
+                nn.Connect(L.air + k, relay, hp.wAirSeen);
+                nn.Connect(migrate, relay, hp.wAirGate);
+                ConnectToward(nn, L, relay, SectorAngle(k, L.sectors), hp.wAirMotor);
+            }
+        }
+        // Predators: run directly away.
+        if (L.predator >= 0)
+            for (int k = 0; k < L.sectors; ++k)
+                ConnectToward(nn, L, L.predator + k, SectorAngle(k, L.sectors) + 3.14159265f, hp.wFlee);
+        // Big food: approach it.
+        if (L.bigFood >= 0)
+            for (int k = 0; k < L.sectors; ++k)
+                ConnectToward(nn, L, L.bigFood + k, SectorAngle(k, L.sectors), hp.wBigFood);
     } else {
         // Gated: one "value" neuron per colour (driven by hunger and that colour's smell)
         // must be active for that colour's per-sector relay neurons to fire.
@@ -333,6 +391,10 @@ int HandBuilt(int argc, char** argv) {
         else if (key == "wSmell") hp.wSmell = std::stof(value);
         else if (key == "threshold") hp.threshold = std::stof(value);
         else if (key == "jitter") hp.jitter = std::stof(value);
+        else if (key == "wNear") hp.wNear = std::stof(value);
+        else if (key == "wNearMotor") hp.wNearMotor = std::stof(value);
+        else if (key == "wFar") hp.wFar = std::stof(value);
+        else if (key == "wInhibit") hp.wInhibit = std::stof(value);
         else if (key == "sectors") cfg.visionSectors = std::stoi(value);
         else if (!ApplyOverride(cfg, key, value)) { std::fprintf(stderr, "unknown %s\n", key.c_str()); return 1; }
     }
@@ -378,6 +440,11 @@ int main(int argc, char** argv) {
     int seedCount = 30;
     bool seedMix = false;  // every other founder gets learning rate 0
     float seedWMotor = 0.1f;
+    // Food curriculum: every foodWindow steps, thin the food (x0.9) if the
+    // population needed no refills, thicken it (+5) if it needed 10 or more.
+    bool foodCurriculum = false;
+    int foodMin = 10;
+    unsigned long long foodWindow = 20000;
     for (int i = 4; i < argc; ++i) {
         std::string arg = argv[i];
         const size_t eq = arg.find('=');
@@ -386,6 +453,9 @@ int main(int argc, char** argv) {
         if (key == "seed_circuit") { seedCircuit = value; settings += " " + arg; continue; }
         if (key == "seed_rate") { seedRate = std::stof(value); settings += " " + arg; continue; }
         if (key == "seed_count") { seedCount = std::stoi(value); settings += " " + arg; continue; }
+        if (key == "food_curriculum") { foodCurriculum = value == "1"; settings += " " + arg; continue; }
+        if (key == "food_min") { foodMin = std::stoi(value); settings += " " + arg; continue; }
+        if (key == "food_window") { foodWindow = std::stoull(value); settings += " " + arg; continue; }
         if (key == "seed_wmotor") { seedWMotor = std::stof(value); settings += " " + arg; continue; }
         if (key == "seed_mix") { seedMix = value == "1"; settings += " " + arg; continue; }
         if (key == "seed_sectors") { cfg.visionSectors = std::stoi(value); settings += " " + arg; continue; }
@@ -430,6 +500,7 @@ int main(int argc, char** argv) {
     RowState st;
     uint64_t id = 10000000;
     size_t nextTest = 0;
+    uint64_t spawnedAtWindowStart = 0;
     BiteTracker tracker;
     std::sort(tests.begin(), tests.end());
     for (unsigned long long i = 1; i <= steps; ++i) {
@@ -441,6 +512,12 @@ int main(int argc, char** argv) {
             const int bin = int(((world.stats.steps - 1) % uint64_t(cfg.poisonSwapInterval)) * 5 / uint64_t(cfg.poisonSwapInterval));
             st.phasePoison[bin] += world.stats.poisonBites - p0;
             st.phaseGood[bin] += world.stats.goodBites - g0;
+        }
+        if (foodCurriculum && i % foodWindow == 0) {
+            const uint64_t refills = world.stats.spawned - spawnedAtWindowStart;
+            spawnedAtWindowStart = world.stats.spawned;
+            if (refills == 0) world.cfg.maxFood = std::max(foodMin, int(float(world.cfg.maxFood) * 0.9f));
+            else if (refills >= 10) world.cfg.maxFood = std::min(cfg.maxFood, world.cfg.maxFood + 5);
         }
         if (i % report == 0) PrintRow(world, st);
         while (nextTest < tests.size() && tests[nextTest] == i) {

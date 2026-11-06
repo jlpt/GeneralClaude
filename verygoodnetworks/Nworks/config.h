@@ -164,7 +164,8 @@ struct Config {
     bool plasticity = true;
     bool learningHasEffect = true;
     bool learnFromReward = true;       // false: good food doesn't drive learning (experiments)
-    bool learnFromPunishment = true;   // false: poison doesn't drive learning (experiments)     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
+    bool learnFromPunishment = true;   // false: poison doesn't drive learning (experiments)
+    bool plasticInputsOnly = false;    // true: only synapses from input (sensor) neurons learn     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
     float traceDecay = 0.9f;           // how long a pairing stays eligible (per step)
     float learnedForgetting = 0.0002f; // learned changes fade by this fraction per step (half-life ~3,500 steps)
     float rewardDecay = 0.9f;          // the reward/punishment signal fades by this per step
