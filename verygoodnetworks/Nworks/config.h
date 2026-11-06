@@ -149,19 +149,21 @@ struct Config {
     int predatorRest = 1000;           // steps a predator rests after a catch
 
     // --- Stage 4d: poison lookalikes ---
-    // Food comes in two colours, and red is poisonous. By default a poisonous
-    // bite kills, so avoiding red is a matter of survival and evolution can
-    // build it in as an instinct. The lookalikes are extra: food spawns twice
-    // as often (and up to twice maxFood), so there is as much good food as
+    // Food comes in two colours, and red is poisonous. Poison grows with the
+    // curriculum: a bite costs poisonDamage x difficulty of max health, so it
+    // is mild while a population is getting started and kills at 100%
+    // difficulty. Because red never changes, evolution can build avoiding it
+    // in as an instinct. The lookalikes are extra: food spawns twice as often
+    // (and up to maxFood of each colour), so there is as much good food as
     // without poison.
     // The original stage 4 design swapped the poisonous colour every 10,000
-    // steps (poisonSwapInterval = 10000) with damage scaled by difficulty, so
-    // that only lifetime learning could cope; experiments showed learning
-    // doesn't evolve that way (see experiments/README.md).
+    // steps (poisonSwapInterval = 10000, poisonDamage = 0.4) so that only
+    // lifetime learning could cope; experiments showed learning doesn't
+    // evolve that way (see experiments/README.md).
     bool poison = true;
     int poisonSwapInterval = 0;        // 0 = red is always poisonous; N = the colours swap every N steps
-    float poisonDamage = 1.0f;         // fraction of maxHealth lost per poisonous bite (1 = it kills)
-    bool poisonScalesWithDifficulty = false;  // true: damage is poisonDamage x difficulty
+    float poisonDamage = 1.0f;         // fraction of maxHealth lost per poisonous bite at 100% difficulty
+    bool poisonScalesWithDifficulty = true;  // false: every poisonous bite costs the full poisonDamage
     float poisonShare = 0.5f;          // fraction of new food that comes in the poisonous colour
     bool separateFoodCaps = true;      // each colour regrows on its own up to maxFood (false: one shared cap,
                                        // so uneaten poison can crowd out good food)

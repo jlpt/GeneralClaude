@@ -96,10 +96,13 @@ int RunHeadless(int argc, char** argv) {
     if (stage3 || HasFlag(argc, argv, "--no-plasticity")) cfg.plasticity = false;
     if (!stage3 && HasFlag(argc, argv, "--plasticity")) cfg.plasticity = true;
     if (HasFlag(argc, argv, "--eat-on-contact")) cfg.eatAction = false;
-    if (HasFlag(argc, argv, "--swap-poison")) {  // the original stage 4 poison: swaps every 10,000 steps, scaled damage
+    if (HasFlag(argc, argv, "--swap-poison")) {  // the original stage 4 poison: swaps every 10,000 steps, up to 40%
         cfg.poisonSwapInterval = 10000;
         cfg.poisonDamage = 0.4f;
-        cfg.poisonScalesWithDifficulty = true;
+    }
+    if (HasFlag(argc, argv, "--lethal-poison")) {  // every poisonous bite kills, from the start
+        cfg.poisonDamage = 1.0f;
+        cfg.poisonScalesWithDifficulty = false;
     }
     cfg.organismSensor = HasFlag(argc, argv, "--organism-sensor");
     cfg.positionSensor = HasFlag(argc, argv, "--position-sensor");
