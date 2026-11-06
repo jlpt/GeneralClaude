@@ -337,7 +337,10 @@ void World::SpawnFood() {
         r = RandomResource(cfg.spawnMaxX, cfg.foodRadius);
         r.x = std::max(0.0f, r.x - difficulty * cfg.foodDriftMax);
     }
-    if (cfg.poison) r.kind = uint8_t(rng::Int(0, 1));
+    if (cfg.poison) {
+        const int bad = PoisonKind();
+        r.kind = uint8_t(rng::Chance(cfg.poisonShare) ? bad : 1 - bad);
+    }
     food.push_back(r);
 }
 

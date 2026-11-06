@@ -159,6 +159,7 @@ struct Config {
     float poisonDamage = 0.4f;         // fraction of maxHealth lost per poisonous bite at 100% difficulty
                                        // (it scales with difficulty; bad bites always taste bad)
     bool poisonScalesWithDifficulty = true;  // false: every poisonous bite costs the full poisonDamage
+    float poisonShare = 0.5f;          // fraction of new food that comes in the poisonous colour
 
     // --- Stage 4e: lifetime learning ---
     // Synapses change during life by a reward-modulated Hebbian rule: a

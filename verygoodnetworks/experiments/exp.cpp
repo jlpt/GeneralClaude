@@ -39,7 +39,7 @@ bool ApplyOverride(Config& c, const std::string& key, const std::string& value) 
         {"learningRateChance", &c.learningRateChance}, {"mutationFraction", &c.mutationFraction},
         {"worldWidth", &c.worldWidth}, {"worldHeight", &c.worldHeight}, {"visionRange", &c.visionRange},
         {"predatorBaseSpeed", &c.predatorBaseSpeed}, {"predatorExtraSpeed", &c.predatorExtraSpeed},
-        {"signalCost", &c.signalCost}, {"randomRefillShare", &c.randomRefillShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
+        {"signalCost", &c.signalCost}, {"randomRefillShare", &c.randomRefillShare}, {"poisonShare", &c.poisonShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
     };
     std::map<std::string, int*> ints = {
         {"minPopulation", &c.minPopulation}, {"maxAge", &c.maxAge}, {"minFood", &c.minFood}, {"foodToReproduce", &c.foodToReproduce}, {"maxFood", &c.maxFood},
@@ -225,8 +225,11 @@ void PrintRow(const World& w, RowState& st) {
         learners += o.brain.LearningRate() > 0.005f ? 1.0 : 0.0;
     }
     const uint64_t p = w.stats.poisonBites - st.poison, g = w.stats.goodBites - st.good;
-    std::printf("%10llu | food %3d | alive %3zu gen %5d diff %3.0f%% | neurons %6.1f | poison %5.1f%% | by fifth of swap period:",
-                (unsigned long long)w.stats.steps, w.cfg.maxFood, n, w.MaxGeneration(), w.difficulty * 100.0f,
+    size_t poisonItems = 0;
+    for (const Resource& r : w.food) poisonItems += (w.cfg.poison && r.kind == w.PoisonKind()) ? 1 : 0;
+    std::printf("%10llu | food %3d (%2.0f%% bad) | alive %3zu gen %5d diff %3.0f%% | neurons %6.1f | poison %5.1f%% | by fifth of swap period:",
+                (unsigned long long)w.stats.steps, w.cfg.maxFood,
+                w.food.empty() ? 0.0 : 100.0 * double(poisonItems) / double(w.food.size()), n, w.MaxGeneration(), w.difficulty * 100.0f,
                 n ? double(w.TotalNeurons()) / double(n) : 0.0, p + g ? 100.0 * double(p) / double(p + g) : 0.0);
     for (int b = 0; b < 5; ++b) {
         const uint64_t bp = st.phasePoison[b], bg = st.phaseGood[b];
