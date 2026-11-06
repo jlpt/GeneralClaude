@@ -115,6 +115,7 @@ private:
 
     uint64_t nextId_ = 1;
     uint64_t spawnedThisWindow_ = 0;
+    int foodCeiling_ = 0;  // the starting maxFood, the most the food curriculum gives back
     std::vector<Genome> archive_;
     size_t archiveNext_ = 0;
 };

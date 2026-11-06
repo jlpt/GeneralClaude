@@ -52,7 +52,7 @@ float Slice::DistanceTo(float x, float y) const {
 
 // --- World ------------------------------------------------------------------
 
-World::World(const Config& config) : cfg(config) {
+World::World(const Config& config) : cfg(config), foodCeiling_(config.maxFood) {
     rng::Seed(cfg.seed);
     for (int i = 0; i < cfg.initialFood * (cfg.poison ? 2 : 1); ++i) SpawnFood();
     if (cfg.springs) {
@@ -143,8 +143,10 @@ void World::UpdateCurriculum() {
     if (cfg.curriculumWindow <= 0 || stats.steps % uint64_t(cfg.curriculumWindow) != 0) return;
     if (spawnedThisWindow_ == 0) {
         difficulty = std::min(1.0f, difficulty + cfg.curriculumStep);  // self-sustaining: harder
+        if (cfg.foodCurriculum) cfg.maxFood = std::max(cfg.minFood, int(float(cfg.maxFood) * 0.9f));
     } else if (spawnedThisWindow_ >= uint64_t(cfg.curriculumBackoffSpawns)) {
         difficulty = std::max(0.0f, difficulty - cfg.curriculumStep);  // collapsing: easier
+        if (cfg.foodCurriculum) cfg.maxFood = std::min(foodCeiling_, cfg.maxFood + 5);
     }
     spawnedThisWindow_ = 0;
 }

@@ -42,7 +42,7 @@ bool ApplyOverride(Config& c, const std::string& key, const std::string& value) 
         {"signalCost", &c.signalCost}, {"randomRefillShare", &c.randomRefillShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
     };
     std::map<std::string, int*> ints = {
-        {"minPopulation", &c.minPopulation}, {"maxAge", &c.maxAge}, {"foodToReproduce", &c.foodToReproduce}, {"maxFood", &c.maxFood},
+        {"minPopulation", &c.minPopulation}, {"maxAge", &c.maxAge}, {"minFood", &c.minFood}, {"foodToReproduce", &c.foodToReproduce}, {"maxFood", &c.maxFood},
         {"initialFood", &c.initialFood}, {"poisonSwapInterval", &c.poisonSwapInterval},
         {"seasonLength", &c.seasonLength}, {"foodLifetime", &c.foodLifetime}, {"curriculumWindow", &c.curriculumWindow},
         {"initialHiddenNeurons", &c.initialHiddenNeurons}, {"initialConnections", &c.initialConnections},
@@ -54,7 +54,7 @@ bool ApplyOverride(Config& c, const std::string& key, const std::string& value) 
         {"plasticity", &c.plasticity}, {"poisonScalesWithDifficulty", &c.poisonScalesWithDifficulty},
         {"colourSmell", &c.colourSmell}, {"learningHasEffect", &c.learningHasEffect},
         {"learnFromReward", &c.learnFromReward}, {"learnFromPunishment", &c.learnFromPunishment},
-        {"plasticInputsOnly", &c.plasticInputsOnly}, {"refillFromSurvivors", &c.refillFromSurvivors},
+        {"plasticInputsOnly", &c.plasticInputsOnly}, {"foodCurriculum", &c.foodCurriculum}, {"refillFromSurvivors", &c.refillFromSurvivors},
     };
     if (auto it = floats.find(key); it != floats.end()) { *it->second = std::stof(value); return true; }
     if (auto it = ints.find(key); it != ints.end()) { *it->second = std::stoi(value); return true; }

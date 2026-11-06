@@ -129,6 +129,7 @@ void DrawWorldStats(const World& world, int x, int y) {
     text(TextFormat("Difficulty: %.0f%%", world.difficulty * 100.0f));
     if (world.cfg.seasons) text(TextFormat("Season: %d of %d", world.Season() + 1, World::kPatchCount));
     if (world.cfg.poison) text(TextFormat("Poisonous now: %s", world.PoisonKind() == 1 ? "purple" : "red"));
+    if (world.cfg.foodCurriculum) text(TextFormat("Food level: %d", world.cfg.maxFood));
     text(TextFormat("Biggest brain ever: %s", WithCommas((long long)world.stats.largestBrainEver).c_str()));
 }
 

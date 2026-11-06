@@ -369,12 +369,17 @@ int main(int argc, char** argv) {
             if ((done + 1) % 1000000 == 0) PrintRow(world, lastPoison, lastGood);
         }
         // Colour that was safe during the steps just before now (checkpoints can land on a swap).
-        const int poisonRecently = int(((world.stats.steps - 1) / uint64_t(world.cfg.poisonSwapInterval)) % 2);
+        const int poisonRecently = world.cfg.poisonSwapInterval > 0
+                                       ? int(((world.stats.steps - 1) / uint64_t(world.cfg.poisonSwapInterval)) % 2)
+                                       : world.PoisonKind();
         const int safeKind = 1 - poisonRecently;
         std::printf("seed %u checkpoint %llu: %zu alive, max generation %d, difficulty %.0f%%, safe colour for the last"
                     " %llu steps: %d\n", seed, checkpoint, world.organisms.size(), world.MaxGeneration(),
                     world.difficulty * 100.0f,
-                    (unsigned long long)((world.stats.steps - 1) % uint64_t(world.cfg.poisonSwapInterval) + 1), safeKind);
+                    (unsigned long long)(world.cfg.poisonSwapInterval > 0
+                                             ? (world.stats.steps - 1) % uint64_t(world.cfg.poisonSwapInterval) + 1
+                                             : world.stats.steps),
+                    safeKind);
         const std::mt19937 saved = rng::Engine();  // tests must not change the evolution's random numbers
         std::vector<Organism> evolved;
         for (Organism& o : world.organisms) evolved.push_back(CloneOf(o, id++, world.cfg));

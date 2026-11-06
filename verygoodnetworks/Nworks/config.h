@@ -84,6 +84,11 @@ struct Config {
     int curriculumWindow = 20000;      // steps between difficulty updates
     float curriculumStep = 0.025f;     // change per update
     int curriculumBackoffSpawns = 10;  // random spawns in one window that count as a collapse
+    // Food curriculum: at the same checks, food gets scarcer (maxFood x0.9,
+    // down to minFood) while the population sustains itself, and more
+    // plentiful (+5, up to the starting maxFood) when it collapses.
+    bool foodCurriculum = false;
+    int minFood = 15;
     // With seasons off: food shifts left and air pockets right by difficulty * these.
     float foodDriftMax = 400.0f;
     float airDriftMax = 1000.0f;
@@ -162,10 +167,10 @@ struct Config {
     // a punishment (poison). Each brain's learning rate is a gene; what it
     // learns is not inherited.
     bool plasticity = true;
-    bool learningHasEffect = true;
+    bool learningHasEffect = true;     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
     bool learnFromReward = true;       // false: good food doesn't drive learning (experiments)
     bool learnFromPunishment = true;   // false: poison doesn't drive learning (experiments)
-    bool plasticInputsOnly = false;    // true: only synapses from input (sensor) neurons learn     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
+    bool plasticInputsOnly = false;    // true: only synapses from input (sensor) neurons learn
     float traceDecay = 0.9f;           // how long a pairing stays eligible (per step)
     float learnedForgetting = 0.0002f; // learned changes fade by this fraction per step (half-life ~3,500 steps)
     float rewardDecay = 0.9f;          // the reward/punishment signal fades by this per step
