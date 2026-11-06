@@ -17,8 +17,9 @@ public:
 };
 
 // 1 output: whether to eat. With Config::eatAction on, food the organism
-// touches is only eaten while this output is at least 0.5, so eating is a
-// choice rather than something that happens on contact.
+// touches is only eaten while this output is at least 0.5, one item (the
+// nearest) per step, so eating is a choice rather than something that
+// happens on contact.
 class EatModule : public ModuleBase<EatModule> {
 public:
     int OutputCount() const override { return 1; }

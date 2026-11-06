@@ -209,8 +209,19 @@ void World::AddBodyModules(Organism& o) const {
 void World::EatFood(Organism& o) {
     if (cfg.eatAction && o.eatSignal < 0.5f) return;  // touching food, but not eating
     const int poisonKind = cfg.poison ? PoisonKind() : -1;
+    // With eatAction on, one bite per step: only the nearest touched item.
+    auto onlyBite = food.end();
+    if (cfg.eatAction) {
+        float best = 1e30f;
+        for (auto it = food.begin(); it != food.end(); ++it) {
+            if (!Touching(o, it->x, it->y, it->radius)) continue;
+            const float d = (it->x - o.x) * (it->x - o.x) + (it->y - o.y) * (it->y - o.y);
+            if (d < best) { best = d; onlyBite = it; }
+        }
+        if (onlyBite == food.end()) return;
+    }
     for (auto it = food.begin(); it != food.end();) {
-        if (!Touching(o, it->x, it->y, it->radius)) {
+        if (cfg.eatAction ? it != onlyBite : !Touching(o, it->x, it->y, it->radius)) {
             ++it;
             continue;
         }
