@@ -89,6 +89,32 @@ set `eatAction` to false.
 
 ## What the experiments show so far
 
+### With the current defaults (eating is a choice, red kills, no learning)
+
+Measured with `nworks_assay` (see `experiments/`), which copies the evolved
+creatures into an empty arena one at a time. Three seeds, 6 million steps
+each (a few minutes headless):
+
+| seed | eats safe purple food 150 px away | eats red | no-food control | picks purple when offered both |
+|---|---|---|---|---|
+| random brains | 3-6% | 3-6% | 2-5% | 39-48% |
+| 1 | 21% | 5% | 3% | 72% |
+| 2 | 5% | 4% | 4% | 50% |
+| 3 | 18% | 6% | 3% | 83% |
+
+- **Two of three populations evolve "go for purple, leave red alone" by sight.**
+  An earlier build, which ate every touched item rather than only the nearest,
+  reached 100% purple picks in one seed.
+- **One population also heads for a spring when out of air** (17% vs 3% by
+  chance). Another shows a mild flee response to predators.
+- **Limits:**
+  - The population stays at the minimum of 15, kept up by the seed bank,
+    because lethal poison and naive newcomers keep killing creatures.
+  - So difficulty never rises and predators don't arrive.
+  - About 34-44% of in-world bites are still poisonous, mostly by newcomers.
+
+### With the earlier defaults
+
 These are headless runs of 8–12 million steps (5–10 minutes each), made with the
 earlier defaults (poison that swaps colour, eating on contact, learning on).
 

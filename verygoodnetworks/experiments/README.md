@@ -274,7 +274,52 @@ What this shows:
   swap.
 - In ~500 generations, evolution added little to the scaffold.
 
+## Round 3: no lifetime learning, aiming for evolved instincts
+
+### 14. A fixed poisonous colour isn't enough
+Learning off, red always poisonous, 2M steps, full world.
+
+| poison | food | poison share of bites |
+|---|---|---|
+| damage scaled by difficulty (default then) | default | 46-50% |
+| 30% of health per bite, every time | default | 46-49% |
+| 30% per bite | half (50 per colour) | 45-47% |
+| 30% per bite, focused world | default | 46-49% |
+
+Most bites happen by bumping into food. In a dense world, colour choice barely
+changes what gets eaten, and mild poison is soon made up by the next good bite.
+
+### 15. Lethal poison
+Red kills; 3M steps. Poison share fell slowly, 48.5% -> 46.3% and 45.5% -> 40.9%.
+The population lives on refills (40,000-52,000 over 3M steps).
+
+### 16. Eating as a decision (`eatAction`)
+A new output: touched food is eaten only while it is >= 0.5. 3M steps.
+
+| poison | poison share of bites |
+|---|---|
+| lethal | 48% -> 33%, and 48% -> 34% (still falling) |
+| 50% of health | 44% -> 43%, and 47% -> 47% |
+| lethal, only 25% of food poisonous | 22-25%, against 22-32% bad food in the world: no avoidance |
+
+### 17. The new defaults
+Eating is a decision, red always kills, no learning. Behaviour tests at 6M
+steps, 3 seeds (see the main README for the table):
+- Two of three populations evolve vision-guided foraging for purple and avoid
+  red (72% and 83% purple picks, against 39-48% for random brains).
+- One also heads for springs when out of air.
+- The population stays at the minimum of 15, so difficulty never rises and
+  predators never arrive.
+
+One bug along the way: the first "one bite per step" commit compared against an
+iterator invalidated by `erase`, so every bite ate all the food stored after the
+nearest item. It was fixed in the next commit. The behaviour tests in 17 use the
+fixed build.
+
 ## Ideas not yet tried
+- Let the evolved population grow, so the curriculum can bring in predators:
+  fewer random refills (`randomRefillShare`), more food, or poison that hurts
+  but doesn't always kill.
 - Fix the after-swap cost so colour learning pays overall. For example, let
   the forgetting rate evolve, or give creatures a cue that the swap happened.
 - Find out why plasticity costs random brains foraging: run random brains with
