@@ -149,16 +149,19 @@ struct Config {
     int predatorRest = 1000;           // steps a predator rests after a catch
 
     // --- Stage 4d: poison lookalikes ---
-    // Food comes in two colours. One is poisonous, and which one swaps every
-    // poisonSwapInterval steps: about once per lifetime, too often for
-    // evolution to hard-wire, so it pays to learn. The lookalikes are extra:
-    // food spawns twice as often (and up to twice maxFood), so there is as
-    // much good food as without poison.
+    // Food comes in two colours, and red is poisonous. By default a poisonous
+    // bite kills, so avoiding red is a matter of survival and evolution can
+    // build it in as an instinct. The lookalikes are extra: food spawns twice
+    // as often (and up to twice maxFood), so there is as much good food as
+    // without poison.
+    // The original stage 4 design swapped the poisonous colour every 10,000
+    // steps (poisonSwapInterval = 10000) with damage scaled by difficulty, so
+    // that only lifetime learning could cope; experiments showed learning
+    // doesn't evolve that way (see experiments/README.md).
     bool poison = true;
-    int poisonSwapInterval = 10000;
-    float poisonDamage = 0.4f;         // fraction of maxHealth lost per poisonous bite at 100% difficulty
-                                       // (it scales with difficulty; bad bites always taste bad)
-    bool poisonScalesWithDifficulty = true;  // false: every poisonous bite costs the full poisonDamage
+    int poisonSwapInterval = 0;        // 0 = red is always poisonous; N = the colours swap every N steps
+    float poisonDamage = 1.0f;         // fraction of maxHealth lost per poisonous bite (1 = it kills)
+    bool poisonScalesWithDifficulty = false;  // true: damage is poisonDamage x difficulty
     float poisonShare = 0.5f;          // fraction of new food that comes in the poisonous colour
 
     // --- Stage 4e: lifetime learning ---
@@ -167,7 +170,7 @@ struct Config {
     // eligible synapses strengthen after a reward (good food) or weaken after
     // a punishment (poison). Each brain's learning rate is a gene; what it
     // learns is not inherited.
-    bool plasticity = true;
+    bool plasticity = false;           // lifetime learning; off by default, --plasticity turns it on
     bool learningHasEffect = true;     // false: the learning-rate gene still mutates but nothing is learned (neutral control)
     bool learnFromReward = true;       // false: good food doesn't drive learning (experiments)
     bool learnFromPunishment = true;   // false: poison doesn't drive learning (experiments)
@@ -183,7 +186,7 @@ struct Config {
     bool organismSensor = false;  // original nearest-organism sensor (+5 inputs); vision already sees organisms
     bool positionSensor = false;  // sense own x/y position (+2 inputs)
     bool slices = false;          // organisms can cut lines that kill (+8 inputs, +4 outputs)
-    bool eatAction = false;       // +1 output: touched food is only eaten while the "eat" output is >= 0.5
+    bool eatAction = true;        // +1 output: touched food is only eaten while the "eat" output is >= 0.5
     bool colourSmell = false;     // +2 inputs: closeness of the nearest red and nearest purple food, from any direction
     int sliceCooldown = 10;       // steps between cuts
     float sliceSensorRange = 600.0f;

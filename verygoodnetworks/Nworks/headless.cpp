@@ -94,6 +94,13 @@ int RunHeadless(int argc, char** argv) {
     if (stage3 || HasFlag(argc, argv, "--no-predators")) cfg.predators = false;
     if (stage3 || HasFlag(argc, argv, "--no-poison")) cfg.poison = false;
     if (stage3 || HasFlag(argc, argv, "--no-plasticity")) cfg.plasticity = false;
+    if (!stage3 && HasFlag(argc, argv, "--plasticity")) cfg.plasticity = true;
+    if (HasFlag(argc, argv, "--eat-on-contact")) cfg.eatAction = false;
+    if (HasFlag(argc, argv, "--swap-poison")) {  // the original stage 4 poison: swaps every 10,000 steps, scaled damage
+        cfg.poisonSwapInterval = 10000;
+        cfg.poisonDamage = 0.4f;
+        cfg.poisonScalesWithDifficulty = true;
+    }
     cfg.organismSensor = HasFlag(argc, argv, "--organism-sensor");
     cfg.positionSensor = HasFlag(argc, argv, "--position-sensor");
     cfg.slices = HasFlag(argc, argv, "--slices");
@@ -102,10 +109,11 @@ int RunHeadless(int argc, char** argv) {
     std::printf("Nworks headless run: %llu steps, seed %u\n", steps, rng::CurrentSeed());
     auto onOff = [](bool on) { return on ? "on" : "off"; };
     std::printf("brain cost %s, vision %s, springs %s, seasons %s, signals %s, big food %s, predators %s, "
-                "poison %s, learning %s\n",
+                "poison %s, learning %s, eating %s\n",
                 onOff(cfg.brainCostPerNeuron > 0.0f || cfg.brainCostPerSynapse > 0.0f), onOff(cfg.vision),
                 onOff(cfg.springs), onOff(cfg.seasons), onOff(cfg.signals), onOff(cfg.cooperativeFood),
-                onOff(cfg.predators), onOff(cfg.poison), onOff(cfg.plasticity));
+                onOff(cfg.predators), onOff(cfg.poison), onOff(cfg.plasticity),
+                cfg.eatAction ? "a choice" : "on contact");
     PrintHeader();
 
     BiteCounter bites;
