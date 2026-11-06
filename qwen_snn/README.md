@@ -20,17 +20,21 @@ layers or matrices at runtime: a flat pool of neurons, each with a fan-out list 
 | motor neurons summed into left/right/up/down | 248,320 vocab readout neurons; the biggest membrane is the next token |
 | (no inputs) | 248,320 sensory token neurons; the current token's neuron fires once, its synapses are its embedding |
 
-`--mode spike` replaces the graded push with binary spikes: each token is a window of `T` timesteps and every
-spiking neuron runs
+`--mode spike` replaces the graded push with binary spikes: each token is a window of `T` timesteps, the neuron's
+drive arrives as a constant current of `drive / T` per step, and every spiking neuron runs
 
 ```
-v = leak * v + drive
+v = leak * v + drive / T
 if not refractory:  v >= +theta/2  ->  spike +1      v <= -theta/2  ->  spike -1
-v -= spike * theta                       # reset by subtraction
-each spike pushes  spike * theta * (int8 / 127) * gain  into every target slot
+                    (a membrane past several thresholds fires that many spikes at once: a burst)
+v -= spikes * theta                      # reset by subtraction
+each spike pushes  theta * (int8 / 127) * gain  into every target slot
 ```
 
-`theta = range / T`, where `range` is the neuron's calibrated drive range (stored in the file).
+`theta = range / T`, where `range` is the neuron's calibrated drive range (stored in the file). Drives inside the
+range give at most one spike per timestep; the rare drive beyond it (LLM activations are heavy-tailed: 0.3% of
+drives carry about a fifth of the signal in the MLP and DeltaNet neurons) comes out as bursts instead of being
+clipped. `max_burst=1` in `Engine` forbids bursts if you want strictly one spike per step.
 
 `test_kernel_style.py` takes real spike payloads and pushes them through the packed synapses exactly the way
 `propagateKernel` does (loop over firing neurons, unpack dest and weight, accumulate); the currents match the
@@ -73,12 +77,17 @@ RESULTS_PLACEHOLDER
 
 ## Running it
 
-Needs Python 3.10+, `torch`, `numpy`, `safetensors`, `transformers` (tokenizer, conversion and verification only)
-and `jinja2`.
+Needs Python 3.10+ (`transformers` is only used for the tokenizer, conversion and verification):
+
+```bash
+pip install torch numpy safetensors transformers jinja2 huggingface_hub
+```
+
+On Windows with an NVIDIA GPU, install the CUDA build of torch from pytorch.org first.
 
 ```bash
 # 1. get the model (1.75 GB)
-huggingface-cli download Qwen/Qwen3.5-0.8B --local-dir Qwen3.5-0.8B
+hf download Qwen/Qwen3.5-0.8B --local-dir Qwen3.5-0.8B
 
 # 2. convert (writes the 4 GB .snn, then calibrates thresholds on data/calibration_chats.json; ~4 min on CPU)
 python convert.py --model Qwen3.5-0.8B --out qwen3.5-0.8b.snn
@@ -97,6 +106,30 @@ python test_kernel_style.py --snn qwen3.5-0.8b.snn
 `convert.py --leak/--refractory` store per-neuron defaults in the file; `chat.py --leak/--refractory` override
 them at runtime. `data/calibration_chats.json` was written by the original model (`make_calibration.py`).
 
+## Looking at it
+
+```bash
+python viewer.py --snn qwen3.5-0.8b.snn        # then open http://127.0.0.1:8765
+```
+
+![viewer](docs/viewer.jpg)
+
+Every one of the 732,160 neurons is a point. Populations are sheets in processing order: token neurons on the
+left, the 24 blocks, the vocab readout on the right (colour = neuron type, see the list on the left; click a name
+to fly there).
+
+* **drag** orbits, **right-drag** pans, **scroll** zooms, **WASD / Q E** fly (hold shift to go fast)
+* **click a neuron**: its parameters (type, drive range, threshold, leak, refractory, fan-in/out) and its strongest
+  outgoing and incoming synapses, decoded live from the packed `dest << 8 | int8` words in the `.snn` file and drawn
+  as lines (orange = positive weight, blue = negative). Click a synapse to follow it to the next neuron.
+* **Run** a prompt: the network processes it token by token. Each token lights up the neurons by how much they fired
+  in that window (spiking neurons: spikes relative to their maximum; residual stream: membrane relative to the
+  population's largest), with a wavefront sweeping in the order the populations compute. The slider and the token
+  strip replay any token; the panel shows spikes per token and the readout's top predictions.
+
+The page uses three.js from jsdelivr, so it needs internet the first time; the server only reads the `.snn` file
+(the engine is loaded on the first Run).
+
 ## Files
 
 * `snn_format.py` – the `.snn` file: JSON header, neuron arrays, packed synapses
@@ -106,3 +139,4 @@ them at runtime. `data/calibration_chats.json` was written by the original model
 * `verify.py` – compares against the original model
 * `test_kernel_style.py` – kernel.cu-style event propagation equals the engine's
 * `make_calibration.py` – regenerates the calibration chats
+* `viewer.py`, `viewer/index.html` – the 3D viewer

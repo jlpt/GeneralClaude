@@ -9,10 +9,13 @@ the file lists them:
 
   1. its dendrite slots hold the current that arrived this window
   2. its neurons turn that into a drive (sum, normalisation, gate, ...)
-  3. spiking neurons fire: LIF dynamics for T steps,
-         v <- leak * v + drive
-         spike +1 if v >= +theta/2, -1 if v <= -theta/2 (and not refractory)
-         v <- v - spike * theta            (reset by subtraction)
+  3. spiking neurons fire: LIF dynamics for T steps, the drive arriving as a
+     constant current of drive/T per step (so a window's input totals drive),
+         v <- leak * v + drive / T
+         spike +1 if v >= +theta/2, -1 if v <= -theta/2 (and not refractory);
+         a membrane past several thresholds fires that many spikes at once
+         (a burst; max_burst=1 forbids it)
+         v <- v - spikes * theta           (reset by subtraction)
          after a spike: refractory for r steps (v keeps integrating, as in kernel.cu)
      each spike pushes +-theta * w/127 * gain into every target slot
   4. analog neurons (residual stream, readout) push their membrane value
@@ -58,13 +61,15 @@ class Projection:
 
 class Engine:
     def __init__(self, path, device="cpu", dtype=torch.float32, mode="graded", T=32,
-                 leak=None, refractory=None, fire_level=0.5, carry_membrane=False, verbose=True):
+                 leak=None, refractory=None, fire_level=0.5, carry_membrane=False, max_burst=None,
+                 verbose=True):
         t0 = time.time()
         self.path, self.device, self.dtype = path, torch.device(device), dtype
         self.header = h = fmt.read_header(path)
         self.pops = h["populations"]
         self.pop = {p["name"]: p for p in self.pops}
         self.mode, self.T, self.fire_level, self.carry_membrane = mode, T, fire_level, carry_membrane
+        self.max_burst = max_burst
         self.verbose = verbose
         arr = lambda name: fmt.open_array(path, h, name)
         self._offsets = arr("syn.offsets")
@@ -279,11 +284,15 @@ class Engine:
         v = st["mem"] if self.carry_membrane and "mem" in st else torch.zeros_like(drive)
         ref = torch.zeros_like(drive, dtype=torch.long)
         count = torch.zeros_like(drive)
-        up, dn = self.fire_level * theta, -self.fire_level * theta
+        current = drive / T
         for _ in range(T):
-            v = leak * v + drive
+            v = leak * v + current
             ok = ref <= 0
-            s = ((v >= up) & ok).float() - ((v <= dn) & ok).float()
+            # number of thresholds crossed this step: 1 normally, more = a burst
+            s = torch.sign(v) * torch.floor(v.abs() / theta + (1.0 - self.fire_level))
+            if self.max_burst:
+                s = s.clamp(-self.max_burst, self.max_burst)
+            s = s * ok
             v = v - s * theta
             count += s
             ref = torch.where(s != 0, r.expand_as(ref), ref - 1)
@@ -299,8 +308,11 @@ class Engine:
 
     # ------------------------------------------------------------------ one token
     @torch.no_grad()
-    def step(self, tokens, record=None):
-        """Feed one token per batch row; returns readout membranes (logits) [B, vocab]."""
+    def step(self, tokens, record=None, observe=None):
+        """Feed one token per batch row; returns readout membranes (logits) [B, vocab].
+
+        record(pop, drive) is called for spiking populations before they fire,
+        observe(pop, drive, payload) for every non-sensory population after."""
         tokens = torch.as_tensor(tokens, device=self.device).view(-1)
         assert tokens.numel() == self.batch
         B = self.batch
@@ -323,6 +335,8 @@ class Engine:
             if record is not None and t in SPIKING:
                 record(p, drive)
             payload = self._fire(p, drive) if t in SPIKING else drive
+            if observe is not None:
+                observe(p, drive, payload)
             if t == "readout":
                 out = payload
             for pr in self.out[name]:
