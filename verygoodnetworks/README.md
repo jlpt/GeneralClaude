@@ -89,29 +89,32 @@ set `eatAction` to false.
 
 ## What the experiments show so far
 
-### With the current defaults (eating is a choice, red kills, no learning)
+### With the current defaults (eating is a choice, red poison grows with difficulty, no learning)
 
 Measured with `nworks_assay` (see `experiments/`), which copies the evolved
 creatures into an empty arena one at a time. Three seeds, 6 million steps
-each (a few minutes headless):
+each (a few minutes headless). The population holds at 15-55, difficulty
+reaches 18-30%, and predators are active (1,600-3,700 kills per run).
 
-| seed | eats safe purple food 150 px away | eats red | no-food control | picks purple when offered both |
+| | random brains | seed 1 | seed 2 | seed 3 |
 |---|---|---|---|---|
-| random brains | 3-6% | 3-6% | 2-5% | 39-48% |
-| 1 | 21% | 5% | 3% | 72% |
-| 2 | 5% | 4% | 4% | 50% |
-| 3 | 18% | 6% | 3% | 83% |
+| eats safe purple food 150 px away | 3-8% | 74% | 4% | 20% |
+| eats red | 4-7% | 2% | 0% | 16% |
+| heading toward food (+1 = straight at it) | -0.07 to +0.09 | +0.56 | +0.26 | +0.36 |
+| picks purple when offered both | 39-63% | 96% | 100% (few bites) | 86% |
+| heading away from a predator (no-predator control) | about 0 | -0.11 (+0.05) | +0.20 (+0.05) | +0.09 (-0.08) |
 
-- **Two of three populations evolve "go for purple, leave red alone" by sight.**
-  An earlier build, which ate every touched item rather than only the nearest,
-  reached 100% purple picks in one seed.
-- **One population also heads for a spring when out of air** (17% vs 3% by
-  chance). Another shows a mild flee response to predators.
-- **Limits:**
-  - The population stays at the minimum of 15, kept up by the seed bank,
-    because lethal poison and naive newcomers keep killing creatures.
-  - So difficulty never rises and predators don't arrive.
-  - About 34-44% of in-world bites are still poisonous, mostly by newcomers.
+- **Every population evolves a preference for purple over red.** Seed 1 goes
+  for purple food straight away and almost never eats red.
+- **One population evolves a flee response to predators** (seed 2), and
+  another a weak one (seed 3).
+- Two populations headed for springs when out of air at 3M steps (18-19% vs
+  6% by chance), but neither kept it at 6M.
+- Calls don't carry meaning: they are about as loud with a predator near as
+  without.
+- In the world as a whole, about 46-48% of bites are still red. Creatures
+  pick purple first, so red piles up and makes up most of the food left lying
+  around.
 
 ### With the earlier defaults
 

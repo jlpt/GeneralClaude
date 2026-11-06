@@ -316,10 +316,38 @@ iterator invalidated by `erase`, so every bite ate all the food stored after the
 nearest item. It was fixed in the next commit. The behaviour tests in 17 use the
 fixed build.
 
+## Round 4: letting the population grow
+
+### 18. What keeps the population at the minimum?
+Each run 1.5-3M steps, eating as a choice, red poisonous.
+
+| change | population | difficulty | predator kills |
+|---|---|---|---|
+| no random brains in refills (lethal) | 15 | 0% | 0 |
+| poison 60% of health | 15-25 | 0% | 0 |
+| both, plus 50% more food | 15-33 | 0% | 0 |
+| unlimited air (60% poison) | 15-19 | 0% | 0 |
+| no poison at all | 28-50 | 100% | 1,671 |
+
+Poison is the bottleneck, not air or refills.
+
+There was also an ecology bug. Creatures that avoided red let it build up
+until red filled the shared food cap (60-80% of the food lying around), so
+purple had no room to regrow. Each colour now has its own cap
+(`separateFoodCaps`).
+
+### 19. Poison that grows with difficulty
+Damage = poisonDamage x difficulty, so poison is mild while a population gets
+going and lethal at 100% difficulty. With `poisonDamage` 1.0, populations hold
+at 15-55, difficulty rises to 20-30%, and predators arrive. This is now the
+default. Behaviour tests at 6M steps are in the main README:
+- All three populations prefer purple: 86-100% picks against 39-63% for
+  random brains.
+- Seed 1 eats purple 74% of the time and red 2%.
+- Seed 2 evolved a flee response: heading +0.20 against +0.05 with no
+  predator.
+
 ## Ideas not yet tried
-- Let the evolved population grow, so the curriculum can bring in predators:
-  fewer random refills (`randomRefillShare`), more food, or poison that hurts
-  but doesn't always kill.
 - Fix the after-swap cost so colour learning pays overall. For example, let
   the forgetting rate evolve, or give creatures a cue that the swap happened.
 - Find out why plasticity costs random brains foraging: run random brains with
