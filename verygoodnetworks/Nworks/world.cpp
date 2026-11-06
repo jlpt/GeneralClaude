@@ -202,10 +202,12 @@ void World::AddBodyModules(Organism& o) const {
     if (cfg.slices) o.AddModule(std::make_unique<SliceSensor>());
     o.AddModule(std::make_unique<MovementModule>());
     if (cfg.signals) o.AddModule(std::make_unique<SignalModule>());
+    if (cfg.eatAction) o.AddModule(std::make_unique<EatModule>());
     if (cfg.slices) o.AddModule(std::make_unique<SliceModule>());
 }
 
 void World::EatFood(Organism& o) {
+    if (cfg.eatAction && o.eatSignal < 0.5f) return;  // touching food, but not eating
     const int poisonKind = cfg.poison ? PoisonKind() : -1;
     for (auto it = food.begin(); it != food.end();) {
         if (!Touching(o, it->x, it->y, it->radius)) {

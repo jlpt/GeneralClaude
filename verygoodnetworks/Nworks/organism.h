@@ -41,6 +41,7 @@ public:
     int generation = 0;
     float mutationRate = 1.0f;
     float signal = 0.0f;   // 0..1, what the SignalModule is broadcasting
+    float eatSignal = 1.0f;  // 0..1, the EatModule output (eatAction: eats only at 0.5 or more)
     float reward = 0.0f;   // + after good food, - after poison; fades every step
     int goodBitesInLife = 0, poisonBitesInLife = 0;  // for experiments
     int age = 0;           // steps lived

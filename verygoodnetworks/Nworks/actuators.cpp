@@ -15,6 +15,8 @@ void SignalModule::Act(Organism& self, World& world) {
     self.health -= world.cfg.signalCost * self.signal;
 }
 
+void EatModule::Act(Organism& self, World& /*world*/) { self.eatSignal = self.brain.Output(firstOutput); }
+
 void SliceModule::Act(Organism& self, World& world) {
     constexpr float kReach = 600.0f;  // an output of 0 or 1 puts the endpoint 300 px away
     constexpr float kActive = 0.001f;

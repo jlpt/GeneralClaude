@@ -54,7 +54,8 @@ bool ApplyOverride(Config& c, const std::string& key, const std::string& value) 
         {"plasticity", &c.plasticity}, {"poisonScalesWithDifficulty", &c.poisonScalesWithDifficulty},
         {"colourSmell", &c.colourSmell}, {"learningHasEffect", &c.learningHasEffect},
         {"learnFromReward", &c.learnFromReward}, {"learnFromPunishment", &c.learnFromPunishment},
-        {"plasticInputsOnly", &c.plasticInputsOnly}, {"foodCurriculum", &c.foodCurriculum}, {"refillFromSurvivors", &c.refillFromSurvivors},
+        {"plasticInputsOnly", &c.plasticInputsOnly}, {"foodCurriculum", &c.foodCurriculum},
+        {"eatAction", &c.eatAction}, {"refillFromSurvivors", &c.refillFromSurvivors},
     };
     if (auto it = floats.find(key); it != floats.end()) { *it->second = std::stof(value); return true; }
     if (auto it = ints.find(key); it != ints.end()) { *it->second = std::stoi(value); return true; }

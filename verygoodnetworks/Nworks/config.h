@@ -182,6 +182,7 @@ struct Config {
     bool organismSensor = false;  // original nearest-organism sensor (+5 inputs); vision already sees organisms
     bool positionSensor = false;  // sense own x/y position (+2 inputs)
     bool slices = false;          // organisms can cut lines that kill (+8 inputs, +4 outputs)
+    bool eatAction = false;       // +1 output: touched food is only eaten while the "eat" output is >= 0.5
     bool colourSmell = false;     // +2 inputs: closeness of the nearest red and nearest purple food, from any direction
     int sliceCooldown = 10;       // steps between cuts
     float sliceSensorRange = 600.0f;
