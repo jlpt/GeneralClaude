@@ -442,6 +442,7 @@ int main(int argc, char** argv) {
     float seedWMotor = 0.1f;
     // Food curriculum: every foodWindow steps, thin the food (x0.9) if the
     // population needed no refills, thicken it (+5) if it needed 10 or more.
+    float startDifficulty = 0.0f;
     bool foodCurriculum = false;
     int foodMin = 10;
     unsigned long long foodWindow = 20000;
@@ -453,6 +454,7 @@ int main(int argc, char** argv) {
         if (key == "seed_circuit") { seedCircuit = value; settings += " " + arg; continue; }
         if (key == "seed_rate") { seedRate = std::stof(value); settings += " " + arg; continue; }
         if (key == "seed_count") { seedCount = std::stoi(value); settings += " " + arg; continue; }
+        if (key == "start_difficulty") { startDifficulty = std::stof(value); settings += " " + arg; continue; }
         if (key == "food_curriculum") { foodCurriculum = value == "1"; settings += " " + arg; continue; }
         if (key == "food_min") { foodMin = std::stoi(value); settings += " " + arg; continue; }
         if (key == "food_window") { foodWindow = std::stoull(value); settings += " " + arg; continue; }
@@ -473,6 +475,7 @@ int main(int argc, char** argv) {
     std::printf("seed %u, %llu steps, settings:%s\n", cfg.seed, steps, settings.empty() ? " (defaults)" : settings.c_str());
 
     World world(cfg);
+    world.difficulty = startDifficulty;
     if (!seedCircuit.empty()) {
         // Start the population from hand-built brains instead of random ones.
         Config scratchCfg = cfg;

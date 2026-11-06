@@ -35,6 +35,26 @@ wiring and doesn't replace it. Evolution here can keep and tune learning once
 some innate scaffold exists. It has not been seen to invent that scaffold from
 random wiring.
 
+Round 2 (experiments 10-13) tested three ways around that:
+
+6. **A food curriculum doesn't help random brains learn.** Thinning the food
+   as the population copes lets random brains survive at medium density. But
+   real plasticity is selected against: the learning rate is held at 0.007,
+   against 0.25 for a control where the gene has no effect. Those populations
+   also do worse.
+7. **Learning only on sensory synapses makes random brains able to learn but
+   not willing.** Forced to rate 0.1, evolved brains learn colours (55% -> 74%
+   safe picks), but they bite less, and evolution keeps the rate low.
+8. **A hand-built scaffold thrives in the full default world, and learning
+   wins there.** The scaffold has colour-specific "nearest food wins" relays and
+   reflexes for air, predators and big food.
+   - It sustains 60-90 creatures with no refills.
+   - It reaches 70-75% difficulty within 700k steps. Random-start populations
+     reached 38-60% after 10M steps.
+   - It still learns the poisonous colour after 1.5M steps of evolution.
+   - Learners displaced non-learners in 6 of 6 runs at low difficulty and 6 of 6
+     at 70% difficulty.
+
 ## Tools
 
 Built by CMake alongside the headless runner (`nworks_exp`, `nworks_assay`).
@@ -177,10 +197,88 @@ In sparse food they never sustain themselves: the population sits at 15, with
 | dense | One seed sustains itself, but its learning rate falls to ~0.003 (below neutral) and poison share by bite stays flat. The other never sustains itself. |
 | 25 per colour | Neither seed sustains itself. |
 
+## Round 2
+
+New in `nworks_exp`:
+- `plasticInputsOnly=1`: only synapses from sensor neurons learn.
+- `food_curriculum=1`: every `food_window` steps (default 20,000), food is
+  thinned (x0.9, down to `food_min`) if the population needed no refills, and
+  thickened (+5) if it needed 10 or more.
+- `start_difficulty=D`.
+- The `full` hand-built circuit (see below).
+
+### 10. Food curriculum with random brains
+Focused world, fixed poison 0.3, unlimited air, learning-rate gene mutating 10x
+faster, 4M steps.
+
+| | real learning | neutral control | sensory-only learning |
+|---|---|---|---|
+| learning rate at the end (average over the run) | 0.007 (~0.01) | 0.25 (drifts up freely) | 0.009 (~0.02) |
+| food reached (per colour) | 45-72 | 24-27 | 82-100 |
+| seed-bank refills | 4,572 | 2,015 | 3,133 |
+| difficulty | 12% | 40% | 0% |
+| within-life test, own rate | no learning | (learning off) | no learning |
+| within-life test, rate forced to 0.1 | 50% -> 60% -> 46%, bites in 23% of rounds | (learning off) | 55% -> 68% -> 74%, bites in 43% of rounds |
+
+The curriculum lets random brains survive at medium food density. But real
+plasticity is held about 35x below where the gene drifts when it does nothing,
+and those populations cope worse. For random-start brains, learning is a
+handicap. Restricting learning to sensory synapses makes evolved brains capable
+of learning when the rate is forced, but it still cuts how often they eat, and
+evolution keeps the rate low.
+
+### 11. The `full` scaffold
+A hand-built brain for the full default world (86 neurons):
+
+| part | wiring |
+|---|---|
+| food | One relay per colour and vision sector, driven by that sector's food input. Relays inhibit each other, so the nearest food wins instead of all pulls cancelling out. Each relay drives movement toward its sector. |
+| air | A "migrate" neuron fires when breathlessness is high and pushes up-left, which from every food patch leads to a spring. Per-sector spring relays fire only when migrating and a spring is in view, and steer straight to it. |
+| predators | Direct wiring away from each sector. |
+| big food | Direct wiring toward each sector. |
+| calls | None. |
+
+Results:
+- In the default world, with everything on, it sustains 62-87 creatures with
+  no refills. Random-start populations sustain about 15-40.
+- Within-life test: safe picks 54% -> 55% -> 54% frozen, and 64% -> 80% -> 92%
+  at learning rate 0.02.
+- Learning doesn't reduce biting (82% of rounds vs 78%).
+
+### 12. Learners vs frozen with the scaffold, full world
+Half the founders learn (rate 0.02), half don't; the rate does not mutate; 60k
+steps; 6 seeds each.
+
+| start | learner share over time | result |
+|---|---|---|
+| difficulty 0 (reached 8%) | e.g. 65 -> 90 -> 97 -> 100% | learners win 6 of 6 (96-100%) |
+| difficulty 70% (predators, poison ~28% of health per bite) | e.g. 46 -> 65 -> 90 -> 100% | learners win 6 of 6 (96-100%), mostly by 12-18k steps |
+
+### 13. Long evolution from the scaffold, full world
+1.5M steps, learning-rate gene mutating 10x faster, neutral control alongside.
+
+| | real (2 seeds) | neutral |
+|---|---|---|
+| difficulty reached | 70-75% by 700k steps | 70-72% |
+| within-life test at 1.5M (frozen ~50%) | 60% -> 78% -> 81%; 57% -> 74% -> 84% | no learning |
+| learning rate | 0.02-0.14 | 0.01-0.16 (drift) |
+| poison share by bite # in period | 57 / 52 / 48 / 45 / 39% | flat ~49% |
+| neurons | 86 -> 92 | 86 -> 84 |
+
+What this shows:
+- Learning is kept and keeps working as difficulty rises, and it isn't pushed
+  toward 0 as it is in random brains.
+- The learning rate doesn't rise above neutral drift either. Once learning is
+  present, its exact level looks roughly neutral.
+- The overall poison share stays ~50%, because of the cost after each colour
+  swap.
+- In ~500 generations, evolution added little to the scaffold.
+
 ## Ideas not yet tried
-- Put the innate learning circuit into the full default world. It would need an
-  innate air-seeking reflex as well.
-- A curriculum from dense to sparse food, so random brains can get started and
-  then face pressure to learn.
-- Let the forgetting rate evolve, so creatures can unlearn quickly after a swap.
+- Fix the after-swap cost so colour learning pays overall. For example, let
+  the forgetting rate evolve, or give creatures a cue that the swap happened.
+- Find out why plasticity costs random brains foraging: run random brains with
+  reward-only and with punishment-only learning.
+- Much longer runs from the scaffold, to see whether evolution elaborates it
+  (e.g. adds calls or memory of spring locations).
 - Larger populations (a bigger world) to reduce drift.
