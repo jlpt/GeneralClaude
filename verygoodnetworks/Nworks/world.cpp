@@ -81,8 +81,20 @@ void World::Step() {
 
     if (int(organisms.size()) < cfg.minPopulation) RefillPopulation();
     const int foodColours = cfg.poison ? 2 : 1;  // poison lookalikes come on top of normal food
-    if (int(food.size()) < cfg.maxFood * foodColours && rng::Chance(cfg.foodSpawnChance * float(foodColours)))
+    if (cfg.poison && cfg.separateFoodCaps) {
+        // Each colour regrows on its own, up to maxFood each, so uneaten
+        // poison can't crowd out good food.
+        int count[2] = {0, 0};
+        for (const Resource& r : food) ++count[r.kind & 1];
+        const int bad = PoisonKind();
+        for (int kind = 0; kind < 2; ++kind) {
+            const float share = kind == bad ? cfg.poisonShare : 1.0f - cfg.poisonShare;
+            if (count[kind] < cfg.maxFood && rng::Chance(cfg.foodSpawnChance * 2.0f * share)) SpawnFood(kind);
+        }
+    } else if (int(food.size()) < cfg.maxFood * foodColours &&
+               rng::Chance(cfg.foodSpawnChance * float(foodColours))) {
         SpawnFood();
+    }
     if (cfg.cooperativeFood && int(bigFood.size()) < cfg.maxBigFood && rng::Chance(cfg.bigFoodSpawnChance))
         SpawnBigFood();
     if (!cfg.springs && int(airPockets.size()) < cfg.maxAirPockets && rng::Chance(cfg.airSpawnChance))
@@ -337,7 +349,7 @@ int World::ActivePredators() const {
 
 float World::PredatorSpeed() const { return cfg.predatorBaseSpeed + difficulty * cfg.predatorExtraSpeed; }
 
-void World::SpawnFood() {
+void World::SpawnFood(int kind) {
     Resource r{0.0f, 0.0f, cfg.foodRadius, stats.steps, 0};
     if (cfg.seasons) {
         const float margin = 20.0f;
@@ -360,7 +372,7 @@ void World::SpawnFood() {
     }
     if (cfg.poison) {
         const int bad = PoisonKind();
-        r.kind = uint8_t(rng::Chance(cfg.poisonShare) ? bad : 1 - bad);
+        r.kind = uint8_t(kind >= 0 ? kind : (rng::Chance(cfg.poisonShare) ? bad : 1 - bad));
     }
     food.push_back(r);
 }

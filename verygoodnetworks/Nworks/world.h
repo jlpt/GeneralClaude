@@ -104,7 +104,7 @@ private:
     void RefillPopulation();
     void AddBodyModules(Organism& o) const;
     void RememberParent(const Organism& parent);
-    void SpawnFood();
+    void SpawnFood(int kind = -1);  // kind -1: pick the colour by poisonShare
     void SpawnBigFood();
     void SpawnAirPocket();
     void EatFood(Organism& o);

@@ -163,6 +163,8 @@ struct Config {
     float poisonDamage = 1.0f;         // fraction of maxHealth lost per poisonous bite (1 = it kills)
     bool poisonScalesWithDifficulty = false;  // true: damage is poisonDamage x difficulty
     float poisonShare = 0.5f;          // fraction of new food that comes in the poisonous colour
+    bool separateFoodCaps = true;      // each colour regrows on its own up to maxFood (false: one shared cap,
+                                       // so uneaten poison can crowd out good food)
 
     // --- Stage 4e: lifetime learning ---
     // Synapses change during life by a reward-modulated Hebbian rule: a
