@@ -17,6 +17,7 @@ public:
     void SetInput(int index, float drive);  // 0..1
     float Input(int index) const;
     float Output(int index) const;          // 0..1
+    void SetOutput(int index, float value) { neurons_[size_t(numInputs_ + index)].potential = value; }  // external control
 
     void Step(const Config& cfg);           // advance one simulation step
     void ResetState();                      // clear potentials, spikes and anything learned

@@ -78,6 +78,9 @@ public:
 
     // With poison on: which food colour (0 or 1) is poisonous right now.
     int PoisonKind() const;
+    bool FoodVisible(const Resource& r) const {  // see Config::foodVisibleSteps
+        return cfg.foodVisibleSteps <= 0 || stats.steps - r.bornStep < uint64_t(cfg.foodVisibleSteps);
+    }
     int ActivePredators() const;  // the first ActivePredators() entries of `predators` are hunting
     float PredatorSpeed() const;
 

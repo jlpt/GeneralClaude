@@ -29,8 +29,10 @@ void Organism::AddModule(std::unique_ptr<Module> module) {
 void Organism::Update(World& world) {
     const Config& cfg = world.cfg;
     for (auto& module : modules) module->Sense(*this, world);
-    brain.SetReward(reward > 0.0f ? (cfg.learnFromReward ? reward : 0.0f) : (cfg.learnFromPunishment ? reward : 0.0f));
-    brain.Step(cfg);
+    if (!external) {
+        brain.SetReward(reward > 0.0f ? (cfg.learnFromReward ? reward : 0.0f) : (cfg.learnFromPunishment ? reward : 0.0f));
+        brain.Step(cfg);
+    }
     for (auto& module : modules) module->Act(*this, world);
     reward *= cfg.rewardDecay;
 

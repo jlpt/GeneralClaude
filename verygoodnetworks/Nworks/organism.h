@@ -45,6 +45,7 @@ public:
     float reward = 0.0f;   // + after good food, - after poison; fades every step
     int goodBitesInLife = 0, poisonBitesInLife = 0;  // for experiments
     int age = 0;           // steps lived
+    bool external = false; // outputs are set from outside (NeuralNetwork::SetOutput) instead of by the brain
     bool alive = true;
     Rgb color;             // drifts slowly, so related organisms look alike
     NeuralNetwork brain;

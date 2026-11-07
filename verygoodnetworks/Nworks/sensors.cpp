@@ -24,10 +24,12 @@ void WriteDirection(Organism& self, int first, bool found, float dx, float dy, f
     self.brain.SetInput(first + 4, found ? 0.0f : 1.0f);
 }
 
-void SenseNearestResource(Organism& self, int first, const std::vector<Resource>& items, float range) {
+void SenseNearestResource(Organism& self, int first, const std::vector<Resource>& items, float range,
+                          const World* hideFoodIn = nullptr) {
     const Resource* nearest = nullptr;
     float bestSq = range * range;
     for (const Resource& r : items) {
+        if (hideFoodIn && !hideFoodIn->FoodVisible(r)) continue;
         const float dx = r.x - self.x;
         const float dy = r.y - self.y;
         const float distSq = dx * dx + dy * dy;
@@ -81,7 +83,9 @@ void VisionSensor::Sense(Organism& self, const World& world) {
         cell = std::max(cell, closeness);
     };
 
-    for (const Resource& r : world.food) look(r.kind == 1 ? Seen::FoodB : Seen::FoodA, r.x, r.y, r.radius);
+    for (const Resource& r : world.food) {
+        if (world.FoodVisible(r)) look(r.kind == 1 ? Seen::FoodB : Seen::FoodA, r.x, r.y, r.radius);
+    }
     for (const Resource& r : world.airPockets) look(Seen::Air, r.x, r.y, r.radius);
     for (const Spring& s : world.springs) {
         if (s.water >= 1.0f) look(Seen::Air, s.x, s.y, s.radius);
@@ -121,7 +125,7 @@ void TasteSensor::Sense(Organism& self, const World& /*world*/) {
 }
 
 void FoodSensor::Sense(Organism& self, const World& world) {
-    SenseNearestResource(self, firstInput, world.food, world.cfg.resourceSensorRange);
+    SenseNearestResource(self, firstInput, world.food, world.cfg.resourceSensorRange, &world);
 }
 
 void AirPocketSensor::Sense(Organism& self, const World& world) {
@@ -175,6 +179,7 @@ void ColourSmellSensor::Sense(Organism& self, const World& world) {
     const float range = world.cfg.visionRange;
     float nearest[2] = {range, range};
     for (const Resource& r : world.food) {
+        if (!world.FoodVisible(r)) continue;
         const float d = std::hypot(r.x - self.x, r.y - self.y);
         float& slot = nearest[r.kind == 1 ? 1 : 0];
         slot = std::min(slot, d);

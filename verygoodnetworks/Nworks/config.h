@@ -118,6 +118,10 @@ struct Config {
     int seasonLength = 8000;
     float patchRadius = 150.0f;
     int foodLifetime = 6000;           // steps before uneaten food rots (seasons only)
+    // Hidden food: food can only be seen for this many steps after it
+    // appears (0 = always visible). A creature that remembers where it saw
+    // food can still find it; one that only reacts to what it sees can't.
+    int foodVisibleSteps = 0;
 
     // --- Stage 4a: signals ---
     // One output broadcasts a 0..1 signal (it costs energy to call); four

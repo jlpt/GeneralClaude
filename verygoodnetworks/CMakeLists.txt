@@ -28,6 +28,7 @@ add_library(nworks_core STATIC
   Nworks/headless.cpp
 )
 target_include_directories(nworks_core PUBLIC Nworks)
+set_property(TARGET nworks_core PROPERTY POSITION_INDEPENDENT_CODE ON)  # also linked into the Python bridge
 nworks_warnings(nworks_core)
 
 # Window-free runner: nworks_headless --steps 1000000 --seed 1
@@ -40,6 +41,13 @@ add_executable(nworks_exp experiments/exp.cpp)
 target_link_libraries(nworks_exp PRIVATE nworks_core)
 add_executable(nworks_assay experiments/assay.cpp)
 target_link_libraries(nworks_assay PRIVATE nworks_core)
+add_executable(nworks_iq experiments/iq.cpp experiments/scenarios.cpp)
+target_link_libraries(nworks_iq PRIVATE nworks_core)
+nworks_warnings(nworks_iq)
+# C interface for brains trained in Python (experiments/train_rl.py).
+add_library(nworks_bridge SHARED experiments/bridge.cpp experiments/scenarios.cpp)
+target_link_libraries(nworks_bridge PRIVATE nworks_core)
+nworks_warnings(nworks_bridge)
 
 if(NWORKS_BUILD_WINDOW_APP)
   find_package(raylib 5.5 QUIET)

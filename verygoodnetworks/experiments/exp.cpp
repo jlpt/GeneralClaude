@@ -22,6 +22,7 @@
 #include "sensors.h"
 #include "random.h"
 #include "world.h"
+#include "common.h"
 
 namespace {
 
@@ -29,49 +30,8 @@ constexpr float kTwoPi = 6.28318530718f;
 constexpr float kCx = 650.0f, kCy = 384.0f;
 
 // --- Config overrides ---------------------------------------------------------
-bool ApplyOverride(Config& c, const std::string& key, const std::string& value) {
-    std::map<std::string, float*> floats = {
-        {"maxHealth", &c.maxHealth}, {"maxAir", &c.maxAir}, {"moveSpeed", &c.moveSpeed},
-        {"brainCostPerNeuron", &c.brainCostPerNeuron}, {"brainCostPerSynapse", &c.brainCostPerSynapse},
-        {"foodSpawnChance", &c.foodSpawnChance}, {"poisonDamage", &c.poisonDamage},
-        {"traceDecay", &c.traceDecay}, {"learnedForgetting", &c.learnedForgetting}, {"rewardDecay", &c.rewardDecay},
-        {"maxInitialLearningRate", &c.maxInitialLearningRate}, {"learningRateStep", &c.learningRateStep},
-        {"learningRateChance", &c.learningRateChance}, {"mutationFraction", &c.mutationFraction},
-        {"worldWidth", &c.worldWidth}, {"worldHeight", &c.worldHeight}, {"visionRange", &c.visionRange},
-        {"predatorBaseSpeed", &c.predatorBaseSpeed}, {"predatorExtraSpeed", &c.predatorExtraSpeed},
-        {"signalCost", &c.signalCost}, {"randomRefillShare", &c.randomRefillShare}, {"poisonShare", &c.poisonShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
-    };
-    std::map<std::string, int*> ints = {
-        {"minPopulation", &c.minPopulation}, {"maxAge", &c.maxAge}, {"minFood", &c.minFood}, {"foodToReproduce", &c.foodToReproduce}, {"maxFood", &c.maxFood},
-        {"initialFood", &c.initialFood}, {"poisonSwapInterval", &c.poisonSwapInterval},
-        {"seasonLength", &c.seasonLength}, {"foodLifetime", &c.foodLifetime}, {"curriculumWindow", &c.curriculumWindow},
-        {"initialHiddenNeurons", &c.initialHiddenNeurons}, {"initialConnections", &c.initialConnections},
-        {"predatorCount", &c.predatorCount}, {"survivorArchiveSize", &c.survivorArchiveSize},
-    };
-    std::map<std::string, bool*> bools = {
-        {"vision", &c.vision}, {"springs", &c.springs}, {"seasons", &c.seasons}, {"signals", &c.signals},
-        {"cooperativeFood", &c.cooperativeFood}, {"predators", &c.predators}, {"poison", &c.poison},
-        {"plasticity", &c.plasticity}, {"poisonScalesWithDifficulty", &c.poisonScalesWithDifficulty},
-        {"colourSmell", &c.colourSmell}, {"learningHasEffect", &c.learningHasEffect},
-        {"learnFromReward", &c.learnFromReward}, {"learnFromPunishment", &c.learnFromPunishment},
-        {"plasticInputsOnly", &c.plasticInputsOnly}, {"foodCurriculum", &c.foodCurriculum},
-        {"eatAction", &c.eatAction}, {"separateFoodCaps", &c.separateFoodCaps}, {"refillFromSurvivors", &c.refillFromSurvivors},
-    };
-    if (auto it = floats.find(key); it != floats.end()) { *it->second = std::stof(value); return true; }
-    if (auto it = ints.find(key); it != ints.end()) { *it->second = std::stoi(value); return true; }
-    if (auto it = bools.find(key); it != bools.end()) { *it->second = value == "1" || value == "true" || value == "on"; return true; }
-    return false;
-}
 
 // --- Copies and arenas ------------------------------------------------------
-Organism CloneOf(Organism& src, uint64_t id, const Config& cfg) {
-    const float saved = src.mutationRate;
-    src.mutationRate = 0.0f;
-    Organism c = src.MakeOffspring(id, cfg);
-    src.mutationRate = saved;
-    c.generation = src.generation;
-    return c;
-}
 
 // An empty arena where colour `poisonKind` is poisonous (no damage; the bad
 // taste and the learning signal still happen).
