@@ -214,6 +214,10 @@ def train(args):
         envs = Envs(bridge, args.envs, args.seed, args.settings, args.episode_steps)
         n_actions = bridge.lib.nw_num_actions()
     policy = Policy(envs.dim, n_actions, args.hidden, prev=args.prev)
+    if args.init:  # start from a trained network (same size and inputs) instead of random weights
+        init = torch.load(args.init)
+        policy.load_state_dict(init["state"])
+        print(f"starting from {args.init} ({init['steps']:,} steps of earlier training)", flush=True)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "config.json"), "w") as f:
@@ -400,6 +404,7 @@ def main():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--multi", type=int, default=0, help="creatures per world (0 = one creature, no calls)")
     p.add_argument("--prev", action="store_true", help="give the network its previous action and reward")
+    p.add_argument("--init", default=None, help="policy.pt to start from instead of random weights")
     p.add_argument("--gym", action="store_true",
                    help="train on the memory gym (briefly visible food, +1 for eating it) instead of the world")
     p.add_argument("--vis-curriculum", default=None, metavar="START:END",
