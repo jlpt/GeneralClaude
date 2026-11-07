@@ -17,6 +17,8 @@ enum class Test : int {
     MemoryControl,  // purple food 150 px away, never visible: found by chance?
     Air,            // 20% air, a spring 200 px away: reached?
     AirControl,     // same, no spring: does it touch that spot anyway?
+    PoisonLearning, // which colour is poisonous is random; 6 rounds of one red + one purple (120 px apart):
+                    // success = safe picks in rounds 2-6, after the first taste
     Count
 };
 const char* TestName(Test test);
@@ -24,6 +26,7 @@ const char* TestName(Test test);
 class Scenario {
 public:
     static constexpr int kTimeLimit = 600;
+    static constexpr int kLearningRounds = 6;
 
     // `creature` is placed in the middle of a fresh arena built from `base`.
     Scenario(Test test, const Config& base, uint32_t seed, Organism creature);
@@ -33,11 +36,17 @@ public:
     bool Success() const { return success_; }
     float Score() const { return score_; }  // heading cosine for Flee/FleeControl, else 1 or 0
     bool Bit() const { return bit_; }       // PoisonChoice: ate one of the two
+    // PoisonLearning: the first round's pick, and bites / safe picks in rounds 2-6.
+    bool FirstAte() const { return firstAte_; }
+    bool FirstSafe() const { return firstSafe_; }
+    int LaterBites() const { return laterBites_; }
+    int LaterSafe() const { return laterSafe_; }
     Organism* Creature() { return world_.organisms.empty() ? nullptr : &world_.organisms[0]; }
     void Sense();                      // refresh the creature's inputs (external control)
 
 private:
     void Finish(bool success);
+    void PlaceChoicePair();
 
     Test test_;
     World world_;
@@ -46,6 +55,9 @@ private:
     int t_ = 0;
     bool done_ = false, success_ = false, bit_ = false;
     float score_ = 0.0f;
+    int round_ = 0, roundStart_ = 0, pause_ = 0, laterBites_ = 0, laterSafe_ = 0;
+    bool firstAte_ = false, firstSafe_ = false;
+    uint32_t seed_ = 0;
 };
 
 // Discrete actions for externally controlled creatures: 9 movement choices

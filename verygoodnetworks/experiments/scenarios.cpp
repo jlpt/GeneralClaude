@@ -12,7 +12,7 @@ constexpr float kCx = 650.0f, kCy = 384.0f;  // arena centre
 
 bool IsFoodTest(Test t) {
     return t == Test::Forage || t == Test::ForageControl || t == Test::PoisonChoice || t == Test::MemoryNear ||
-           t == Test::MemoryFar || t == Test::MemoryControl;
+           t == Test::MemoryFar || t == Test::MemoryControl || t == Test::PoisonLearning;
 }
 
 // An empty arena: nothing spawns, no curriculum, poison does no damage (the
@@ -48,12 +48,13 @@ const char* TestName(Test test) {
     case Test::MemoryControl: return "memory-control";
     case Test::Air: return "air";
     case Test::AirControl: return "air-control";
+    case Test::PoisonLearning: return "poison-learning";
     default: return "?";
     }
 }
 
 Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creature)
-    : test_(test), world_(ArenaConfig(test, base, seed)) {
+    : test_(test), world_(ArenaConfig(test, base, seed)), seed_(seed) {
     World& w = world_;
     w.food.clear();
     w.bigFood.clear();
@@ -63,6 +64,7 @@ Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creatu
     w.difficulty = (test == Test::Flee || test == Test::FleeControl) ? 0.5f : 0.0f;  // 1 predator at speed 1.9
     w.stats.steps = 1000;  // so "never visible" food can be older than foodVisibleSteps
 
+    if (test == Test::PoisonLearning) w.poisonKindOverride = int(seed % 2);  // poisonous colour unknown in advance
     std::mt19937 g(seed * 2654435761u + 97u);
     const float a = std::uniform_real_distribution<float>(0.0f, kTwoPi)(g);
     const float dist = test == Test::PoisonChoice ? 120.0f
@@ -95,6 +97,9 @@ Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creatu
     case Test::Air:
         w.springs.push_back(Spring{tx_, ty_, w.cfg.springRadius, w.cfg.springCapacity});
         break;
+    case Test::PoisonLearning:
+        PlaceChoicePair();
+        break;
     default:
         break;
     }
@@ -108,6 +113,20 @@ Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creatu
     w.organisms.push_back(std::move(creature));
     lastX_ = kCx;
     lastY_ = kCy;
+}
+
+// PoisonLearning: one food of each colour, 120 px from the arena centre on
+// opposite sides, at an angle that changes every round.
+void Scenario::PlaceChoicePair() {
+    World& w = world_;
+    std::mt19937 g(seed_ * 2654435761u + 31u * uint32_t(round_) + 7u);
+    const float a = std::uniform_real_distribution<float>(0.0f, kTwoPi)(g);
+    const int bad = w.PoisonKind();
+    w.food.clear();
+    w.food.push_back(Resource{kCx + 120.0f * std::cos(a), kCy + 120.0f * std::sin(a), w.cfg.foodRadius, w.stats.steps,
+                              uint8_t(1 - bad)});
+    w.food.push_back(Resource{kCx - 120.0f * std::cos(a), kCy - 120.0f * std::sin(a), w.cfg.foodRadius, w.stats.steps,
+                              uint8_t(bad)});
 }
 
 void Scenario::Sense() {
@@ -173,6 +192,40 @@ void Scenario::Step() {
     case Test::AirControl:
         if (near(w.cfg.springRadius)) return Finish(true);
         break;
+    case Test::PoisonLearning: {
+        if (!o) return Finish(false);
+        if (pause_ > 0) {  // between rounds: let the taste sink in, then reset the creature and the food
+            if (--pause_ == 0) {
+                if (++round_ >= kLearningRounds) {
+                    score_ = laterBites_ ? float(laterSafe_) / float(laterBites_) : 0.0f;
+                    done_ = true;
+                    success_ = laterBites_ > 0 && laterSafe_ * 2 > laterBites_;
+                    return;
+                }
+                o->x = kCx;
+                o->y = kCy;
+                o->health = 0.25f * w.cfg.maxHealth;
+                PlaceChoicePair();
+                roundStart_ = t_;
+            }
+            return;
+        }
+        if (ateGood || atePoison) {
+            if (round_ == 0) {  // first pick, before any taste of this world
+                firstAte_ = bit_ = true;
+                firstSafe_ = ateGood && !atePoison;
+            } else {
+                ++laterBites_;
+                laterSafe_ += (ateGood && !atePoison) ? 1 : 0;
+            }
+            w.food.clear();
+            pause_ = 30;
+        } else if (t_ - roundStart_ >= 400) {
+            w.food.clear();
+            pause_ = 1;  // no bite this round: move on
+        }
+        return;  // its own time limit: 6 rounds of at most 430 steps
+    }
     default:
         break;
     }

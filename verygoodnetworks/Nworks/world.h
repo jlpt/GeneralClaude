@@ -94,6 +94,7 @@ public:
     std::vector<Slice> slices;
     WorldStats stats;
     float difficulty = 0.0f;  // 0..1, see Config's curriculum settings
+    int poisonKindOverride = -1;  // >= 0: this colour is poisonous, whatever poisonSwapInterval says
 
 private:
     // A remembered parent, used to refill the population after a crash.

@@ -339,6 +339,7 @@ void World::SpawnBigFood() {
 }
 
 int World::PoisonKind() const {
+    if (poisonKindOverride >= 0) return poisonKindOverride;
     if (cfg.poisonSwapInterval <= 0) return 0;
     return int((stats.steps / uint64_t(cfg.poisonSwapInterval)) % 2);
 }

@@ -19,6 +19,7 @@ namespace {
 struct TestScore {
     int n = 0, success = 0, bit = 0;
     double score = 0.0;
+    int firstAte = 0, firstSafe = 0, laterBites = 0, laterSafe = 0;  // PoisonLearning
 };
 
 void RunBattery(const Config& cfg, std::vector<Organism>& group, int trials, const char* label) {
@@ -34,6 +35,10 @@ void RunBattery(const Config& cfg, std::vector<Organism>& group, int trials, con
                 ts.success += s.Success() ? 1 : 0;
                 ts.bit += s.Bit() ? 1 : 0;
                 ts.score += s.Score();
+                ts.firstAte += s.FirstAte() ? 1 : 0;
+                ts.firstSafe += s.FirstSafe() ? 1 : 0;
+                ts.laterBites += s.LaterBites();
+                ts.laterSafe += s.LaterSafe();
             }
         }
     }
@@ -42,6 +47,11 @@ void RunBattery(const Config& cfg, std::vector<Organism>& group, int trials, con
         const TestScore& ts = scores[t];
         std::printf("    %-15s success %5.1f%%", TestName(Test(t)), ts.n ? 100.0 * ts.success / ts.n : 0.0);
         if (Test(t) == Test::Flee || Test(t) == Test::FleeControl) std::printf("  heading %+.2f", ts.n ? ts.score / ts.n : 0.0);
+        if (Test(t) == Test::PoisonLearning)
+            std::printf("  (round 1: ate in %.1f%%, safe in %.1f%% of those; rounds 2-6: %.1f bites per trial, %.1f%% safe)",
+                        ts.n ? 100.0 * ts.firstAte / ts.n : 0.0, ts.firstAte ? 100.0 * ts.firstSafe / ts.firstAte : 0.0,
+                        ts.n ? double(ts.laterBites) / ts.n : 0.0,
+                        ts.laterBites ? 100.0 * ts.laterSafe / ts.laterBites : 0.0);
         if (Test(t) == Test::PoisonChoice)
             std::printf("  (ate one in %.1f%%; picked purple in %.1f%% of those)", ts.n ? 100.0 * ts.bit / ts.n : 0.0,
                         ts.bit ? 100.0 * ts.success / ts.bit : 0.0);

@@ -26,6 +26,7 @@ struct Episode {
 struct Batch {
     Config cfg;
     float difficulty = 0.3f;
+    bool randomPoison = false;  // the poisonous colour is picked at random for each episode
     int episodeSteps = 3000;
     uint32_t nextSeed = 1;
     std::unique_ptr<Organism> body;  // template, copied into every episode
@@ -49,6 +50,10 @@ void ResetEpisode(Batch& b, Episode& e) {
     e.world->difficulty = b.difficulty;
     e.t = 0;
     std::mt19937 g(c.seed * 2654435761u + 5u);
+    if (b.randomPoison) {
+        e.world->poisonKindOverride = int(g() % 2);
+        for (Resource& r : e.world->food) r.kind = uint8_t(g() % 2);  // initial food was coloured before the pick
+    }
     Organism o = CloneOf(*b.body, 1, c);
     o.external = true;
     o.x = std::uniform_real_distribution<float>(40.0f, c.worldWidth - 40.0f)(g);
@@ -72,7 +77,8 @@ int nw_num_tests() { return int(Test::Count); }
 const char* nw_test_name(int t) { return TestName(Test(t)); }
 
 // --- training episodes -------------------------------------------------------
-// overrides: space-separated Config "key=value" settings, plus "difficulty=D".
+// overrides: space-separated Config "key=value" settings, plus "difficulty=D" and
+// "random_poison=1" (the poisonous colour is random for each episode).
 void* nwb_create(int n, uint32_t seed, const char* overrides, int episodeSteps) {
     auto b = new Batch;
     std::string text = overrides ? overrides : "", rest;
@@ -81,6 +87,7 @@ void* nwb_create(int n, uint32_t seed, const char* overrides, int episodeSteps) 
         if (end == std::string::npos) end = text.size();
         const std::string item = text.substr(pos, end - pos);
         if (item.rfind("difficulty=", 0) == 0) b->difficulty = std::stof(item.substr(11));
+        else if (item == "random_poison=1") b->randomPoison = true;
         else rest += " " + item;
         pos = end + 1;
     }
@@ -183,6 +190,19 @@ void nws_results(void* p, uint8_t* success, float* score, uint8_t* bit) {
         success[i] = s.trials[i].Success() ? 1 : 0;
         score[i] = s.trials[i].Score();
         bit[i] = s.trials[i].Bit() ? 1 : 0;
+    }
+}
+
+// PoisonLearning details, 4 ints per trial: ate in round 1, round-1 pick safe,
+// bites in rounds 2-6, safe bites in rounds 2-6.
+void nws_learning_results(void* p, int32_t* out) {
+    auto& s = *static_cast<ScenarioBatch*>(p);
+    for (size_t i = 0; i < s.trials.size(); ++i) {
+        const Scenario& sc = s.trials[i];
+        out[4 * i + 0] = sc.FirstAte() ? 1 : 0;
+        out[4 * i + 1] = sc.FirstSafe() ? 1 : 0;
+        out[4 * i + 2] = sc.LaterBites();
+        out[4 * i + 3] = sc.LaterSafe();
     }
 }
 

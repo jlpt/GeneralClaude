@@ -11,8 +11,9 @@ Reward: +1 per good bite, -1 per poison bite, -2 for dying.
   train_rl.py train --lib LIB --out DIR [--steps N] [--settings "..."]
   train_rl.py eval  --lib LIB --policy DIR/policy.pt [--trials 400]
 
---settings are Nworks Config overrides ("key=value ..."), plus difficulty=D for
-training. The test battery is the same C++ code nworks_iq uses.
+--settings are Nworks Config overrides ("key=value ..."), plus difficulty=D and
+random_poison=1 (poisonous colour random per episode) for training. The test
+battery is the same C++ code nworks_iq uses.
 """
 import argparse
 import ctypes
@@ -41,6 +42,7 @@ class Bridge:
         lib.nws_observe.argtypes = [vp, fp]
         lib.nws_step.argtypes = [vp, ip, bp]
         lib.nws_results.argtypes = [vp, bp, fp, bp]
+        lib.nws_learning_results.argtypes = [vp, ip]
         lib.nws_destroy.argtypes = [vp]
         lib.nw_test_name.restype = ctypes.c_char_p
         self.lib = lib
@@ -102,7 +104,8 @@ class Policy(nn.Module):
 
 
 def strip_difficulty(settings):
-    return " ".join(s for s in settings.split() if not s.startswith("difficulty="))
+    """The battery takes plain Config overrides: drop the training-only options."""
+    return " ".join(s for s in settings.split() if not s.startswith(("difficulty=", "random_poison=")))
 
 
 def train(args):
@@ -219,11 +222,17 @@ def evaluate(args):
         score = np.zeros(args.trials, np.float32)
         bit = np.zeros(args.trials, np.uint8)
         lib.nws_results(s, Bridge.ptr(succ, ctypes.c_uint8), Bridge.ptr(score, ctypes.c_float), Bridge.ptr(bit, ctypes.c_uint8))
+        learn = np.zeros((args.trials, 4), np.int32)
+        lib.nws_learning_results(s, Bridge.ptr(learn, ctypes.c_int32))
         lib.nws_destroy(s)
         name = lib.nw_test_name(t).decode()
         line = f"    {name:<15} success {100 * succ.mean():5.1f}%"
         if name.startswith("flee"):
             line += f"  heading {score.mean():+.2f}"
+        if name == "poison-learning":
+            ate, safe, lb, ls = learn.sum(0)
+            line += (f"  (round 1: ate in {100 * ate / args.trials:.1f}%, safe in {100 * safe / max(1, ate):.1f}% of those;"
+                     f" rounds 2-6: {lb / args.trials:.1f} bites per trial, {100 * ls / max(1, lb):.1f}% safe)")
         if name == "poison-choice":
             line += f"  (ate one in {100 * bit.mean():.1f}%; picked purple in {100 * succ.sum() / max(1, bit.sum()):.1f}% of those)"
         print(line, flush=True)
