@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from train_rl import Bridge, Policy  # noqa: E402
+from train_rl import Bridge, Policy, with_prev  # noqa: E402
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -92,7 +92,7 @@ def main():
     lib = bridge.lib
     lib.nwb_state.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int]
     ck = torch.load(args.policy)
-    policy = Policy(ck["obs_dim"], ck["n_actions"], ck["hidden"])
+    policy = Policy(ck["obs_dim"], ck["n_actions"], ck["hidden"], prev=ck.get("prev", False))
     policy.load_state_dict(ck["state"])
     settings = args.settings if args.settings is not None else ck["settings"]
     b = lib.nwb_create(1, args.seed, settings.encode(), args.steps + 1)
@@ -103,6 +103,7 @@ def main():
     cap = 2000
     buf = np.zeros(cap * 4, np.float32)
     h = torch.zeros(1, 1, ck["hidden"])
+    prev_a, prev_r = torch.zeros(1, dtype=torch.long), torch.zeros(1)
     frames, good, poison = [], 0, 0
 
     def snapshot(step, dead):
@@ -115,10 +116,13 @@ def main():
     snapshot(0, False)
     for step in range(1, args.steps + 1):
         with torch.no_grad():
-            logits, _, h = policy.step(torch.from_numpy(obs), h)
-            a = torch.distributions.Categorical(logits=logits).sample().numpy().astype(np.int32)
+            logits, _, h = policy.step(with_prev(policy, torch.from_numpy(obs), prev_a, prev_r), h)
+            a_t = torch.distributions.Categorical(logits=logits).sample()
+            a = a_t.numpy().astype(np.int32) % 18
+            prev_a = a_t
         lib.nwb_step(b, Bridge.ptr(a, ctypes.c_int32), Bridge.ptr(obs, ctypes.c_float), Bridge.ptr(rew, ctypes.c_float),
                      Bridge.ptr(done, ctypes.c_uint8), Bridge.ptr(stats, ctypes.c_int32))
+        prev_r = torch.from_numpy(rew.copy())
         good += int(stats[0])
         poison += int(stats[1])
         if done[0]:  # the episode restarted inside the batch: stop at the end of this one

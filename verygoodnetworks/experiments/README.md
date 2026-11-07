@@ -440,6 +440,40 @@ without eating. A success every ~20 episodes of 600 steps is too sparse a
 reward for PPO to start from. Starting from the memory-world agent instead
 (`--init`), it succeeds 40% of the time straight away.
 
+### Memory emerged once the test was fixed
+Agents trained in the hidden-food world had learned never to eat food they
+couldn't see. In that world, unseen food could be poison. So even when they
+walked back to the right spot, they didn't eat. Hidden food can now be seen
+up close (`foodNearSight`, 40 px), the way animals see or smell food that is
+right in front of them.
+
+Memory gym started from the memory-world agent, visibility shrinking from 200
+to 20 steps, 10M steps. Scored with up-close sight:
+
+| test | gym agent | control (food never visible) |
+|---|---|---|
+| memory, food 150 px away, visible for 20 steps | **51%** | 9% |
+| memory, food 250 px away | 9% | 9% |
+| flee: survival / heading | 99.8% / +0.91 | - |
+
+It walks back to food it saw only briefly, about six times as often as chance.
+It doesn't manage the 250 px version, which needs about 80 steps of memory.
+`replay.py` records it in a hidden-food world.
+
+### Brain size vs capability (in progress)
+Same training for every size: memory world, previous action and reward,
+visibility 150 -> 15, 10M steps. Scored with up-close sight.
+
+| memory units | weights | forage | purple picks | flee: survival / heading | memory 150 px (control) | air (control) |
+|---|---|---|---|---|---|---|
+| 32 | ~10k | 3% | 50% | 14% / -0.04 | 4% (4%) | 5% (5%) |
+| 128 | ~111k | 27% | 99% | 78% / +0.63 | 8% (0.5%) | 19% (4%) |
+| 256 | ~420k | 44% | 98% | 100% / +0.73 | 10% (8%) | 19% (5%) |
+| 512 | ~1.6M | (training) | | | | |
+
+A 1,024-unit network was dropped: about 200 steps/s on this CPU (~14 hours
+for 10M steps).
+
 ## Ideas not yet tried
 - Fix the after-swap cost so colour learning pays overall. For example, let
   the forgetting rate evolve, or give creatures a cue that the swap happened.
