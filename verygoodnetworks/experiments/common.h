@@ -17,7 +17,7 @@ inline bool ApplyOverride(Config& c, const std::string& key, const std::string& 
         {"learningRateChance", &c.learningRateChance}, {"mutationFraction", &c.mutationFraction},
         {"worldWidth", &c.worldWidth}, {"worldHeight", &c.worldHeight}, {"visionRange", &c.visionRange},
         {"predatorBaseSpeed", &c.predatorBaseSpeed}, {"predatorExtraSpeed", &c.predatorExtraSpeed},
-        {"signalCost", &c.signalCost}, {"randomRefillShare", &c.randomRefillShare}, {"poisonShare", &c.poisonShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
+        {"signalCost", &c.signalCost}, {"foodNearSight", &c.foodNearSight}, {"randomRefillShare", &c.randomRefillShare}, {"poisonShare", &c.poisonShare}, {"springRecharge", &c.springRecharge}, {"curriculumStep", &c.curriculumStep},
     };
     std::map<std::string, int*> ints = {
         {"minPopulation", &c.minPopulation}, {"maxAge", &c.maxAge}, {"minFood", &c.minFood}, {"foodToReproduce", &c.foodToReproduce}, {"maxFood", &c.maxFood},

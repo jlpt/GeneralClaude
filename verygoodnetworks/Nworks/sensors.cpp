@@ -83,8 +83,10 @@ void VisionSensor::Sense(Organism& self, const World& world) {
         cell = std::max(cell, closeness);
     };
 
+    const float nearSq = world.cfg.foodNearSight * world.cfg.foodNearSight;
     for (const Resource& r : world.food) {
-        if (world.FoodVisible(r)) look(r.kind == 1 ? Seen::FoodB : Seen::FoodA, r.x, r.y, r.radius);
+        const float dx = r.x - self.x, dy = r.y - self.y;
+        if (world.FoodVisible(r) || dx * dx + dy * dy < nearSq) look(r.kind == 1 ? Seen::FoodB : Seen::FoodA, r.x, r.y, r.radius);
     }
     for (const Resource& r : world.airPockets) look(Seen::Air, r.x, r.y, r.radius);
     for (const Spring& s : world.springs) {

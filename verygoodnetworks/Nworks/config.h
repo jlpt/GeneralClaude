@@ -122,6 +122,7 @@ struct Config {
     // appears (0 = always visible). A creature that remembers where it saw
     // food can still find it; one that only reacts to what it sees can't.
     int foodVisibleSteps = 0;
+    float foodNearSight = 40.0f;       // hidden food can still be seen this close (up-close sight or smell)
 
     // --- Stage 4a: signals ---
     // One output broadcasts a 0..1 signal (it costs energy to call); four
