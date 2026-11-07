@@ -326,6 +326,69 @@ void nwm_step(void* p, const int32_t* actions, float* obs, float* rewards, uint8
 
 void nwm_destroy(void* p) { delete static_cast<MultiBatch*>(p); }
 
+// --- memory gym -----------------------------------------------------------------
+// Trains the core memory skill directly: each episode is a memory scenario
+// (food 150 or 250 px away, visible for the first `visible` steps), with fresh
+// layouts that never repeat the battery's. Reward +1 for eating the food.
+struct Gym {
+    Config cfg;
+    int visible = 600;
+    uint32_t nextSeed = 10000000;
+    std::unique_ptr<Organism> body;
+    std::vector<std::unique_ptr<Scenario>> envs;
+};
+
+void ResetGym(Gym& g, std::unique_ptr<Scenario>& s) {
+    const uint32_t seed = g.nextSeed++;
+    const Test test = (seed % 2) ? Test::MemoryNear : Test::MemoryFar;
+    s = std::make_unique<Scenario>(test, g.cfg, seed, CloneOf(*g.body, 1, g.cfg), g.visible);
+    if (Organism* o = s->Creature()) o->external = true;
+    s->Sense();
+}
+
+void* nwg_create(int n, uint32_t seed, const char* overrides, int visible) {
+    auto g = new Gym;
+    if (!ApplyOverrides(g->cfg, overrides ? overrides : "")) { delete g; return nullptr; }
+    g->visible = visible;
+    g->nextSeed = 10000000u + seed * 1000003u;
+    g->body = std::make_unique<Organism>(MakeExternalBody(g->cfg));
+    g->envs.resize(size_t(n));
+    for (auto& s : g->envs) ResetGym(*g, s);
+    return g;
+}
+
+void nwg_set_visible(void* p, int visible) { static_cast<Gym*>(p)->visible = visible; }
+int nwg_obs_dim(void* p) { return static_cast<Gym*>(p)->body->brain.NumInputs(); }
+
+void nwg_observe(void* p, float* obs) {
+    auto& g = *static_cast<Gym*>(p);
+    const int dim = g.body->brain.NumInputs();
+    for (size_t i = 0; i < g.envs.size(); ++i) {
+        Organism* o = g.envs[i]->Creature();
+        for (int j = 0; j < dim; ++j) obs[i * size_t(dim) + size_t(j)] = o ? o->brain.Input(j) : 0.0f;
+    }
+}
+
+// Same outputs as nwb_step; stats: success, 0, 0 per episode.
+void nwg_step(void* p, const int32_t* actions, float* obs, float* rewards, uint8_t* dones, int32_t* stats) {
+    auto& g = *static_cast<Gym*>(p);
+    for (size_t i = 0; i < g.envs.size(); ++i) {
+        Scenario& s = *g.envs[i];
+        if (Organism* o = s.Creature()) ApplyAction(*o, actions[i]);
+        s.Step();
+        s.Sense();
+        rewards[i] = (s.Done() && s.Success()) ? 1.0f : 0.0f;
+        stats[3 * i + 0] = (s.Done() && s.Success()) ? 1 : 0;
+        stats[3 * i + 1] = 0;
+        stats[3 * i + 2] = 0;
+        dones[i] = s.Done() ? 1 : 0;
+        if (s.Done()) ResetGym(g, g.envs[i]);
+    }
+    nwg_observe(p, obs);
+}
+
+void nwg_destroy(void* p) { delete static_cast<Gym*>(p); }
+
 // --- test battery ----------------------------------------------------------------
 // n trials of one test; trial k uses the same seed nworks_iq gives its k-th trial.
 void* nws_create(int test, int n, const char* overrides) {

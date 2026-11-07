@@ -57,6 +57,13 @@ class Bridge:
         lib.nwm_observe.argtypes = [vp, fp]
         lib.nwm_step.argtypes = [vp, ip, fp, fp, bp, ip]
         lib.nwm_destroy.argtypes = [vp]
+        lib.nwg_create.restype = vp
+        lib.nwg_create.argtypes = [ctypes.c_int, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_int]
+        lib.nwg_set_visible.argtypes = [vp, ctypes.c_int]
+        lib.nwg_obs_dim.argtypes = [vp]
+        lib.nwg_observe.argtypes = [vp, fp]
+        lib.nwg_step.argtypes = [vp, ip, fp, fp, bp, ip]
+        lib.nwg_destroy.argtypes = [vp]
         self.lib = lib
 
     @staticmethod
@@ -116,6 +123,32 @@ class MultiEnvs(Envs):
         return self.obs.copy(), self.rew.copy(), self.done.copy(), self.stats[:, :3].copy()
 
 
+class GymEnvs(Envs):
+    """Memory gym: one memory scenario per slot, restarted when it ends."""
+
+    def __init__(self, bridge, n, seed, settings, visible):
+        self.b, self.n = bridge, n
+        self.h = bridge.lib.nwg_create(n, seed, strip_difficulty(settings).encode(), visible)
+        if not self.h:
+            raise SystemExit(f"bad settings: {settings}")
+        self.dim = bridge.lib.nwg_obs_dim(self.h)
+        self.obs = np.zeros((n, self.dim), np.float32)
+        self.rew = np.zeros(n, np.float32)
+        self.done = np.zeros(n, np.uint8)
+        self.stats = np.zeros((n, 3), np.int32)
+
+    def observe(self):
+        self.b.lib.nwg_observe(self.h, Bridge.ptr(self.obs, ctypes.c_float))
+        return self.obs.copy()
+
+    def step(self, actions):
+        a = np.ascontiguousarray(actions, np.int32)
+        self.b.lib.nwg_step(self.h, Bridge.ptr(a, ctypes.c_int32), Bridge.ptr(self.obs, ctypes.c_float),
+                            Bridge.ptr(self.rew, ctypes.c_float), Bridge.ptr(self.done, ctypes.c_uint8),
+                            Bridge.ptr(self.stats, ctypes.c_int32))
+        return self.obs.copy(), self.rew.copy(), self.done.copy(), self.stats.copy()
+
+
 # With the default body, inputs 40-47 are "predator in this direction" (1 = touching,
 # 0 = nothing within 300 px). Above 0.38 means a predator within about 200 px.
 PREDATOR_INPUTS = slice(40, 48)
@@ -170,7 +203,11 @@ def train(args):
     torch.manual_seed(args.seed)
     torch.set_num_threads(args.threads)
     bridge = Bridge(args.lib)
-    if args.multi:
+    if args.gym:
+        start_v = int(args.vis_curriculum.split(":")[0]) if args.vis_curriculum else 20
+        envs = GymEnvs(bridge, args.envs, args.seed, args.settings, start_v)
+        n_actions = bridge.lib.nw_num_actions()
+    elif args.multi:
         envs = MultiEnvs(bridge, args.envs, args.multi, args.seed, args.settings, args.episode_steps)
         n_actions = bridge.lib.nwm_num_actions()
     else:
@@ -198,7 +235,10 @@ def train(args):
             start_v, end_v = (int(v) for v in args.vis_curriculum.split(":"))
             vis = int(round(start_v + (end_v - start_v) * min(1.0, steps / (0.7 * args.steps))))
             if vis != vis_now:
-                bridge.lib.nwb_set(envs.h, f"foodVisibleSteps={vis}".encode())
+                if args.gym:
+                    bridge.lib.nwg_set_visible(envs.h, vis)
+                else:
+                    bridge.lib.nwb_set(envs.h, f"foodVisibleSteps={vis}".encode())
                 vis_now = vis
         h0 = h.clone()
         buf_obs = torch.zeros(T, N, envs.dim + (n_actions + 1 if args.prev else 0))
@@ -360,6 +400,8 @@ def main():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--multi", type=int, default=0, help="creatures per world (0 = one creature, no calls)")
     p.add_argument("--prev", action="store_true", help="give the network its previous action and reward")
+    p.add_argument("--gym", action="store_true",
+                   help="train on the memory gym (briefly visible food, +1 for eating it) instead of the world")
     p.add_argument("--vis-curriculum", default=None, metavar="START:END",
                    help="food visible for START steps at first, shrinking to END over 70%% of training")
     args = p.parse_args()

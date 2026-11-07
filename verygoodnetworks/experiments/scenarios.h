@@ -29,7 +29,8 @@ public:
     static constexpr int kLearningRounds = 6;
 
     // `creature` is placed in the middle of a fresh arena built from `base`.
-    Scenario(Test test, const Config& base, uint32_t seed, Organism creature);
+    // memoryVisible: how many steps the food can be seen in the memory tests.
+    Scenario(Test test, const Config& base, uint32_t seed, Organism creature, int memoryVisible = 20);
 
     void Step();                       // one simulation step; nothing once done
     bool Done() const { return done_; }

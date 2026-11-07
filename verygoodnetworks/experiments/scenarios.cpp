@@ -17,7 +17,7 @@ bool IsFoodTest(Test t) {
 
 // An empty arena: nothing spawns, no curriculum, poison does no damage (the
 // bad taste still happens), no reproduction.
-Config ArenaConfig(Test test, const Config& base, uint32_t seed) {
+Config ArenaConfig(Test test, const Config& base, uint32_t seed, int memoryVisible) {
     Config c = base;
     c.seed = seed;
     c.minPopulation = 0;
@@ -30,7 +30,7 @@ Config ArenaConfig(Test test, const Config& base, uint32_t seed) {
     c.foodToReproduce = 1000000000;
     c.maxAge = 0;
     const bool memory = test == Test::MemoryNear || test == Test::MemoryFar || test == Test::MemoryControl;
-    c.foodVisibleSteps = memory ? 20 : 0;
+    c.foodVisibleSteps = memory ? memoryVisible : 0;
     return c;
 }
 
@@ -53,8 +53,8 @@ const char* TestName(Test test) {
     }
 }
 
-Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creature)
-    : test_(test), world_(ArenaConfig(test, base, seed)), seed_(seed) {
+Scenario::Scenario(Test test, const Config& base, uint32_t seed, Organism creature, int memoryVisible)
+    : test_(test), world_(ArenaConfig(test, base, seed, memoryVisible)), seed_(seed) {
     World& w = world_;
     w.food.clear();
     w.bigFood.clear();
