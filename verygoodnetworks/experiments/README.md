@@ -347,6 +347,62 @@ default. Behaviour tests at 6M steps are in the main README:
 - Seed 2 evolved a flee response: heading +0.20 against +0.05 with no
   predator.
 
+## Round 5: intelligence tests, and training instead of evolving
+
+### Tools
+- **Hidden food** (`foodVisibleSteps`): food can only be seen for N steps
+  after it appears, so remembering where it was pays.
+- **Test battery** (`scenarios.cpp`), shared by evolved and trained brains.
+  Each test puts one creature alone in an empty arena; trial k of a test always
+  has the same layout. All food tests start the creature hungry. Every test
+  except poison-choice and poison-learning has a control.
+
+  | test | setup |
+  |---|---|
+  | forage | safe food 150 px away, eaten within 600 steps; control: no food there |
+  | poison-choice | one safe and one poisonous food, opposite sides |
+  | flee | a predator 100 px away; heading in the first 30 steps and survival over 600; control: no predator |
+  | memory | food 150 or 250 px away is visible only for the first 20 steps; control: food never visible |
+  | air | 20% air, a spring 200 px away; control: no spring |
+  | poison-learning | the poisonous colour is random; 6 rounds of one of each colour; are rounds 2-6 safer than round 1? |
+- **`nworks_iq`**: evolves a world and scores random and evolved brains.
+- **Training bridge** (`libnworks_bridge.so`, `train_rl.py`):
+  - A recurrent network (128-unit GRU) is trained with PPO to control one
+    creature in the same world through a C interface.
+  - It gets the same 56 inputs as an evolved creature and picks one of 18
+    actions: stay or move in 8 directions, eat or not.
+  - Reward: +1 good bite, -1 poison bite, -2 for dying.
+- **`replay.py`**: records an episode of a trained brain as a web page that
+  animates it.
+
+### Results
+**Evolution:** hidden-food world, food thinning, 6M steps, 20-60 creatures,
+about 200M creature-steps. **Training:** one creature, 40 food per colour, 30%
+difficulty, 20M steps (about 40 minutes on 2 cores).
+
+| test (control) | random brains | evolved (best seed) | trained, food visible 60 steps | trained, food visible 15 steps |
+|---|---|---|---|---|
+| forage | 7% (5%) | 28% (0%) | 97% (6%) | 59% (5%) |
+| poison-choice: purple picks | 49% | 88% | 100% | 100% |
+| flee: survival / heading | 14% / -0.02 | 0% / +0.02 | 77% / +0.94 | 80% / +0.93 |
+| memory 150 px | 2% (1%) | 0% (0%) | 8% (6%) | 8% (4%) |
+| air | 7% (4%) | 18% (0%) | 13% (2%) | 45% (6%) |
+| poison-learning: rounds 2-6 safe | about 50% | - | 50% | 51% |
+
+What this shows:
+- **Training beats evolution on every reflex,** from roughly a tenth of the
+  experience:
+  - it goes straight for food and never picks red;
+  - it runs almost directly away from predators (heading +0.94);
+  - the 15-step agent also learned to head for springs.
+- **Neither method learned memory.**
+- **Neither learns which colour is poisonous within a life.** Agents trained
+  with a fixed poisonous colour pick purple every time, so in poison-learning
+  they are right only half the time.
+
+Evolution with food visible for 15 steps also showed no memory. One seed
+evolved a flee response (heading +0.23, 31% survival).
+
 ## Ideas not yet tried
 - Fix the after-swap cost so colour learning pays overall. For example, let
   the forgetting rate evolve, or give creatures a cue that the swap happened.
