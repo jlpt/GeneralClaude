@@ -489,19 +489,28 @@ recurrent memory, as in meta-reinforcement learning ("RL²", Duan et al. 2016;
 "Learning to reinforcement learn", Wang et al. 2016). It is slow: it takes
 more than 10 bites.
 
-### Brain size vs capability (in progress)
-Same training for every size: memory world, previous action and reward,
-visibility 150 -> 15, 10M steps. Scored with up-close sight.
+### Brain size vs capability
+Same training for every size: memory world, previous action and reward, food
+visibility 150 -> 15 steps, 10M steps. The 512-unit run was interrupted by a
+container restart at 7.9M steps (visibility already 15). It was continued from
+its checkpoint with a fresh optimiser for the remaining 2.1M steps. All sizes
+were scored with up-close sight, 400 trials per test, one training run per size.
 
 | memory units | weights | forage | purple picks | flee: survival / heading | memory 150 px (control) | air (control) |
 |---|---|---|---|---|---|---|
 | 32 | ~10k | 3% | 50% | 14% / -0.04 | 4% (4%) | 5% (5%) |
 | 128 | ~111k | 27% | 99% | 78% / +0.63 | 8% (0.5%) | 19% (4%) |
 | 256 | ~420k | 44% | 98% | 100% / +0.73 | 10% (8%) | 19% (5%) |
-| 512 | ~1.6M | (training) | | | | |
+| 512 | ~1.6M | 78% | 100% | 53% / +0.72 | 18% (10%) | 32% (7%) |
 
-A 1,024-unit network was dropped: about 200 steps/s on this CPU (~14 hours
-for 10M steps).
+With the same experience, bigger brains learned more:
+- Foraging rises steadily (3% -> 78%).
+- Finding springs and memory are best at 512.
+- Fleeing is the exception: it peaks at 256.
+
+The 32-unit brain learned almost nothing. A 1,024-unit network was dropped: it
+trains at about 200 steps/s on this CPU, so 10M steps would take ~14 hours.
+Larger sizes need a GPU.
 
 ## Ideas not yet tried
 - Fix the after-swap cost so colour learning pays overall. For example, let
