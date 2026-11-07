@@ -403,6 +403,43 @@ What this shows:
 Evolution with food visible for 15 steps also showed no memory. One seed
 evolved a flee response (heading +0.23, 31% survival).
 
+## Round 6: memory, learning to learn, many agents
+
+New in `train_rl.py`:
+
+| option | what it does |
+|---|---|
+| `--prev` | the network also gets its previous action and reward |
+| `--vis-curriculum START:END` | food visibility shrinks during training |
+| `--multi K` | K creatures per world with a call action; `share=S` mixes each creature's reward with its world's average |
+| `--gym` | trains directly on the memory skill |
+| `--init` | starts from trained weights |
+
+New in the bridge: `random_poison=1` (poisonous colour random per episode), a
+`poison-learning` test, and `replay.py` (animated web page of an episode).
+
+### Results (400 trials per test)
+
+| trained agent | forage | purple picks | flee: survival / heading | memory 150 px (control) | poison-learning, rounds 2-6 safe |
+|---|---|---|---|---|---|
+| memory curriculum, food visible 150 -> 15 steps, previous action and reward, 25M steps | 50% | 100% | 99% / +0.70 | 5% (7%) | 50% |
+| learning to learn (random poisonous colour), previous action and reward, 20M steps | 23% | 64% | 69% / +0.11 | 5% (3%) | 48% |
+| 8 creatures per world, half of reward shared, 20M steps | 100% | 100% | 15% / +0.94 | 8% (6%) | 50% |
+
+- **Memory:** as visibility shrank, the agent did not learn to remember. It
+  just foraged worse (training return +0.5 -> -0.3).
+- **Learning to learn:** not learned. The agent mostly stopped eating.
+- **Calls:** with 8 agents and shared reward, calls stayed unrelated to
+  predators (49.6% of steps with a predator near vs 48.4% otherwise). These
+  agents are the best foragers so far.
+
+### Memory gym
+Trained from scratch, the gym agent collapsed. Its success rate fell from ~5%
+(random) to 0%, and it ended up moving in one direction 99.9% of the time
+without eating. A success every ~20 episodes of 600 steps is too sparse a
+reward for PPO to start from. Starting from the memory-world agent instead
+(`--init`), it succeeds 40% of the time straight away.
+
 ## Ideas not yet tried
 - Fix the after-swap cost so colour learning pays overall. For example, let
   the forgetting rate evolve, or give creatures a cue that the swap happened.
