@@ -139,6 +139,33 @@ void nwb_step(void* p, const int32_t* actions, float* obs, float* rewards, uint8
 
 void nwb_destroy(void* p) { delete static_cast<Batch*>(p); }
 
+// Everything in episode i, for replays: 4 floats per thing (kind, x, y, extra).
+// kind 0 creature (extra = health 0..1), 1 good food / 2 poison (extra = 1 if
+// visible), 3 spring (extra = water 0..1), 4 predator (extra = 1 if resting),
+// 5 big food. Returns how many things were written (at most cap).
+int nwb_state(void* p, int i, float* out, int cap) {
+    auto& b = *static_cast<Batch*>(p);
+    const World& w = *b.envs[size_t(i)].world;
+    int n = 0;
+    auto put = [&](float kind, float x, float y, float extra) {
+        if (n >= cap) return;
+        out[4 * n + 0] = kind;
+        out[4 * n + 1] = x;
+        out[4 * n + 2] = y;
+        out[4 * n + 3] = extra;
+        ++n;
+    };
+    for (const Resource& r : w.food) put(r.kind == w.PoisonKind() ? 2.0f : 1.0f, r.x, r.y, w.FoodVisible(r) ? 1.0f : 0.0f);
+    for (const Resource& r : w.bigFood) put(5.0f, r.x, r.y, 1.0f);
+    for (const Spring& s : w.springs) put(3.0f, s.x, s.y, s.water / w.cfg.springCapacity);
+    for (int k = 0; k < w.ActivePredators(); ++k) {
+        const Predator& pr = w.predators[size_t(k)];
+        put(4.0f, pr.x, pr.y, pr.rest > 0 ? 1.0f : 0.0f);
+    }
+    for (const Organism& o : w.organisms) put(0.0f, o.x, o.y, o.health / w.cfg.maxHealth);
+    return n;
+}
+
 // --- test battery ----------------------------------------------------------------
 // n trials of one test; trial k uses the same seed nworks_iq gives its k-th trial.
 void* nws_create(int test, int n, const char* overrides) {
