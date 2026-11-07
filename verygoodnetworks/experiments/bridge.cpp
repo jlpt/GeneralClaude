@@ -187,6 +187,16 @@ void nwb_step(void* p, const int32_t* actions, float* obs, float* rewards, uint8
 
 void nwb_destroy(void* p) { delete static_cast<Batch*>(p); }
 
+// Changes Config settings during training (for curricula). They apply to the
+// running worlds and to every episode started afterwards. Returns 0 on an
+// unknown setting.
+int nwb_set(void* p, const char* overrides) {
+    auto& b = *static_cast<Batch*>(p);
+    if (!ApplyOverrides(b.cfg, overrides ? overrides : "")) return 0;
+    for (Episode& e : b.envs) ApplyOverrides(e.world->cfg, overrides);
+    return 1;
+}
+
 // Everything in episode i, for replays: 4 floats per thing (kind, x, y, extra).
 // kind 0 creature (extra = health 0..1), 1 good food / 2 poison (extra = 1 if
 // visible), 3 spring (extra = water 0..1), 4 predator (extra = 1 if resting),

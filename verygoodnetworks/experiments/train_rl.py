@@ -41,6 +41,7 @@ class Bridge:
         lib.nwb_observe.argtypes = [vp, fp]
         lib.nwb_step.argtypes = [vp, ip, fp, fp, bp, ip]
         lib.nwb_destroy.argtypes = [vp]
+        lib.nwb_set.argtypes = [vp, ctypes.c_char_p]
         lib.nws_create.restype = vp
         lib.nws_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p]
         lib.nws_obs_dim.argtypes = [vp]
@@ -122,9 +123,15 @@ PREDATOR_NEAR = 0.38
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_dim, n_actions, hidden=128):
+    """GRU policy. With prev=True its input also holds the previous action (one-hot)
+    and the previous reward, so it can keep track of what it did and what happened."""
+
+    def __init__(self, obs_dim, n_actions, hidden=128, prev=False):
         super().__init__()
-        self.enc = nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh())
+        self.prev = prev
+        self.n_actions = n_actions
+        in_dim = obs_dim + (n_actions + 1 if prev else 0)
+        self.enc = nn.Sequential(nn.Linear(in_dim, hidden), nn.Tanh())
         self.gru = nn.GRU(hidden, hidden)
         self.pi = nn.Linear(hidden, n_actions)
         self.v = nn.Linear(hidden, 1)
@@ -146,6 +153,14 @@ class Policy(nn.Module):
         return self.pi(y), self.v(y).squeeze(-1)
 
 
+def with_prev(policy, obs, prev_a, prev_r):
+    """Appends the previous action and reward to the observation if the policy uses them."""
+    if not policy.prev:
+        return obs
+    onehot = torch.nn.functional.one_hot(prev_a, policy.n_actions).float()
+    return torch.cat([obs, onehot, prev_r.unsqueeze(-1)], -1)
+
+
 def strip_difficulty(settings):
     """The battery takes plain Config overrides: drop the training-only options."""
     return " ".join(s for s in settings.split() if not s.startswith(("difficulty=", "random_poison=")))
@@ -161,7 +176,7 @@ def train(args):
     else:
         envs = Envs(bridge, args.envs, args.seed, args.settings, args.episode_steps)
         n_actions = bridge.lib.nw_num_actions()
-    policy = Policy(envs.dim, n_actions, args.hidden)
+    policy = Policy(envs.dim, n_actions, args.hidden, prev=args.prev)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "config.json"), "w") as f:
@@ -172,23 +187,36 @@ def train(args):
     calls = np.zeros(4)  # calls with a predator near, steps with a predator near, calls otherwise, other steps
     obs = torch.from_numpy(envs.observe())
     h = torch.zeros(1, N, args.hidden)
+    prev_a = torch.zeros(N, dtype=torch.long)
+    prev_r = torch.zeros(N)
+    vis_now = None
     ep_ret = np.zeros(N)
     finished, totals = [], np.zeros(3)  # finished episode returns; good, poison, deaths since last log
     steps, start, update = 0, time.time(), 0
     while steps < args.steps:
+        if args.vis_curriculum:  # food visibility shrinks from START to END over the first 70% of training
+            start_v, end_v = (int(v) for v in args.vis_curriculum.split(":"))
+            vis = int(round(start_v + (end_v - start_v) * min(1.0, steps / (0.7 * args.steps))))
+            if vis != vis_now:
+                bridge.lib.nwb_set(envs.h, f"foodVisibleSteps={vis}".encode())
+                vis_now = vis
         h0 = h.clone()
-        buf_obs = torch.zeros(T, N, envs.dim)
+        buf_obs = torch.zeros(T, N, envs.dim + (n_actions + 1 if args.prev else 0))
         buf_act = torch.zeros(T, N, dtype=torch.long)
         buf_logp, buf_val, buf_rew, buf_done = (torch.zeros(T, N) for _ in range(4))
         for t in range(T):
+            x = with_prev(policy, obs, prev_a, prev_r)
             with torch.no_grad():
-                logits, v, h = policy.step(obs, h)
+                logits, v, h = policy.step(x, h)
                 dist = torch.distributions.Categorical(logits=logits)
                 a = dist.sample()
             nobs, r, d, st = envs.step(a.numpy())
-            buf_obs[t], buf_act[t], buf_logp[t], buf_val[t] = obs, a, dist.log_prob(a), v
+            buf_obs[t], buf_act[t], buf_logp[t], buf_val[t] = x, a, dist.log_prob(a), v
             buf_rew[t], buf_done[t] = torch.from_numpy(r), torch.from_numpy(d.astype(np.float32))
             h = h * (1.0 - buf_done[t]).view(1, -1, 1)
+            keep = 1.0 - buf_done[t]  # a new episode starts with no previous action or reward
+            prev_a = (a * keep.long())
+            prev_r = buf_rew[t] * keep
             obs = torch.from_numpy(nobs)
             ep_ret += r
             totals += st.sum(0)
@@ -197,11 +225,11 @@ def train(args):
                 ep_ret[i] = 0.0
         steps += N * T
         if args.multi:
-            near = (buf_obs[:, :, PREDATOR_INPUTS].max(-1).values > PREDATOR_NEAR).numpy()
+            near = (buf_obs[:, :, PREDATOR_INPUTS].max(-1).values > PREDATOR_NEAR).numpy()  # obs comes first in x
             called = (buf_act >= 18).numpy()
             calls += [(called & near).sum(), near.sum(), (called & ~near).sum(), (~near).sum()]
         with torch.no_grad():
-            _, v_last, _ = policy.step(obs, h)
+            _, v_last, _ = policy.step(with_prev(policy, obs, prev_a, prev_r), h)
         adv = torch.zeros(T, N)
         last = torch.zeros(N)
         for t in reversed(range(T)):
@@ -243,11 +271,14 @@ def train(args):
                 line += (f" | calls: predator near {100 * calls[0] / max(1, calls[1]):5.1f}%"
                          f", otherwise {100 * calls[2] / max(1, calls[3]):5.1f}%")
                 calls[:] = 0
+            if vis_now is not None:
+                line += f" | food visible {vis_now} steps"
             print(line, flush=True)
             log.write(line + "\n")
             log.flush()
             totals[:] = 0
             torch.save({"state": policy.state_dict(), "obs_dim": envs.dim, "n_actions": n_actions, "multi": args.multi,
+                        "prev": args.prev,
                         "hidden": args.hidden, "settings": args.settings, "steps": steps}, os.path.join(args.out, "policy.pt"))
 
 
@@ -256,7 +287,7 @@ def evaluate(args):
     torch.manual_seed(args.seed)
     bridge = Bridge(args.lib)
     ck = torch.load(args.policy)
-    policy = Policy(ck["obs_dim"], ck["n_actions"], ck["hidden"])
+    policy = Policy(ck["obs_dim"], ck["n_actions"], ck["hidden"], prev=ck.get("prev", False))
     policy.load_state_dict(ck["state"])
     settings = strip_difficulty(args.settings if args.settings is not None else ck["settings"])
     settings = " ".join(s for s in settings.split() if not s.startswith("share=")).encode()
@@ -268,13 +299,20 @@ def evaluate(args):
         obs = np.zeros((args.trials, dim), np.float32)
         dones = np.zeros(args.trials, np.uint8)
         h = torch.zeros(1, args.trials, ck["hidden"])
+        prev_a = torch.zeros(args.trials, dtype=torch.long)
+        prev_r = torch.zeros(args.trials)
         running = args.trials
         while running:
             lib.nws_observe(s, Bridge.ptr(obs, ctypes.c_float))
+            o = torch.from_numpy(obs)
             with torch.no_grad():
-                logits, _, h = policy.step(torch.from_numpy(obs), h)
-                a = torch.distributions.Categorical(logits=logits).sample().numpy().astype(np.int32)
-                a %= 18  # a policy with a call action plays the battery without it
+                logits, _, h = policy.step(with_prev(policy, o, prev_a, prev_r), h)
+                a_full = torch.distributions.Categorical(logits=logits).sample()
+            # The battery has no reward signal, so the previous reward is rebuilt from
+            # the taste inputs (50 = good taste, 51 = bad taste; they jump to ~1 on a bite).
+            prev_r = (o[:, 50] > 0.95).float() - (o[:, 51] > 0.95).float()
+            prev_a = a_full
+            a = a_full.numpy().astype(np.int32) % 18  # a policy with a call action plays the battery without it
             running = lib.nws_step(s, Bridge.ptr(a, ctypes.c_int32), Bridge.ptr(dones, ctypes.c_uint8))
         succ = np.zeros(args.trials, np.uint8)
         score = np.zeros(args.trials, np.float32)
@@ -321,6 +359,9 @@ def main():
     p.add_argument("--threads", type=int, default=1)
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--multi", type=int, default=0, help="creatures per world (0 = one creature, no calls)")
+    p.add_argument("--prev", action="store_true", help="give the network its previous action and reward")
+    p.add_argument("--vis-curriculum", default=None, metavar="START:END",
+                   help="food visible for START steps at first, shrinking to END over 70%% of training")
     args = p.parse_args()
     if args.mode == "train":
         if args.settings is None:
