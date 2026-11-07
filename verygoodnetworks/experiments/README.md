@@ -460,6 +460,35 @@ It walks back to food it saw only briefly, about six times as often as chance.
 It doesn't manage the 250 px version, which needs about 80 steps of memory.
 `replay.py` records it in a hidden-food world.
 
+### Learning to learn: the agent works out the poisonous colour during each life
+Started from the memory agent (`--init`), then trained 15M steps in a world
+where the poisonous colour is random for each episode (`random_poison=1`),
+with previous action and reward as inputs.
+
+The battery's `poison-learning` test didn't settle it, because this agent
+hardly eats in the empty test arena (it ate in 12% of first rounds). So it was
+measured in its own world instead: the poison share of the n-th bite of each
+episode.
+
+The first version of this measurement was misleading. With damaging poison, an
+agent that sticks to one colour dies early in episodes where that colour is
+the poisonous one, so late bites come mostly from lucky episodes. That made
+even a control agent look like it was learning (50% -> 12%). With harmless
+poison (difficulty 0: poison only tastes bad) every episode runs its full
+length, and the effect disappears for the control:
+
+| bite in the episode | 1st | 2nd | 3rd | 4th-5th | 6th-10th | 11th+ |
+|---|---|---|---|---|---|---|
+| learning-to-learn agent | 50% | 45% | 50% | 45% | 44% | **20%** |
+| control (memory agent, never trained on random poison) | 47% | 48% | 48% | 49% | 51% | 53% |
+
+The agent starts each life at chance, works out from experience which colour
+is poisonous, and then eats it far less: 1 bite in 5 instead of 1 in 2. Its
+weights don't change during the episode. The learning happens in its
+recurrent memory, as in meta-reinforcement learning ("RL²", Duan et al. 2016;
+"Learning to reinforcement learn", Wang et al. 2016). It is slow: it takes
+more than 10 bites.
+
 ### Brain size vs capability (in progress)
 Same training for every size: memory world, previous action and reward,
 visibility 150 -> 15, 10M steps. Scored with up-close sight.
