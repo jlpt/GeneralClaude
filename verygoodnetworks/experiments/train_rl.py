@@ -9,7 +9,12 @@ stay or move in one of 8 directions, each with eat / don't eat.
 Reward: +1 per good bite, -1 per poison bite, -2 for dying.
 
   train_rl.py train --lib LIB --out DIR [--steps N] [--settings "..."]
+  train_rl.py train --lib LIB --out DIR --multi 8 --envs 8 --settings "... share=0.5"
   train_rl.py eval  --lib LIB --policy DIR/policy.pt [--trials 400]
+
+With --multi K, every world has K creatures driven by the same network, which
+also gets a call action (36 actions); "share=S" in --settings mixes each
+creature's reward with its world's average.
 
 --settings are Nworks Config overrides ("key=value ..."), plus difficulty=D and
 random_poison=1 (poisonous colour random per episode) for training. The test
@@ -45,6 +50,12 @@ class Bridge:
         lib.nws_learning_results.argtypes = [vp, ip]
         lib.nws_destroy.argtypes = [vp]
         lib.nw_test_name.restype = ctypes.c_char_p
+        lib.nwm_create.restype = vp
+        lib.nwm_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_int]
+        lib.nwm_obs_dim.argtypes = [vp]
+        lib.nwm_observe.argtypes = [vp, fp]
+        lib.nwm_step.argtypes = [vp, ip, fp, fp, bp, ip]
+        lib.nwm_destroy.argtypes = [vp]
         self.lib = lib
 
     @staticmethod
@@ -76,6 +87,38 @@ class Envs:
                             Bridge.ptr(self.rew, ctypes.c_float), Bridge.ptr(self.done, ctypes.c_uint8),
                             Bridge.ptr(self.stats, ctypes.c_int32))
         return self.obs.copy(), self.rew.copy(), self.done.copy(), self.stats.copy()
+
+
+class MultiEnvs(Envs):
+    """n worlds with `per` creatures each, all driven by one network: n * per agents."""
+
+    def __init__(self, bridge, n, per, seed, settings, episode_steps):
+        self.b, self.n = bridge, n * per
+        self.h = bridge.lib.nwm_create(n, per, seed, settings.encode(), episode_steps)
+        if not self.h:
+            raise SystemExit(f"bad settings: {settings}")
+        self.dim = bridge.lib.nwm_obs_dim(self.h)
+        self.obs = np.zeros((self.n, self.dim), np.float32)
+        self.rew = np.zeros(self.n, np.float32)
+        self.done = np.zeros(self.n, np.uint8)
+        self.stats = np.zeros((self.n, 4), np.int32)
+
+    def observe(self):
+        self.b.lib.nwm_observe(self.h, Bridge.ptr(self.obs, ctypes.c_float))
+        return self.obs.copy()
+
+    def step(self, actions):
+        a = np.ascontiguousarray(actions, np.int32)
+        self.b.lib.nwm_step(self.h, Bridge.ptr(a, ctypes.c_int32), Bridge.ptr(self.obs, ctypes.c_float),
+                            Bridge.ptr(self.rew, ctypes.c_float), Bridge.ptr(self.done, ctypes.c_uint8),
+                            Bridge.ptr(self.stats, ctypes.c_int32))
+        return self.obs.copy(), self.rew.copy(), self.done.copy(), self.stats[:, :3].copy()
+
+
+# With the default body, inputs 40-47 are "predator in this direction" (1 = touching,
+# 0 = nothing within 300 px). Above 0.38 means a predator within about 200 px.
+PREDATOR_INPUTS = slice(40, 48)
+PREDATOR_NEAR = 0.38
 
 
 class Policy(nn.Module):
@@ -112,8 +155,12 @@ def train(args):
     torch.manual_seed(args.seed)
     torch.set_num_threads(args.threads)
     bridge = Bridge(args.lib)
-    envs = Envs(bridge, args.envs, args.seed, args.settings, args.episode_steps)
-    n_actions = bridge.lib.nw_num_actions()
+    if args.multi:
+        envs = MultiEnvs(bridge, args.envs, args.multi, args.seed, args.settings, args.episode_steps)
+        n_actions = bridge.lib.nwm_num_actions()
+    else:
+        envs = Envs(bridge, args.envs, args.seed, args.settings, args.episode_steps)
+        n_actions = bridge.lib.nw_num_actions()
     policy = Policy(envs.dim, n_actions, args.hidden)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     os.makedirs(args.out, exist_ok=True)
@@ -121,7 +168,8 @@ def train(args):
         json.dump(vars(args) | {"obs_dim": envs.dim, "n_actions": n_actions}, f, indent=1)
     log = open(os.path.join(args.out, "log.txt"), "a")
 
-    N, T = args.envs, args.rollout
+    N, T = envs.n, args.rollout
+    calls = np.zeros(4)  # calls with a predator near, steps with a predator near, calls otherwise, other steps
     obs = torch.from_numpy(envs.observe())
     h = torch.zeros(1, N, args.hidden)
     ep_ret = np.zeros(N)
@@ -148,6 +196,10 @@ def train(args):
                 finished.append(ep_ret[i])
                 ep_ret[i] = 0.0
         steps += N * T
+        if args.multi:
+            near = (buf_obs[:, :, PREDATOR_INPUTS].max(-1).values > PREDATOR_NEAR).numpy()
+            called = (buf_act >= 18).numpy()
+            calls += [(called & near).sum(), near.sum(), (called & ~near).sum(), (~near).sum()]
         with torch.no_grad():
             _, v_last, _ = policy.step(obs, h)
         adv = torch.zeros(T, N)
@@ -187,11 +239,15 @@ def train(args):
             line = (f"steps {steps:>10} | episodes {len(finished):>6} | return {np.mean(finished[-200:]) if finished else 0:7.2f}"
                     f" | per 1000 steps: good {good * per:5.2f} poison {poison * per:5.2f} deaths {deaths * per:5.3f}"
                     f" | poison share {100 * poison / max(1, good + poison):5.1f}% | {steps / (time.time() - start):6.0f} steps/s")
+            if args.multi:
+                line += (f" | calls: predator near {100 * calls[0] / max(1, calls[1]):5.1f}%"
+                         f", otherwise {100 * calls[2] / max(1, calls[3]):5.1f}%")
+                calls[:] = 0
             print(line, flush=True)
             log.write(line + "\n")
             log.flush()
             totals[:] = 0
-            torch.save({"state": policy.state_dict(), "obs_dim": envs.dim, "n_actions": n_actions,
+            torch.save({"state": policy.state_dict(), "obs_dim": envs.dim, "n_actions": n_actions, "multi": args.multi,
                         "hidden": args.hidden, "settings": args.settings, "steps": steps}, os.path.join(args.out, "policy.pt"))
 
 
@@ -202,7 +258,8 @@ def evaluate(args):
     ck = torch.load(args.policy)
     policy = Policy(ck["obs_dim"], ck["n_actions"], ck["hidden"])
     policy.load_state_dict(ck["state"])
-    settings = strip_difficulty(args.settings if args.settings is not None else ck["settings"]).encode()
+    settings = strip_difficulty(args.settings if args.settings is not None else ck["settings"])
+    settings = " ".join(s for s in settings.split() if not s.startswith("share=")).encode()
     print(f"trained policy {args.policy} ({ck['steps']} training steps), {args.trials} trials per test:")
     lib = bridge.lib
     for t in range(lib.nw_num_tests()):
@@ -217,6 +274,7 @@ def evaluate(args):
             with torch.no_grad():
                 logits, _, h = policy.step(torch.from_numpy(obs), h)
                 a = torch.distributions.Categorical(logits=logits).sample().numpy().astype(np.int32)
+                a %= 18  # a policy with a call action plays the battery without it
             running = lib.nws_step(s, Bridge.ptr(a, ctypes.c_int32), Bridge.ptr(dones, ctypes.c_uint8))
         succ = np.zeros(args.trials, np.uint8)
         score = np.zeros(args.trials, np.float32)
@@ -262,6 +320,7 @@ def main():
     p.add_argument("--trials", type=int, default=400)
     p.add_argument("--threads", type=int, default=1)
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--multi", type=int, default=0, help="creatures per world (0 = one creature, no calls)")
     args = p.parse_args()
     if args.mode == "train":
         if args.settings is None:

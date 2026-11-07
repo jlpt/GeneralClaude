@@ -64,3 +64,6 @@ private:
 // (stay, or full speed in one of 8 directions) x eat (no / yes).
 constexpr int kNumActions = 18;
 void ApplyAction(Organism& o, int action);
+// Many-creature worlds add a call bit: actions 0..35 = ApplyAction(a % 18), calling if a >= 18.
+constexpr int kNumActionsWithCall = 36;
+void ApplyActionWithCall(Organism& o, int action);

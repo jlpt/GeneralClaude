@@ -233,6 +233,13 @@ void Scenario::Step() {
     if (t_ >= kTimeLimit) Finish(test_ == Test::Flee);  // surviving the whole trial counts for Flee
 }
 
+void ApplyActionWithCall(Organism& o, int action) {
+    ApplyAction(o, action % kNumActions);
+    for (const auto& m : o.modules) {
+        if (dynamic_cast<const SignalModule*>(m.get())) o.brain.SetOutput(m->firstOutput, action >= kNumActions ? 1.0f : 0.0f);
+    }
+}
+
 void ApplyAction(Organism& o, int action) {
     const int dir = action % 9;
     const bool eat = action / 9 == 1;

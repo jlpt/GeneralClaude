@@ -63,6 +63,54 @@ void ResetEpisode(Batch& b, Episode& e) {
     e.world->organisms.push_back(std::move(o));
 }
 
+// Many creatures per world, each one an agent slot. A creature that dies is
+// replaced by a fresh one in its slot; the whole world restarts every
+// episodeSteps steps.
+struct MultiEnv {
+    std::unique_ptr<World> world;
+    std::vector<uint64_t> ids;  // creature id in each slot
+    int t = 0;
+};
+
+struct MultiBatch {
+    Config cfg;
+    float difficulty = 0.3f, share = 0.0f;
+    int perWorld = 8, episodeSteps = 3000;
+    uint32_t nextSeed = 1;
+    uint64_t nextId = 1;
+    std::unique_ptr<Organism> body;
+    std::vector<MultiEnv> envs;
+};
+
+Organism* FindCreature(World& w, uint64_t id) {
+    for (Organism& o : w.organisms)
+        if (o.id == id) return &o;
+    return nullptr;
+}
+
+void SpawnInSlot(MultiBatch& b, MultiEnv& e, size_t slot, std::mt19937& g) {
+    Organism o = CloneOf(*b.body, b.nextId++, b.cfg);
+    o.id = b.nextId - 1;
+    o.external = true;
+    o.x = std::uniform_real_distribution<float>(40.0f, b.cfg.worldWidth - 40.0f)(g);
+    o.y = std::uniform_real_distribution<float>(40.0f, b.cfg.worldHeight - 40.0f)(g);
+    o.health = b.cfg.maxHealth;
+    o.air = b.cfg.maxAir;
+    e.ids[slot] = o.id;
+    e.world->organisms.push_back(std::move(o));
+}
+
+void ResetMulti(MultiBatch& b, MultiEnv& e) {
+    Config c = b.cfg;
+    c.seed = b.nextSeed++;
+    e.world = std::make_unique<World>(c);
+    e.world->difficulty = b.difficulty;
+    e.t = 0;
+    e.ids.assign(size_t(b.perWorld), 0);
+    std::mt19937 g(c.seed * 2654435761u + 11u);
+    for (size_t s = 0; s < e.ids.size(); ++s) SpawnInSlot(b, e, s, g);
+}
+
 struct ScenarioBatch {
     std::vector<Scenario> trials;
     int dim = 0;
@@ -165,6 +213,108 @@ int nwb_state(void* p, int i, float* out, int cap) {
     for (const Organism& o : w.organisms) put(0.0f, o.x, o.y, o.health / w.cfg.maxHealth);
     return n;
 }
+
+// --- many creatures per world ----------------------------------------------------
+// n worlds x perWorld creatures = n * perWorld agent slots. overrides as for
+// nwb_create, plus "share=S": each creature's reward is (1 - S) x its own +
+// S x the average of its world (S = 0: selfish, 1: fully shared).
+void* nwm_create(int n, int perWorld, uint32_t seed, const char* overrides, int episodeSteps) {
+    auto b = new MultiBatch;
+    std::string text = overrides ? overrides : "", rest;
+    for (size_t pos = 0; pos < text.size();) {
+        size_t end = text.find(' ', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string item = text.substr(pos, end - pos);
+        if (item.rfind("difficulty=", 0) == 0) b->difficulty = std::stof(item.substr(11));
+        else if (item.rfind("share=", 0) == 0) b->share = std::stof(item.substr(6));
+        else rest += " " + item;
+        pos = end + 1;
+    }
+    if (!ApplyOverrides(b->cfg, rest)) { delete b; return nullptr; }
+    b->cfg.minPopulation = 0;
+    b->cfg.foodToReproduce = 1000000000;
+    b->cfg.curriculumWindow = 0;
+    b->cfg.foodCurriculum = false;
+    b->perWorld = perWorld;
+    b->episodeSteps = episodeSteps;
+    b->nextSeed = seed * 1000003u + 1u;
+    b->body = std::make_unique<Organism>(MakeExternalBody(b->cfg));
+    b->envs.resize(size_t(n));
+    for (MultiEnv& e : b->envs) ResetMulti(*b, e);
+    return b;
+}
+
+int nwm_obs_dim(void* p) { return static_cast<MultiBatch*>(p)->body->brain.NumInputs(); }
+int nwm_num_actions() { return kNumActionsWithCall; }
+
+void nwm_observe(void* p, float* obs) {
+    auto& b = *static_cast<MultiBatch*>(p);
+    const int dim = b.body->brain.NumInputs();
+    size_t k = 0;
+    for (MultiEnv& e : b.envs) {
+        for (uint64_t id : e.ids) {
+            float* out = obs + (k++) * size_t(dim);
+            Organism* o = FindCreature(*e.world, id);
+            if (!o) { std::memset(out, 0, sizeof(float) * size_t(dim)); continue; }
+            for (auto& m : o->modules) m->Sense(*o, *e.world);
+            for (int i = 0; i < dim; ++i) out[i] = o->brain.Input(i);
+        }
+    }
+}
+
+// Same outputs as nwb_step, one entry per agent slot. stats also gets a 4th
+// int per slot: 1 if the creature called this step.
+void nwm_step(void* p, const int32_t* actions, float* obs, float* rewards, uint8_t* dones, int32_t* stats) {
+    auto& b = *static_cast<MultiBatch*>(p);
+    const size_t per = size_t(b.perWorld);
+    for (size_t w = 0; w < b.envs.size(); ++w) {
+        MultiEnv& e = b.envs[w];
+        World& world = *e.world;
+        std::vector<int> good0(per), poison0(per);
+        for (size_t s = 0; s < per; ++s) {
+            Organism* o = FindCreature(world, e.ids[s]);
+            if (o) {
+                ApplyActionWithCall(*o, actions[w * per + s]);
+                good0[s] = o->goodBitesInLife;
+                poison0[s] = o->poisonBitesInLife;
+            }
+        }
+        world.Step();
+        ++e.t;
+        std::mt19937 g(uint32_t(e.t) * 2654435761u + uint32_t(w) * 97u + b.nextSeed);
+        const bool episodeOver = e.t >= b.episodeSteps;
+        float total = 0.0f;
+        for (size_t s = 0; s < per; ++s) {
+            const size_t k = w * per + s;
+            Organism* o = FindCreature(world, e.ids[s]);
+            int good = 0, poison = 0;
+            if (o) {
+                good = o->goodBitesInLife - good0[s];
+                poison = o->poisonBitesInLife - poison0[s];
+            }
+            const bool died = o == nullptr;
+            rewards[k] = float(good) - float(poison) - (died ? 2.0f : 0.0f);
+            total += rewards[k];
+            stats[4 * k + 0] = good;
+            stats[4 * k + 1] = poison;
+            stats[4 * k + 2] = died ? 1 : 0;
+            stats[4 * k + 3] = (o && o->signal > 0.5f) ? 1 : 0;
+            dones[k] = (died || episodeOver) ? 1 : 0;
+            if (died && !episodeOver) SpawnInSlot(b, e, s, g);  // a newcomer takes the slot
+        }
+        if (b.share > 0.0f) {
+            const float mean = total / float(per);
+            for (size_t s = 0; s < per; ++s) {
+                const size_t k = w * per + s;
+                rewards[k] = (1.0f - b.share) * rewards[k] + b.share * mean;
+            }
+        }
+        if (episodeOver) ResetMulti(b, e);
+    }
+    nwm_observe(p, obs);
+}
+
+void nwm_destroy(void* p) { delete static_cast<MultiBatch*>(p); }
 
 // --- test battery ----------------------------------------------------------------
 // n trials of one test; trial k uses the same seed nworks_iq gives its k-th trial.
