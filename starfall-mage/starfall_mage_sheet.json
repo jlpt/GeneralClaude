@@ -1,0 +1,1190 @@
+{
+ "frames": [
+  {
+   "filename": "starfall_mage 0.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 170
+  },
+  {
+   "filename": "starfall_mage 1.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 170
+  },
+  {
+   "filename": "starfall_mage 2.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 170
+  },
+  {
+   "filename": "starfall_mage 3.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 170
+  },
+  {
+   "filename": "starfall_mage 4.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 5.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 6.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 7.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 8.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 9.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 80
+  },
+  {
+   "filename": "starfall_mage 10.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 11.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 12.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 13.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 14.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 15.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 112,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 16.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 17.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 18.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 19.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 20.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 21.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 22.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 23.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 224,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 24.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 110
+  },
+  {
+   "filename": "starfall_mage 25.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 26.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 27.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 28.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 29.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 30.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 31.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 336,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 32.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 33.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 34.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 35.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 60
+  },
+  {
+   "filename": "starfall_mage 36.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 37.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 38.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 39.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 448,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 40.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 41.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 42.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 43.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 70
+  },
+  {
+   "filename": "starfall_mage 44.aseprite",
+   "frame": {
+    "x": 704,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 45.aseprite",
+   "frame": {
+    "x": 880,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 46.aseprite",
+   "frame": {
+    "x": 1056,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 47.aseprite",
+   "frame": {
+    "x": 1232,
+    "y": 560,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 48.aseprite",
+   "frame": {
+    "x": 0,
+    "y": 672,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 49.aseprite",
+   "frame": {
+    "x": 176,
+    "y": 672,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 50.aseprite",
+   "frame": {
+    "x": 352,
+    "y": 672,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 100
+  },
+  {
+   "filename": "starfall_mage 51.aseprite",
+   "frame": {
+    "x": 528,
+    "y": 672,
+    "w": 176,
+    "h": 112
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 176,
+    "h": 112
+   },
+   "sourceSize": {
+    "w": 176,
+    "h": 112
+   },
+   "duration": 160
+  }
+ ],
+ "meta": {
+  "app": "generated",
+  "image": "starfall_mage_sheet.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 1408,
+   "h": 784
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "Idle",
+    "from": 0,
+    "to": 3,
+    "direction": "forward"
+   },
+   {
+    "name": "Gather",
+    "from": 4,
+    "to": 9,
+    "direction": "forward"
+   },
+   {
+    "name": "Charge",
+    "from": 10,
+    "to": 24,
+    "direction": "forward"
+   },
+   {
+    "name": "Starfall",
+    "from": 25,
+    "to": 43,
+    "direction": "forward"
+   },
+   {
+    "name": "Settle",
+    "from": 44,
+    "to": 51,
+    "direction": "forward"
+   }
+  ]
+ }
+}
