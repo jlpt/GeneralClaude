@@ -23,6 +23,7 @@ folder.** You build it from your own US v1.0 ROM.
 | **Colour drift** | A slow tint cycles through the level geometry, so no place is the same colour twice. |
 | **Wrong sizes** | Common enemies spawn anywhere from pocket-sized to giant, the same way on every visit. Flowers, grass tufts, music notes, eggs and feathers do too. |
 | **Floaty gravity** | Falling is a slow drift (gravity −2050 instead of −2700, lower terminal velocity). Jumps hang in the air. Fall damage is unchanged. |
+| *(what isn't changed)* | The title-screen demos and Bottles' bonus pictures are recordings of controller input, so they keep the original gravity and enemy sizes. With the floaty physics, Banjo fell to his death in the engine room demo and the title screen never came back. |
 | **Warped tape** | Sound effects drift between about 80% and 120% of their pitch on a slow wave, with a little flutter. |
 | **Wavy text** | Every line of text rides a wave. |
 | **Dream logic dialog** | The opening cutscene, Bottles' first lessons and the first-meeting lines (35 conversations) are rewritten. Gruntilda now knows she's Banjo's dream. All button instructions are still accurate. |
@@ -31,9 +32,18 @@ folder.** You build it from your own US v1.0 ROM.
 
 Tested in an emulator (mupen64plus, Rice video plugin), headless:
 
-- Power-on through the logos, intro concert, title screen and attract demos: 18,000 frames, no crash.
+- Power-on through the logos, intro concert, title screen and every attract
+  demo, back round to the Rare logo: 17,700 frames, no crash. (This test
+  caught a real bug: with the floaty gravity, the recorded engine room demo
+  fell to its death and the title screen never came back. Playback modes now
+  use the original physics.)
 - The full opening cutscene, to check the rewritten dialog and the wavy text.
-- A tour of 39 maps (all nine worlds and many interiors, lair rooms, Furnace Fun and Gruntilda's chamber): every one loads and renders.
+- A tour of 39 maps (all nine worlds and many interiors, lair rooms, Furnace
+  Fun and Gruntilda's chamber): every one loads and renders, with the
+  resized-enemy count and gravity checked on screen.
+
+A build from decomp commit `e8d31fa5` and the US v1.0 ROM produces a ROM with
+SHA-1 `61a31224e91e35df2e5ac19e00142a306144a646`.
 
 Not tested:
 
@@ -43,9 +53,10 @@ Not tested:
   awkward.
 - **Sound.** The pitch warp was written and compiles, but the rig has no audio
   output, so I haven't heard it.
-- **Real hardware.** The camera draws a wider view than the original (about
-  1.6x the area at its widest), so expect more slowdown on a console than in
-  the original game. Emulators and PC ports shouldn't care.
+- **Real hardware.** At its widest the lens shows about 1.4x the original
+  view, and the culling region is widened to about 1.6x the area to match, so
+  expect more slowdown on a console than in the original game. Emulators and
+  PC ports shouldn't care.
 
 Saves are compatible with the original game (nothing about the save format changed).
 
@@ -96,9 +107,10 @@ untouched), plus small hooks:
 | `modelRender_draw` | `src/core2/modelRender.c` | Jelly: an extra non-uniform scale on every model matrix |
 | `mapModel_opa_draw` / `_xlu_draw` | `src/core2/mapModel.c` | Colour drift; level geometry and sky opt out of jelly |
 | `_printbuffer_draw_letter` | `src/core2/print.c` | Wavy text |
-| `cube_spawnActors`, `code7AF80_initCubeFromFile` | `src/core2/code_A5BC0.c` | Enemy and sprite sizes |
+| actor update loop | `src/core2/code_9E370.c` | Enemy sizes, applied on an actor's first update (not at spawn, where the game mode isn't known yet) |
+| `code7AF80_initCubeFromFile` | `src/core2/code_A5BC0.c` | Sprite sizes |
 | `sfxsource_setSampleRate` | `src/core2/code_85800.c` | Pitch warp |
-| gravity constants | `src/core2/ba/physics.c` | Floaty falls |
+| gravity constants, `__baphysics_syncDefaults` | `src/core2/ba/physics.c` | Floaty falls, with the original values swapped back in while recorded input is playing |
 
 Every tunable number (wobble strength, camera sway, eye size, which enemies
 get resized) is in `surreal.inc` with a comment.
@@ -113,6 +125,10 @@ make TEST_MAP=0x7 TEST_EXIT=0x4                    # boot straight into a map (T
 make TEST_MAP=0x7 TEST_PITCH=30 TEST_YAW=30        # aim the camera up and pan 30 degrees/second
 make TEST_MAP=0x1 TEST_SLIDESHOW='{0x2,0x5},{0x12,0x8}' TEST_SLIDE_SECONDS=5   # tour a list of {map, exit}
 ```
+
+A `TEST_MAP` build also prints a readout at the bottom of the screen: how many
+enemies were resized (`R`), how many are giants (`G`) or tiny (`T`), and the
+player's gravity.
 
 `make` doesn't notice flag changes, so `touch src/core1/code_0.c src/core2/code_5C870.c src/core2/gc/sky.c`
 when you change them.

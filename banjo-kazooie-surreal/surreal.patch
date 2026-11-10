@@ -35,7 +35,7 @@ index 5a19ed4..fbf20db 100644
  OPT_FLAGS      := -O2
 diff --git a/include/core2/surreal.h b/include/core2/surreal.h
 new file mode 100644
-index 0000000..adcc9be
+index 0000000..a9c04fa
 --- /dev/null
 +++ b/include/core2/surreal.h
 @@ -0,0 +1,42 @@
@@ -68,7 +68,7 @@ index 0000000..adcc9be
 +bool surreal_jelly_getScale(f32 position[3], f32 radius, f32 scale[3]);
 +
 +/* sizes: stable per placement, so the same flower is always the same wrong size */
-+f32  surreal_getEnemyScale(s32 actor_id, s32 position[3]);
++f32  surreal_getEnemyScale(s32 actor_id, f32 position[3]);
 +s32  surreal_getSpritePropScale(s32 scale, s16 position[3]);
 +
 +/* multiplier for sound effect playback rates: slow tape wow */
@@ -120,20 +120,69 @@ index a360ef8..1776ca2 100644
      ml_vec3f_normalize(sViewportFrustumPlanes[0]);
      ml_vec3f_normalize(sViewportFrustumPlanes[1]);
 diff --git a/src/core2/ba/physics.c b/src/core2/ba/physics.c
-index e5ad1f1..c9636ec 100644
+index e5ad1f1..614ae8b 100644
 --- a/src/core2/ba/physics.c
 +++ b/src/core2/ba/physics.c
-@@ -7,8 +7,8 @@ extern f32 climb_getRadius(void);
+@@ -7,8 +7,11 @@ extern f32 climb_getRadius(void);
  extern f32 func_8029CED0(void);
  
  /* .data */
 -f32 baphysics_default_gravity = -2700.0f; //defaultGravity
 -f32 baphysics_default_terminal_velocity = -4000.0f;
-+f32 baphysics_default_gravity = -2050.0f; //defaultGravity (Surreal mod: was -2700, falling is a slow drift)
-+f32 baphysics_default_terminal_velocity = -2900.0f; // Surreal mod: was -4000
++f32 baphysics_default_gravity = -2050.0f; //defaultGravity (Surreal mod: falling is a slow drift)
++f32 baphysics_default_terminal_velocity = -2900.0f; // Surreal mod
++
++#define BAPHYSICS_ORIGINAL_GRAVITY           (-2700.0f)
++#define BAPHYSICS_ORIGINAL_TERMINAL_VELOCITY (-4000.0f)
  
  /* .bss */
  s32 baphysics_type;
+@@ -35,6 +38,29 @@ struct {
+ } baphysics_goto;
+ 
+ /* .code */
++
++/* Surreal mod: the attract demos, Bottles' bonus pictures and every other mode that plays
++ * back recorded controller input only stay in sync with the original physics (with the
++ * floaty values the engine room demo falls to its death and the attract loop never
++ * resumes). The game mode isn't known yet when the player is spawned, so the defaults are
++ * swapped here, when they are used. No move sets either original value explicitly. */
++extern bool func_802E4A08(void);
++
++static void __baphysics_syncDefaults(void){
++    if(func_802E4A08()){
++        if(s_gravity == baphysics_default_gravity)
++            s_gravity = BAPHYSICS_ORIGINAL_GRAVITY;
++        if(s_terminal_velocity == baphysics_default_terminal_velocity)
++            s_terminal_velocity = BAPHYSICS_ORIGINAL_TERMINAL_VELOCITY;
++    }
++    else{
++        if(s_gravity == BAPHYSICS_ORIGINAL_GRAVITY)
++            s_gravity = baphysics_default_gravity;
++        if(s_terminal_velocity == BAPHYSICS_ORIGINAL_TERMINAL_VELOCITY)
++            s_terminal_velocity = baphysics_default_terminal_velocity;
++    }
++}
++
+ void __baphysics_update_normal(void){
+     f32 sp84[3];
+     f32 sp78[3];
+@@ -95,6 +121,7 @@ void __baphysics_update_normal(void){
+         s_player_velocity[2] = 0;
+ 
+     //update velocity for gravity
++    __baphysics_syncDefaults();
+     s_player_velocity[1] = s_player_velocity[1] + time_getDelta()*s_gravity ;
+     if(s_player_velocity[1] < s_terminal_velocity)
+         s_player_velocity[1] = s_terminal_velocity;
+@@ -133,6 +160,7 @@ void __baphysics_update_no_gravity(void){
+ }
+ 
+ void func_802971DC(void){
++    __baphysics_syncDefaults();
+     s_player_velocity[1] = s_player_velocity[1] + time_getDelta()*s_gravity;
+     if(s_player_velocity[1] < s_terminal_velocity)
+         s_player_velocity[1] = s_terminal_velocity;
 diff --git a/src/core2/code_5C870.c b/src/core2/code_5C870.c
 index 411af64..4f48556 100644
 --- a/src/core2/code_5C870.c
@@ -172,8 +221,39 @@ index f73f848..3af2836 100644
          sfxsource_setFlag(temp_v0, SFX_SRC_FLAG_3_UNKOWN);
      }
  }
+diff --git a/src/core2/code_9E370.c b/src/core2/code_9E370.c
+index c7b5479..657b578 100644
+--- a/src/core2/code_9E370.c
++++ b/src/core2/code_9E370.c
+@@ -2,6 +2,9 @@
+ #include "core1/core1.h"
+ #include "functions.h"
+ #include "variables.h"
++#include "core2/surreal.h"
++
++extern bool func_802E4A08(void); /* is the game playing back recorded input? */
+ #include "actor.h"
+ 
+ #include "prop.h"
+@@ -538,6 +541,16 @@ void func_803268B4(void) {
+                     }
+                 }
+                 if (!actor->despawn_flag) {
++                    if (!actor->unk44_0) {
++                        /* Surreal mod: common enemies come in the wrong sizes. Done on the first
++                         * update rather than at spawn, because the game mode isn't known yet at
++                         * spawn and recorded demos need the original sizes. unk44_0 is a spare
++                         * bit that travels with the actor through map savestates. */
++                        actor->unk44_0 = TRUE;
++                        if (!func_802E4A08()) {
++                            suSetSpriteScale(actor, actor->scale * surreal_getEnemyScale(actor_info->actorId, actor->position));
++                        }
++                    }
+                     if (marker->unk2C_2) {
+                         marker->actorUpdate2Func(actor);
+                         if (anim_ctrl != NULL) {
 diff --git a/src/core2/code_A5BC0.c b/src/core2/code_A5BC0.c
-index fd78c09..0992451 100644
+index fd78c09..bd11cf7 100644
 --- a/src/core2/code_A5BC0.c
 +++ b/src/core2/code_A5BC0.c
 @@ -2,6 +2,7 @@
@@ -195,28 +275,21 @@ index fd78c09..0992451 100644
                  if (is_in_furnace_fun) {
                      if (!(this_prop2->isActorProp) && !(this_prop2->isModelProp)){
                          sprite_id = this_prop2->spriteProp.spriteId + SPRITE_ASSET_OFFSET;
-@@ -1393,6 +1398,8 @@ void cube_spawnActors(Cube *cube) {
-                     actor->secondaryId = i_prop->unk10_31;
-                     actor->actorTypeSpecificField = i_prop->selector_or_radius;
-                     suSetSpriteScale(actor, (i_prop->scale != 0) ? ((f32)i_prop->scale * 0.01) : 1.0);
-+                    /* Surreal mod: common enemies come in the wrong sizes */
-+                    actor->scale *= surreal_getEnemyScale(i_prop->actorId, position);
-                 }
-             }
-             i_prop++;
 diff --git a/src/core2/gc/sky.c b/src/core2/gc/sky.c
-index e128ffc..5da797b 100644
+index e128ffc..822447e 100644
 --- a/src/core2/gc/sky.c
 +++ b/src/core2/gc/sky.c
-@@ -2,6 +2,7 @@
+@@ -2,6 +2,9 @@
  #include "core1/core1.h"
  #include "functions.h"
  #include "variables.h"
 +#include "core2/surreal.h"
++#include "core2/ba/physics.h"
++#include "core2/print.h"
  
  typedef struct {
      s16 model_id;
-@@ -85,9 +86,12 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+@@ -85,9 +88,12 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
                  rotation[0] = 0.0f;
                  rotation[1] = gcSky.sky_info->sky_list[i].rotation_speed * gcSky.timer;
                  rotation[2] = 0.0f;
@@ -229,7 +302,7 @@ index e128ffc..5da797b 100644
      } else {
          drawRectangle2D(gfx, 0, 0, (f32) gFramebufferWidth, (f32) gFramebufferHeight, 0, 0, 0);
      }
-@@ -96,6 +100,7 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+@@ -96,6 +102,7 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
  void sky_free(void){
      int i;
  
@@ -237,7 +310,7 @@ index e128ffc..5da797b 100644
      for(i = 0; i < 3; i++){
          if(gcSky.model[i]){
              model_free(gcSky.model[i]);
-@@ -123,8 +128,14 @@ void sky_reset(void){
+@@ -123,8 +130,14 @@ void sky_reset(void){
          }
      }
      gcSky.timer = 0.0f;
@@ -254,10 +327,10 @@ index e128ffc..5da797b 100644
 +#include "surreal.inc"
 diff --git a/src/core2/gc/surreal.inc b/src/core2/gc/surreal.inc
 new file mode 100644
-index 0000000..48ca544
+index 0000000..b28b51a
 --- /dev/null
 +++ b/src/core2/gc/surreal.inc
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,280 @@
 +/* "Surreal" mod - dream state and sky effects.
 + * This file is #included at the end of sky.c. It must not end in ".c": the Makefile
 + * compiles every *.c under src/ on its own. */
@@ -274,6 +347,13 @@ index 0000000..48ca544
 +static f32 sSurrealSavedRotation[3];
 +static f32 sSurrealSavedFovy;
 +static u8  sSurrealJellySkip;
++#ifdef SURREAL_TEST_MAP
++static s32 sSurrealDebugResized;
++static s32 sSurrealDebugGiants;
++static s32 sSurrealDebugTiny;
++static char sSurrealDebugText[0x40];
++static char sSurrealDebugGravityText[0x20];
++#endif
 +
 +/* .code */
 +f32 surreal_getTime(void) {
@@ -285,6 +365,21 @@ index 0000000..48ca544
 +    if (sSurrealTime > 7200.0f) {
 +        sSurrealTime -= 7200.0f;
 +    }
++#ifdef SURREAL_TEST_MAP
++    /* dev only: how many enemies were resized (total, giants, tiny) and the player's gravity */
++    sSurrealDebugText[0] = 0;
++    bk_strcat(sSurrealDebugText, "R ");
++    bk_strIToA(sSurrealDebugText, sSurrealDebugResized);
++    bk_strcat(sSurrealDebugText, " G ");
++    bk_strIToA(sSurrealDebugText, sSurrealDebugGiants);
++    bk_strcat(sSurrealDebugText, " T ");
++    bk_strIToA(sSurrealDebugText, sSurrealDebugTiny);
++    print_bold_spaced(0x20, 0xC0, (u8 *) sSurrealDebugText);
++    sSurrealDebugGravityText[0] = 0;
++    bk_strcat(sSurrealDebugGravityText, "GRAV ");
++    bk_strIToA(sSurrealDebugGravityText, (s32) -baphysics_get_gravity());
++    print_bold_spaced(0x20, 0xA8, (u8 *) sSurrealDebugGravityText);
++#endif
 +#ifdef SURREAL_TEST_SLIDESHOW
 +    {   /* dev only: hop through a list of {map, exit} pairs, a few seconds each */
 +        static s16 slides[][2] = {SURREAL_TEST_SLIDESHOW};
@@ -483,13 +578,19 @@ index 0000000..48ca544
 +    -1
 +};
 +
-+f32 surreal_getEnemyScale(s32 actor_id, s32 position[3]) {
++f32 surreal_getEnemyScale(s32 actor_id, f32 position[3]) {
 +    s32 i;
 +    u32 h;
 +
 +    for (i = 0; sSurrealResizableEnemies[i] != -1; i++) {
 +        if (actor_id == sSurrealResizableEnemies[i]) {
-+            h = __surreal_hash(position[0], position[1], position[2]) % 100;
++            /* coarse grid, so a few units of settling on the first frame don't change the size */
++            h = __surreal_hash((s32)position[0] >> 4, (s32)position[1] >> 4, (s32)position[2] >> 4) % 100;
++#ifdef SURREAL_TEST_MAP
++            sSurrealDebugResized++;             /* dev only: counted for the on-screen readout */
++            if (h < 12) { sSurrealDebugGiants++; }
++            if (h >= 12 && h < 30) { sSurrealDebugTiny++; }
++#endif
 +            if (h < 12) {
 +                return 2.1f;                    /* one in eight is a giant */
 +            }
