@@ -1,0 +1,520 @@
+diff --git a/Makefile b/Makefile
+index 5a19ed4..1304a36 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,8 +1,8 @@
+ ### Configuration ###
+ BASENAME := banjo
+ VERSION  ?= us.v10
+-ANTI_TAMPER ?= 1
+-ANTI_PIRACY ?= 1
++ANTI_TAMPER ?= 0
++ANTI_PIRACY ?= 0
+ 
+ ifeq ($(VERSION),us.v10)
+ 	C_VERSION=0
+@@ -209,6 +209,22 @@ endef
+ # Build tool flags
+ CFLAGS         := -c -Wab,-r4300_mul -non_shared -G 0 -Xcpluscomm $(OPT_FLAGS) $(MIPSBIT) -D_FINALROM -DF3DEX_GBI -DVERSION='$(C_VERSION)' -DNDEBUG -DBUILD_VERSION=VERSION_I -DBKDIFFS -DANTI_TAMPER='$(ANTI_TAMPER)' -DANTI_PIRACY='$(ANTI_PIRACY)'
+ CFLAGS         += -woff 649,654,838,807
++# Dev only: boot straight into a map, e.g. make TEST_MAP=0x1 TEST_EXIT=0x12
++ifneq ($(TEST_MAP),)
++CFLAGS         += -DSURREAL_TEST_MAP=$(TEST_MAP) -DSURREAL_TEST_EXIT=$(or $(TEST_EXIT),0)
++endif
++# Dev only: tour maps automatically, e.g. make TEST_SLIDESHOW='{0x2,0x5},{0x7,0x4}' TEST_SLIDE_SECONDS=4
++ifneq ($(TEST_SLIDESHOW),)
++CFLAGS         += '-DSURREAL_TEST_SLIDESHOW=$(TEST_SLIDESHOW)' -DSURREAL_TEST_SLIDE_SECONDS=$(or $(TEST_SLIDE_SECONDS),4)
++endif
++ifneq ($(TEST_GALLERY),)
++CFLAGS         += '-DSURREAL_TEST_GALLERY=$(TEST_GALLERY)' '-DSURREAL_TEST_CENTERS=$(TEST_CENTERS)'
++endif
++# Dev only: aim the camera for screenshots: elevation, pan speed (deg/s), start azimuth
++# e.g. make TEST_PITCH=25 TEST_YAW=45 TEST_YAW0=0
++ifneq ($(TEST_PITCH),)
++CFLAGS         += -DSURREAL_TEST_PITCH=$(TEST_PITCH) -DSURREAL_TEST_YAW=$(or $(TEST_YAW),0) -DSURREAL_TEST_YAW0=$(or $(TEST_YAW0),0)
++endif
+ CPPFLAGS       := -D_FINALROM -DN_MICRO -DNDEBUG -DBUILD_VERSION=VERSION_I -DBKDIFFS
+ INCLUDE_CFLAGS := -I . -I include -I lib/ultralib/include -I lib/ultralib/include/PR -I lib/ultralib/include/PRinternal -I lib/ultralib/include/compiler/ido -I include/n_audio/PR -I lib/ultralib/src/audio
+ OPT_FLAGS      := -O2
+diff --git a/include/core2/surreal.h b/include/core2/surreal.h
+new file mode 100644
+index 0000000..da3d2f5
+--- /dev/null
++++ b/include/core2/surreal.h
+@@ -0,0 +1,35 @@
++#ifndef BANJO_KAZOOIE_CORE2_SURREAL_H
++#define BANJO_KAZOOIE_CORE2_SURREAL_H
++
++#include <ultra64.h>
++#include "bool.h"
++
++/* "Surreal" mod: shared dream state. Implemented in src/core2/gc/surreal.inc
++ * (included from sky.c so no linker script changes are needed). */
++
++/* seconds of dream time; advances with the game clock (stops while paused) */
++f32  surreal_getTime(void);
++void surreal_update(void);
++
++/* sky */
++void surreal_sky_load(void);
++void surreal_sky_free(void);
++void surreal_sky_getTumble(f32 rotation[3]);
++void surreal_sky_drawObjects(Gfx **gfx, Mtx **mtx, f32 camera_position[3]);
++
++
++/* camera: called around the 3D world pass in gsworld_draw */
++void surreal_camera_begin(void);
++void surreal_camera_end(void);
++
++/* jelly: squash and stretch applied to every model except level geometry and the sky */
++void surreal_jelly_skipNext(void);
++bool surreal_jelly_getScale(f32 position[3], f32 radius, f32 scale[3]);
++
++/* vertical offset, in pixels, for a letter drawn at screen x */
++f32  surreal_getTextWave(f32 x);
++
++/* slow colour drift multiplied into the level geometry */
++void surreal_getWorldTint(s32 rgb[3]);
++
++#endif
+diff --git a/src/core1/code_0.c b/src/core1/code_0.c
+index 3c194d3..b910dc6 100644
+--- a/src/core1/code_0.c
++++ b/src/core1/code_0.c
+@@ -127,7 +127,11 @@ enum map_e getSpecialBootMap(void) {
+ }
+ 
+ enum map_e getDefaultBootMap(void) {
++#ifdef SURREAL_TEST_MAP
++    return SURREAL_TEST_MAP; /* dev only: boot straight into a map for testing */
++#else
+     return MAP_1F_CS_START_RAREWARE;
++#endif
+ }
+ 
+ void func_8023DBAC(void) {
+diff --git a/src/core1/viewport.c b/src/core1/viewport.c
+index a360ef8..bc45e9b 100644
+--- a/src/core1/viewport.c
++++ b/src/core1/viewport.c
+@@ -215,10 +215,12 @@ void viewport_unused_pushVpScaleAndTranslation(f32 scale_x, f32 scale_y, f32 tra
+ }
+ 
+ void viewport_update(void) {
+-    func_80256E24(sViewportFrustumPlanes[0], sViewportRotation[0], sViewportRotation[1], -89.21774f, 0.0f, 45.168514251708984f);
+-    func_80256E24(sViewportFrustumPlanes[1], sViewportRotation[0], sViewportRotation[1], 89.21774f, 0.0f, 45.168514251708984f);
+-    func_80256E24(sViewportFrustumPlanes[2], sViewportRotation[0], sViewportRotation[1], 0.0f, 93.9692611694336f, 34.20201110839844f);
+-    func_80256E24(sViewportFrustumPlanes[3], sViewportRotation[0], sViewportRotation[1], 0.0f, -93.9692611694336f, 34.20201110839844f);
++    /* Surreal mod: the culling frustum is hard-coded for a 40 degree lens with no roll.
++     * Widened to half-angles of 40 (horizontal) and 34 (vertical) degrees for the dream camera. */
++    func_80256E24(sViewportFrustumPlanes[0], sViewportRotation[0], sViewportRotation[1], -76.604f, 0.0f, 64.279f);
++    func_80256E24(sViewportFrustumPlanes[1], sViewportRotation[0], sViewportRotation[1], 76.604f, 0.0f, 64.279f);
++    func_80256E24(sViewportFrustumPlanes[2], sViewportRotation[0], sViewportRotation[1], 0.0f, 82.904f, 55.919f);
++    func_80256E24(sViewportFrustumPlanes[3], sViewportRotation[0], sViewportRotation[1], 0.0f, -82.904f, 55.919f);
+ 
+     ml_vec3f_normalize(sViewportFrustumPlanes[0]);
+     ml_vec3f_normalize(sViewportFrustumPlanes[1]);
+diff --git a/src/core2/code_5C870.c b/src/core2/code_5C870.c
+index 411af64..4f48556 100644
+--- a/src/core2/code_5C870.c
++++ b/src/core2/code_5C870.c
+@@ -411,7 +411,11 @@ void game_init(enum map_e map_id){
+     level_load(map_id);
+     gcsection_setJiggyListForMap(map_id);
+     func_802E3854();
++#ifdef SURREAL_TEST_EXIT
++    game_loadMap(map_id, SURREAL_TEST_EXIT, 0); /* dev only */
++#else
+     game_loadMap(map_id, 0, 0);
++#endif
+     sGameState.unk0 = 0;
+     game_setMode(GAME_MODE_3_NORMAL,1);
+ }
+diff --git a/src/core2/gc/sky.c b/src/core2/gc/sky.c
+index e128ffc..5da797b 100644
+--- a/src/core2/gc/sky.c
++++ b/src/core2/gc/sky.c
+@@ -2,6 +2,7 @@
+ #include "core1/core1.h"
+ #include "functions.h"
+ #include "variables.h"
++#include "core2/surreal.h"
+ 
+ typedef struct {
+     s16 model_id;
+@@ -85,9 +86,12 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+                 rotation[0] = 0.0f;
+                 rotation[1] = gcSky.sky_info->sky_list[i].rotation_speed * gcSky.timer;
+                 rotation[2] = 0.0f;
++                surreal_sky_getTumble(rotation);
++                surreal_jelly_skipNext();
+                 modelRender_draw(gfx, mtx, position, rotation, gcSky.sky_info->sky_list[i].scale, NULL, sky_model_bin);
+             }
+         }
++        surreal_sky_drawObjects(gfx, mtx, position);
+     } else {
+         drawRectangle2D(gfx, 0, 0, (f32) gFramebufferWidth, (f32) gFramebufferHeight, 0, 0, 0);
+     }
+@@ -96,6 +100,7 @@ void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+ void sky_free(void){
+     int i;
+ 
++    surreal_sky_free();
+     for(i = 0; i < 3; i++){
+         if(gcSky.model[i]){
+             model_free(gcSky.model[i]);
+@@ -123,8 +128,14 @@ void sky_reset(void){
+         }
+     }
+     gcSky.timer = 0.0f;
++    if (gcSky.model_bins[0] != NULL) {
++        surreal_sky_load();
++    }
+ }
+ 
+ void sky_update(void){
+     gcSky.timer += time_getDelta();
++    surreal_update();
+ }
++
++#include "surreal.inc"
+diff --git a/src/core2/gc/surreal.inc b/src/core2/gc/surreal.inc
+new file mode 100644
+index 0000000..502045b
+--- /dev/null
++++ b/src/core2/gc/surreal.inc
+@@ -0,0 +1,214 @@
++/* "Surreal" mod - dream state and sky effects.
++ * This file is #included at the end of sky.c. It must not end in ".c": the Makefile
++ * compiles every *.c under src/ on its own. */
++#include "core2/surreal.h"
++
++extern f32 sinf(f32);
++extern f32 cosf(f32);
++
++#define SURREAL_DTOR 0.017453292f
++
++/* .bss */
++static f32 sSurrealTime;
++static BKModelBin *sSurrealSkyBins[2];
++static f32 sSurrealSavedRotation[3];
++static f32 sSurrealSavedFovy;
++static u8  sSurrealJellySkip;
++
++/* .code */
++f32 surreal_getTime(void) {
++    return sSurrealTime;
++}
++
++void surreal_update(void) {
++    sSurrealTime += time_getDelta();
++    if (sSurrealTime > 7200.0f) {
++        sSurrealTime -= 7200.0f;
++    }
++#ifdef SURREAL_TEST_SLIDESHOW
++    {   /* dev only: hop through a list of {map, exit} pairs, a few seconds each */
++        static s16 slides[][2] = {SURREAL_TEST_SLIDESHOW};
++        static s32 index = 0;
++        static f32 timer = 0.0f;
++
++        timer += time_getDelta();
++        if (timer > SURREAL_TEST_SLIDE_SECONDS && index < (s32)(sizeof(slides) / sizeof(slides[0]))) {
++            timer = 0.0f;
++            transitionToMap(slides[index][0], slides[index][1], 0);
++            index++;
++        }
++    }
++#endif
++}
++
++/* The oddity that drifts across each world's sky, picked by map id */
++static enum asset_e sSurrealSkyOddities[] = {
++    ASSET_35F_MODEL_JIGGY,
++    ASSET_46F_MODEL_CUCKOO_CLOCK,
++    ASSET_46E_MODEL_FISHBOWL,
++    ASSET_363_MODEL_HONEYCOMB,
++    ASSET_380_MODEL_PINK_EGG_LARGEST,
++    ASSET_3BB_MODEL_JINJO_YELLOW
++};
++#define SURREAL_SKY_ODDITY_COUNT (sizeof(sSurrealSkyOddities) / sizeof(sSurrealSkyOddities[0]))
++
++void surreal_sky_load(void) {
++    /* the eye that watches every open sky */
++    sSurrealSkyBins[0] = assetcache_get(ASSET_37D_MODEL_CLAM_EYE);
++    sSurrealSkyBins[1] = assetcache_get(sSurrealSkyOddities[gsworld_getMap() % SURREAL_SKY_ODDITY_COUNT]);
++}
++
++void surreal_sky_free(void) {
++    s32 i;
++
++    for (i = 0; i < 2; i++) {
++        if (sSurrealSkyBins[i] != NULL) {
++            assetcache_release(sSurrealSkyBins[i]);
++            sSurrealSkyBins[i] = NULL;
++        }
++    }
++}
++
++/* The sky no longer just spins around the vertical axis: it slowly rolls and nods */
++void surreal_sky_getTumble(f32 rotation[3]) {
++    f32 t = sSurrealTime;
++
++    rotation[0] += 22.0f * sinf(t * 0.11f);
++    rotation[1] += t * 2.0f;
++    rotation[2] += 35.0f * sinf(t * 0.07f + 1.0f);
++}
++
++static void __surreal_sky_drawObject(Gfx **gfx, Mtx **mtx, BKModelBin *model_bin, f32 camera_position[3],
++                                     f32 azimuth, f32 elevation, f32 distance, f32 scale, f32 rotation[3]) {
++    f32 position[3];
++    f32 horizontal;
++
++    if (model_bin == NULL) {
++        return;
++    }
++    horizontal = distance * cosf(elevation * SURREAL_DTOR);
++    position[0] = camera_position[0] + horizontal * sinf(azimuth * SURREAL_DTOR);
++    position[1] = camera_position[1] + distance * sinf(elevation * SURREAL_DTOR);
++    position[2] = camera_position[2] + horizontal * cosf(azimuth * SURREAL_DTOR);
++    /* drawn with the default depth mode (none), like the sky itself, so the whole world covers it */
++    modelRender_draw(gfx, mtx, position, rotation, scale, NULL, model_bin);
++}
++
++void surreal_sky_drawObjects(Gfx **gfx, Mtx **mtx, f32 camera_position[3]) {
++    f32 t = sSurrealTime;
++    f32 rotation[3];
++    f32 azimuth;
++    f32 elevation;
++
++    /* the eye: hangs high in the north-east, bobbing, always turned to the camera */
++    azimuth = 40.0f + 12.0f * sinf(t * 0.05f);
++    elevation = 38.0f + 6.0f * sinf(t * 0.13f);
++    /* the model's pupil faces +Y: tip it over and turn it back towards the camera */
++    rotation[0] = 90.0f + elevation;
++    rotation[1] = azimuth + 180.0f;
++    rotation[2] = 0.0f;
++    __surreal_sky_drawObject(gfx, mtx, sSurrealSkyBins[0], camera_position, azimuth, elevation, 6000.0f,
++                             58.0f + 5.0f * sinf(t * 0.9f), rotation);
++
++    /* the oddity: circles the horizon the other way, tumbling end over end */
++    azimuth = 200.0f - t * 3.0f;
++    elevation = 24.0f + 10.0f * sinf(t * 0.21f);
++    rotation[0] = t * 17.0f;
++    rotation[1] = t * 29.0f;
++    rotation[2] = t * 11.0f;
++    __surreal_sky_drawObject(gfx, mtx, sSurrealSkyBins[1], camera_position, azimuth, elevation, 6000.0f, 9.0f, rotation);
++#ifdef SURREAL_TEST_GALLERY
++    {   /* dev only: a row of candidate models dead ahead */
++        static s16 ids[] = {SURREAL_TEST_GALLERY};
++        static f32 centers[][3] = {SURREAL_TEST_CENTERS};
++        static BKModelBin *bins[16];
++        f32 look[3];
++        f32 pos[3];
++        s32 i;
++        s32 n = sizeof(ids) / sizeof(ids[0]);
++        viewport_getLookVector(look);
++        for (i = 0; i < n; i++) {
++            BKModelBin *bin;
++            f32 radius;
++            if (bins[i] == NULL) { bins[i] = assetcache_get(ids[i]); }
++            bin = bins[i];
++            radius = (f32) modelbin_getVtxList(bin)->local_norm;
++            pos[0] = camera_position[0] + look[0] * 3000.0f + (i - (n - 1) * 0.5f) * 700.0f * look[2];
++            pos[1] = camera_position[1] + look[1] * 3000.0f + 300.0f;
++            pos[2] = camera_position[2] + look[2] * 3000.0f - (i - (n - 1) * 0.5f) * 700.0f * look[0];
++            rotation[0] = rotation[2] = 0.0f; rotation[1] = t * 60.0f;
++            modelRender_draw(gfx, mtx, pos, rotation, 280.0f / radius, centers[i], bin);
++        }
++    }
++#endif
++}
++
++/* ---------------------------------------------------------------- camera
++ * The lens breathes (field of view) and the horizon sways (roll). Applied only for the
++ * duration of the world pass so the camera logic never sees the modified values. */
++void surreal_camera_begin(void) {
++    f32 t = sSurrealTime;
++    f32 rotation[3];
++
++    viewport_getRotation_vec3f(sSurrealSavedRotation);
++    sSurrealSavedFovy = viewport_getFOVy();
++
++    rotation[0] = sSurrealSavedRotation[0];
++    rotation[1] = sSurrealSavedRotation[1];
++    rotation[2] = sSurrealSavedRotation[2] + 3.5f * sinf(t * 0.37f) + 1.5f * sinf(t * 0.83f + 2.0f);
++#ifdef SURREAL_TEST_PITCH
++    /* dev only: aim the camera for screenshots. Elevation in degrees (up is positive) and a
++     * compass azimuth that advances SURREAL_TEST_YAW degrees per second for a panorama. */
++    rotation[0] = SURREAL_TEST_PITCH;
++    rotation[1] = 180.0f + SURREAL_TEST_YAW0 + SURREAL_TEST_YAW * t;
++#endif
++    viewport_setRotation_vec3f(rotation);
++    viewport_setFOVy(sSurrealSavedFovy + 5.0f + 5.0f * sinf(t * 0.29f));
++    viewport_update();
++}
++
++void surreal_camera_end(void) {
++    viewport_setRotation_vec3f(sSurrealSavedRotation);
++    viewport_setFOVy(sSurrealSavedFovy);
++    viewport_update();
++}
++
++/* ---------------------------------------------------------------- jelly
++ * Everything alive wobbles: taller-and-thinner, then shorter-and-fatter. The phase comes
++ * from where the thing stands, so a crowd ripples instead of pulsing in step, and
++ * anything that moves wobbles faster. Big objects wobble less so platforms stay usable. */
++void surreal_jelly_skipNext(void) {
++    sSurrealJellySkip = TRUE;
++}
++
++bool surreal_jelly_getScale(f32 position[3], f32 radius, f32 scale[3]) {
++    f32 amplitude;
++    f32 wave;
++
++    if (sSurrealJellySkip) {
++        sSurrealJellySkip = FALSE;
++        return FALSE;
++    }
++    amplitude = 0.13f;
++    if (radius > 150.0f) {
++        amplitude *= 150.0f / radius;
++    }
++    wave = sinf(sSurrealTime * 4.3f + (position[0] + position[2]) * 0.011f + position[1] * 0.007f);
++    scale[1] = 1.0f + amplitude * wave;
++    scale[0] = scale[2] = 1.0f - 0.6f * amplitude * wave;
++    return TRUE;
++}
++
++/* ---------------------------------------------------------------- world tint */
++void surreal_getWorldTint(s32 rgb[3]) {
++    f32 t = sSurrealTime * 0.23f;
++
++    rgb[0] = (s32)(222.0f + 33.0f * sinf(t));
++    rgb[1] = (s32)(222.0f + 33.0f * sinf(t + 2.094f));
++    rgb[2] = (s32)(222.0f + 33.0f * sinf(t + 4.189f));
++}
++
++/* ---------------------------------------------------------------- text */
++f32 surreal_getTextWave(f32 x) {
++    return 2.2f * sinf(sSurrealTime * 3.1f + x * 0.045f);
++}
+diff --git a/src/core2/gsworld.c b/src/core2/gsworld.c
+index d1b2f13..b331ce1 100644
+--- a/src/core2/gsworld.c
++++ b/src/core2/gsworld.c
+@@ -6,6 +6,7 @@
+ #include "core2/anim/sprite.h"
+ #include <core2/file.h>
+ #include "core2/particle.h"
++#include "core2/surreal.h"
+ 
+ struct gsworld_data_s {
+     s32 unk0; // probably game_mode_e
+@@ -42,6 +43,7 @@ void gsworld_draw(Gfx** gfx, Mtx **mtx, Vtx **vtx) {
+     }
+ 
+     spawnQueue_unlock();
++    surreal_camera_begin();
+     sky_draw(gfx, mtx, vtx);
+     core2_34790_getClipDistances(&near, &far);
+     viewport_setNearAndFar(near, far);
+@@ -105,6 +107,7 @@ void gsworld_draw(Gfx** gfx, Mtx **mtx, Vtx **vtx) {
+         func_802BBD0C(gfx, mtx, vtx);
+     }
+ 
++    surreal_camera_end();
+     spawnQueue_lock();
+ }
+ 
+diff --git a/src/core2/mapModel.c b/src/core2/mapModel.c
+index b1a03c5..0340aa4 100644
+--- a/src/core2/mapModel.c
++++ b/src/core2/mapModel.c
+@@ -1,6 +1,7 @@
+ #include <ultra64.h>
+ #include "functions.h"
+ #include "variables.h"
++#include "core2/surreal.h"
+ 
+ #include "core2/modelRender.h"
+ #include "core2/coords.h"
+@@ -344,7 +345,13 @@ void mapModel_opa_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+         if (temp_a0 != 0) {
+             modelRender_setAnimatedTexturesCacheId(temp_a0);
+         }
+-        modelRender_setEnvColor(mapModel.env_red, mapModel.env_green, mapModel.env_blue, 0xFF);
++        {
++            s32 tint[3];
++
++            surreal_getWorldTint(tint);
++            modelRender_setEnvColor((mapModel.env_red * tint[0]) / 0xFF, (mapModel.env_green * tint[1]) / 0xFF, (mapModel.env_blue * tint[2]) / 0xFF, 0xFF);
++        }
++        surreal_jelly_skipNext();
+         modelRender_draw(gfx, mtx, NULL, NULL, mapModel.description->scale, NULL, mapModel.model_bin_opa);
+         if (!mapModel_has_xlu_bin()) {
+             func_802F7BC0(gfx, mtx, vtx);
+@@ -364,7 +371,13 @@ void mapModel_xlu_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+         if (temp_a0 != 0) {
+             modelRender_setAnimatedTexturesCacheId(temp_a0);
+         }
+-        modelRender_setEnvColor(mapModel.env_red, mapModel.env_green, mapModel.env_blue, 0xFF);
++        {
++            s32 tint[3];
++
++            surreal_getWorldTint(tint);
++            modelRender_setEnvColor((mapModel.env_red * tint[0]) / 0xFF, (mapModel.env_green * tint[1]) / 0xFF, (mapModel.env_blue * tint[2]) / 0xFF, 0xFF);
++        }
++        surreal_jelly_skipNext();
+         modelRender_draw(gfx, mtx, NULL, NULL, mapModel.description->scale, NULL, mapModel.model_bin_xlu);
+         func_802F7BC0(gfx, mtx, vtx);
+     }
+diff --git a/src/core2/modelRender.c b/src/core2/modelRender.c
+index 50dfb65..307448a 100644
+--- a/src/core2/modelRender.c
++++ b/src/core2/modelRender.c
+@@ -1,6 +1,7 @@
+ #include <ultra64.h>
+ #include "functions.h"
+ #include "variables.h"
++#include "core2/surreal.h"
+ #include "core1/core1.h"
+ #include "core2/core2.h"
+ #include "animation.h"
+@@ -1118,6 +1119,13 @@ BKModelBin *modelRender_draw(Gfx **gfx, Mtx **mtx, f32 position[3], f32 rotation
+     if(D_803837B0.unk0){
+         mlMtxRotatePYR(D_803837B0.unk4[0], D_803837B0.unk4[1], D_803837B0.unk4[2]);
+     }
++    {
++        f32 jelly[3];
++
++        if (surreal_jelly_getScale(object_position, spD4 * scale, jelly)) {
++            mlMtxScale_xyz(jelly[0], jelly[1], jelly[2]);
++        }
++    }
+     mlMtxGet(&D_80383BF8);
+ 
+     mlMtxApply(*mtx);
+diff --git a/src/core2/print.c b/src/core2/print.c
+index 784cec1..7a032d7 100644
+--- a/src/core2/print.c
++++ b/src/core2/print.c
+@@ -2,6 +2,7 @@
+ #include "core1/core1.h"
+ #include "functions.h"
+ #include "variables.h"
++#include "core2/surreal.h"
+ 
+ #define PRINT_BUFFER_COUNT 0x20
+ #define PRINT_BUFFER_STRING_MAX_LENGTH 0x20
+@@ -575,6 +576,11 @@ void _printbuffer_draw_letter(char letter, f32* xPtr, f32* yPtr, f32 scale, Gfx
+             break;
+     }//L802F5778
+ 
++    if (valid_letter) {
++        /* Surreal mod: every line of text rides a slow wave */
++        y += surreal_getTextWave(x);
++    }
++
+     if(!valid_letter || print_sInFontFormatMode){
+         print_sInFontFormatMode = FALSE;
+         switch(letter){
