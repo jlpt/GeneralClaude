@@ -188,13 +188,14 @@ overlay:
 
 ```c
 // at the bottom of src/MM/mmspawnqueue.c
-#include "ch/myenemy.inc.c"
+#include "ch/myenemy.inc"
 ```
 
-Use an extension other than `.c` (such as `.inc.c` or `.h`) so the Makefile
-doesn't also try to compile it on its own. The Makefile compiles every `*.c`
-under `src/`, but that's harmless since unlisted objects aren't linked. This
-is the most robust approach.
+The file name must **not end in `.c`** (use `.inc` or `.h`). The Makefile
+compiles every `*.c` under `src/` on its own, and that includes names like
+`myenemy.inc.c`. A fragment compiled standalone fails with syntax errors
+because it has none of the host file's includes. (Verified the hard way while
+building the Surreal mod in `../banjo-kazooie-surreal/`.)
 
 ### Option B: list it in the splat yaml
 

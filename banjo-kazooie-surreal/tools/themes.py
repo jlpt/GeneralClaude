@@ -17,8 +17,8 @@ theme("spiral mountain",   ids(0x14CF, 0x14D0),                 hue=170, sat=1.1
 theme("spiral mtn sky",    ids(0x7C4),                          hue=180, sat=1.25)
 theme("banjo's house",     ids(0x14A2),                         hue=95,  sat=1.2,  jitter=30)
 
-# ---- Mumbo's Mountain: pink jungle, blue earth, golden water
-theme("mumbo's mountain",  ids(0x14AA, 0x14AB, 0x14AC, 0x14AD), hue=200, sat=1.15, jitter=30)
+# ---- Mumbo's Mountain: golden grass, rose cliffs
+theme("mumbo's mountain",  ids(0x14AA, 0x14AB, 0x14AC, 0x14AD), hue=300, sat=1.2,  val=1.12, jitter=30)
 theme("mm sky",            ids(0x7BD, 0x7BE),                   hue=270, sat=1.2)
 theme("mumbo's skull",     ids(0x14AE),                         hue=180, sat=1.3,  jitter=40)
 
@@ -44,8 +44,8 @@ theme("gv sky",            ids(0x7C1),                          hue=150, sat=1.2
 theme("mad monster",       ids((0x147F, 0x149B)),               hue=110, sat=1.25, jitter=35)
 theme("mmm sky",           ids(0x7C2, 0x7C3),                   hue=110, sat=1.3)
 
-# ---- Rusty Bucket Bay: the greys get a thermal-camera treatment
-theme("rusty bucket bay",  ids((0x14B0, 0x14C7)),               duo=(250, 400), sat=1.0, jitter=25)
+# ---- Rusty Bucket Bay: violet rust, lime water
+theme("rusty bucket bay",  ids((0x14B0, 0x14C7)),               hue=130, sat=1.9,  val=1.25, jitter=35)
 theme("rbb sky",           ids(0x7C5),                          hue=120, sat=1.6)
 
 # ---- Click Clock Wood: every season is the wrong season

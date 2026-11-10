@@ -9,7 +9,7 @@
  *          BS_18_FLY_KNOCKBACK,
  *          BS_19_DOUBLE_JUMP,          // new (0x19 was unused)
  *          BS_1A_WONDERWING_ENTER = 0x1A,
- *   2. Put this code in src/core2/bs/doublejump.inc.c and #include it at the
+ *   2. Put this code in src/core2/bs/doublejump.inc and #include it at the
  *      end of src/core2/bs/jump.c (or list a new .c in the yaml).
  *   3. src/core2/bsmethods.c, bsMethodsTable[] (before the {0} terminator):
  *          {BS_19_DOUBLE_JUMP, bsdoublejump_init, bsdoublejump_update, bsdoublejump_end, func_80296608},

@@ -12,8 +12,8 @@
  * new assets. Swap the ASSET_* / SFX_* ids for your own.
  *
  * To use it (see chapter 4 of the guide):
- *   1. Copy to e.g. src/MM/ch/myenemy.inc.c and add
- *          #include "ch/myenemy.inc.c"
+ *   1. Copy to e.g. src/MM/ch/myenemy.inc and add
+ *          #include "ch/myenemy.inc"
  *      at the bottom of src/MM/mmspawnqueue.c (or list it in the splat yaml).
  *   2. Add ACTOR_3CC_MY_ENEMY / MARKER_29F_MY_ENEMY to include/enums.h
  *      (the #defines below are only a fallback).
