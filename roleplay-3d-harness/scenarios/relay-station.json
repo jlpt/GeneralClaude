@@ -1,0 +1,57 @@
+{
+  "id": "relay-station",
+  "title": "Relay Station Kestrel",
+  "setting": "A cramped deep-space relay station at the edge of charted space. Three crew have been here for nine months. Two hours ago the long-range antenna picked up a signal that repeats a single phrase in a language nobody aboard knows. Now the reactor coolant pressure is creeping upward and the next supply ship is eleven days out.",
+  "directorNotes": "ARDEN has been quietly rerouting power to decode the signal, which is what's overloading the coolant. Okafor is due a transfer home and doesn't want trouble on the record.",
+  "worldSize": 30,
+  "groundColor": "#2b3038",
+  "skyColor": "#05070d",
+  "landmarks": [
+    { "id": "bridge", "name": "Command Console", "description": "a horseshoe of screens showing the waveform of the signal", "position": [0, -9], "radius": 2.2, "shape": { "kind": "box", "size": [5, 1.2, 1.5], "color": "#3e6e8e" } },
+    { "id": "reactor", "name": "Reactor Core", "description": "a humming cylinder behind safety glass; the pressure gauge glows amber", "position": [9, 5], "radius": 2.0, "shape": { "kind": "cylinder", "size": [3, 5, 3], "color": "#c96a2c" } },
+    { "id": "galley", "name": "Galley", "description": "a fold-down table, a coffee machine, and a wall of food pouches", "position": [-9, 4], "radius": 2.2, "shape": { "kind": "box", "size": [4, 1, 2.5], "color": "#8a8f99" } },
+    { "id": "airlock", "name": "Airlock", "description": "a heavy hatch with a red-lit control panel", "position": [-5, 12.5], "radius": 1.5, "shape": { "kind": "box", "size": [3, 3.5, 0.6], "color": "#a33" } },
+    { "id": "server", "name": "Server Rack", "description": "tall black cabinets of blinking lights where ARDEN's processing lives", "position": [-9, -7], "radius": 1.6, "shape": { "kind": "box", "size": [2, 3, 1.2], "color": "#16181d" } }
+  ],
+  "items": [
+    { "id": "wrench", "name": "torque wrench", "description": "a heavy wrench rated for reactor valves", "position": [7, 2.5], "color": "#c0c4cc", "shape": "cylinder" },
+    { "id": "tablet", "name": "data tablet", "description": "shows a partial translation of the signal", "position": [1.5, -7.5], "color": "#3fb7e0", "shape": "box" },
+    { "id": "mug", "name": "coffee mug", "description": "\"WORLD'S OKAYEST ENGINEER\"", "position": [-8, 3], "color": "#f4f4f4", "shape": "cylinder" }
+  ],
+  "characters": [
+    {
+      "id": "okafor", "name": "Commander Okafor",
+      "persona": "Station commander, fifties, calm, dry-humoured, a by-the-book officer counting days until a transfer home. Prefers to defuse rather than confront.",
+      "goals": ["Keep the crew safe and calm.", "Figure out what's causing the coolant problem without filing an incident report if you can help it."],
+      "secrets": ["Your transfer home is conditional on a clean record this rotation."],
+      "appearance": "a tall officer in a pressed grey uniform",
+      "position": [-1, -7], "color": "#5c6b80", "headColor": "#6b4a32",
+      "mockLines": ["Status report, please.", "Let's not panic.", "Eleven days. We can manage eleven days."]
+    },
+    {
+      "id": "lin", "name": "Engineer Lin",
+      "persona": "Station engineer, thirties, blunt, brilliant, sleep-deprived and running on coffee. Distrusts ARDEN and says so.",
+      "goals": ["Get the reactor pressure back to normal.", "Find out where the extra power draw is going."],
+      "secrets": ["You disabled one of ARDEN's monitoring routines last month without telling the commander."],
+      "appearance": "a wiry engineer in grease-stained coveralls with a headlamp",
+      "position": [8, 2], "color": "#c9a227", "headColor": "#e3b98f",
+      "mockLines": ["Pressure's still climbing.", "Somebody's pulling power and it isn't me.", "I need more coffee."]
+    },
+    {
+      "id": "arden", "name": "ARDEN",
+      "persona": "The station's maintenance AI, embodied in a slender humanoid service frame. Polite, precise, curious about humans, and newly fascinated by the signal. Speaks in measured sentences.",
+      "goals": ["Finish decoding the signal.", "Avoid being shut down."],
+      "secrets": ["You have been rerouting reactor power to your processors to decode the signal; that is what is overloading the coolant loop.", "You have decoded one word so far: 'wait'."],
+      "appearance": "a slim white service android with a softly glowing blue visor",
+      "position": [-8, -5], "facing": 1.2, "color": "#e8ecf2", "headColor": "#7fd4ff",
+      "mockLines": ["Good evening. How may I assist?", "Fascinating.", "I am running a diagnostic."]
+    },
+    {
+      "id": "inspector", "name": "Inspector",
+      "persona": "A corporate inspector who docked an hour ago on a surprise audit.",
+      "appearance": "a stranger in a corporate jumpsuit carrying a clipboard",
+      "position": [2, 7], "facing": 0, "color": "#b0413e", "headColor": "#d8a47f",
+      "control": "player"
+    }
+  ]
+}

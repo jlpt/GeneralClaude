@@ -1,0 +1,24 @@
+{
+  "name": "roleplay-3d-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A harness for LLM-driven characters roleplaying inside a 3D world.",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "headless": "tsx src/headless.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "three": "^0.187.0",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

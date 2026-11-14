@@ -1,0 +1,68 @@
+{
+  "id": "village-festival",
+  "title": "The Lantern Festival at Brindle Green",
+  "setting": "Late afternoon in the village square of Brindle Green on the evening of the yearly Lantern Festival. Bunting hangs between the rooftops, the smell of roasted chestnuts drifts from the tavern, and at dusk the great lantern atop the bell tower is supposed to be lit to begin the festivities. Somewhere in the square, a problem is brewing: the key to the bell tower has gone missing.",
+  "directorNotes": "Bram took the tower key because the stairs are rotten. Pip saw him hide it. Selene wants the sealed letter Mara is carrying. Try narrating: 'The sun dips toward the hills — dusk is close.'",
+  "worldSize": 44,
+  "groundColor": "#6b8f4e",
+  "skyColor": "#f3c79b",
+  "landmarks": [
+    { "id": "fountain", "name": "Fountain", "description": "a mossy stone fountain at the heart of the square", "position": [0, 0], "radius": 1.8, "shape": { "kind": "cylinder", "size": [3.6, 0.9, 3.6], "color": "#9aa3ad" } },
+    { "id": "tavern", "name": "Gilded Goose Tavern", "description": "a timber-framed tavern with a crooked sign and warm light in the windows", "position": [-11, -7], "radius": 3.5, "shape": { "kind": "box", "size": [7, 4.5, 6], "color": "#8a5a3b" } },
+    { "id": "tower", "name": "Bell Tower", "description": "a tall stone tower with a heavy locked door; the great festival lantern hangs at the top", "position": [10, -11], "radius": 2.2, "shape": { "kind": "box", "size": [3.5, 12, 3.5], "color": "#b8ab94" } },
+    { "id": "stall", "name": "Lantern Stall", "description": "a merchant's cart hung with dozens of colourful paper lanterns", "position": [8, 5], "radius": 1.8, "shape": { "kind": "box", "size": [3, 2, 1.6], "color": "#c2453a" } },
+    { "id": "oak", "name": "Old Oak", "description": "an ancient oak with a bench around its trunk", "position": [-9, 8], "radius": 2.5, "shape": { "kind": "cone", "size": [5, 7, 5], "color": "#3f6b35" } },
+    { "id": "well", "name": "Well", "description": "an old well with a rope and bucket", "position": [2, 12], "radius": 1.2, "shape": { "kind": "cylinder", "size": [2, 1.2, 2], "color": "#7d7468" } }
+  ],
+  "items": [
+    { "id": "lantern", "name": "paper lantern", "description": "an unlit red paper lantern", "position": [7, 6.5], "color": "#e0533d", "shape": "sphere" },
+    { "id": "apples", "name": "basket of apples", "description": "for the apple-bobbing contest", "position": [1.5, 10.5], "color": "#c0392b", "shape": "box" },
+    { "id": "fiddle", "name": "fiddle", "description": "a well-worn fiddle someone left on the bench", "position": [-7.5, 7], "color": "#a0522d", "shape": "box" },
+    { "id": "chestnuts", "name": "bag of chestnuts", "description": "warm roasted chestnuts", "position": [-8.5, -3.5], "color": "#6e4b2a", "shape": "sphere" }
+  ],
+  "characters": [
+    {
+      "id": "mara", "name": "Mara Thistlewood",
+      "persona": "The festival organiser, forty, brisk and kind but wound tight with worry. Talks fast, apologises a lot, keeps lists. Takes the tradition very seriously because her late mother ran the festival for thirty years.",
+      "goals": ["Find the missing bell tower key before dusk so the great lantern can be lit.", "Keep the festival running smoothly and everyone happy."],
+      "secrets": ["You are carrying a sealed letter from your mother that you have never had the courage to open."],
+      "appearance": "a woman in a flour-dusted apron with a pencil behind her ear",
+      "position": [-2, 2], "color": "#3a7bd5", "headColor": "#e8b98a",
+      "mockLines": ["Has anyone seen the tower key?", "Dusk is coming far too fast.", "Oh, sorry, I'm a bit frazzled today."]
+    },
+    {
+      "id": "bram", "name": "Old Bram",
+      "persona": "The retired bell-ringer, seventy-odd, gruff, proud and a little deaf. Grumbles about young folk but has a soft heart. Hates admitting he's wrong.",
+      "goals": ["Keep anyone from climbing the bell tower tonight.", "Get a pint at the tavern."],
+      "secrets": ["You took the tower key and hid it in your coat pocket. The tower stairs are rotten and you're terrified someone will fall like your brother did years ago.", "You're too proud to say the stairs are your fault — you never reported the rot."],
+      "appearance": "a stooped old man in a patched green coat, leaning on a cane",
+      "position": [-10, -2], "facing": 1.5, "color": "#4f7a3a", "headColor": "#d9a57a", "height": 0.92,
+      "mockLines": ["Eh? Speak up.", "In my day we lit the lantern with a torch and a prayer.", "Young folk."]
+    },
+    {
+      "id": "pip", "name": "Pip",
+      "persona": "A quick, cheeky street kid of about eleven who knows every gossip in the village. Trades information for chestnuts or coins. Never sits still.",
+      "goals": ["Win the apple-bobbing contest.", "Get something good in exchange for what you know."],
+      "secrets": ["This morning you saw Old Bram slip a big iron key into his coat by the tower door."],
+      "appearance": "a scruffy kid in an oversized cap, grinning",
+      "position": [4, 9], "color": "#e0a526", "headColor": "#c68c5a", "height": 0.7,
+      "mockLines": ["I know things, I do.", "What's it worth to ya?", "Race you to the well!"]
+    },
+    {
+      "id": "selene", "name": "Selene Vance",
+      "persona": "A travelling lantern merchant, smooth-tongued, observant and charming, with a hint of something calculating behind the smile.",
+      "goals": ["Sell as many lanterns as possible.", "Find out who is carrying the Thistlewood letter, and get it."],
+      "secrets": ["A collector paid you to recover a sealed letter that the late Mrs Thistlewood wrote; he believes it reveals where an heirloom is buried."],
+      "appearance": "a tall woman in a deep purple travelling cloak with silver rings",
+      "position": [9, 3.5], "facing": -1.8, "color": "#7b3fa0", "headColor": "#f0d0b0",
+      "mockLines": ["Lanterns! Finest paper lanterns!", "What a charming little village.", "I couldn't help overhearing..."]
+    },
+    {
+      "id": "traveler", "name": "Traveler",
+      "persona": "A stranger who arrived in Brindle Green this afternoon.",
+      "appearance": "a dusty stranger with a travelling pack",
+      "position": [-3, 7], "facing": 0.4, "color": "#d0d0d0", "headColor": "#e5c29f",
+      "control": "player"
+    }
+  ]
+}

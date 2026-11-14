@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roleplay 3D Harness</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <main id="viewport">
+      <div id="scene-title"><span id="title">Loading…</span><span id="clock">0.0s</span></div>
+      <div id="hint">Drag to orbit · scroll to zoom · click a character to inspect</div>
+
+      <section id="player-bar" hidden>
+        <div class="row">
+          <label>Playing as
+            <select id="player-select"></select>
+          </label>
+          <span class="muted small">Click the ground to walk (shift = run). Click people/things to target them.</span>
+        </div>
+        <form id="say-form" class="row">
+          <select id="say-volume" title="Volume">
+            <option value="normal">say</option>
+            <option value="whisper">whisper</option>
+            <option value="shout">shout</option>
+          </select>
+          <select id="say-to" title="Speak to"><option value="everyone">to everyone</option></select>
+          <input id="say-text" placeholder="Say something in character…" autocomplete="off" />
+          <button type="submit">Say</button>
+        </form>
+        <form id="act-form" class="row">
+          <select id="emote-select" title="Emote"><option value="">emote…</option></select>
+          <input id="act-text" placeholder="Do something (e.g. “kneels to tie a bootlace”)" autocomplete="off" />
+          <button type="submit">Act</button>
+          <button type="button" id="pickup-btn" title="Pick up the targeted item">Pick up</button>
+          <button type="button" id="give-btn" title="Give your held item to the targeted person">Give</button>
+          <button type="button" id="drop-btn" title="Drop what you're holding">Drop</button>
+        </form>
+      </section>
+    </main>
+
+    <aside id="sidebar">
+      <header>
+        <div class="controls">
+          <button id="play-btn" class="primary">▶ Play</button>
+          <button id="step-btn" title="Give every AI character exactly one turn, then pause">⏭ Step</button>
+          <span id="status-pill" class="pill">paused</span>
+        </div>
+        <div id="brain-line" class="muted small"></div>
+        <div id="totals" class="muted small"></div>
+      </header>
+
+      <nav class="tabs">
+        <button data-tab="log" class="active">Log</button>
+        <button data-tab="character">Character</button>
+        <button data-tab="director">Director</button>
+      </nav>
+
+      <section id="tab-log" class="tab active">
+        <div class="log-filters small">
+          <label><input type="checkbox" id="show-thoughts" checked /> thoughts</label>
+          <label><input type="checkbox" id="show-moves" /> movement</label>
+          <label><input type="checkbox" id="show-errors" checked /> rejected actions</label>
+        </div>
+        <ol id="log"></ol>
+      </section>
+
+      <section id="tab-character" class="tab">
+        <div id="char-empty" class="muted">Click a character in the scene (or a name in the log) to inspect it.</div>
+        <div id="char-panel" hidden>
+          <div class="char-head">
+            <span id="char-swatch" class="swatch"></span>
+            <h2 id="char-name"></h2>
+            <label class="toggle small"><input type="checkbox" id="char-control" /> I control this character</label>
+          </div>
+          <p id="char-persona" class="small"></p>
+          <div id="char-goals" class="small"></div>
+          <details class="small"><summary>Secrets (director's eyes only)</summary><ul id="char-secrets"></ul></details>
+
+          <form id="direct-form" class="stack">
+            <label class="small muted">Stage direction (sent as an out-of-character system message on its next turn)</label>
+            <div class="row"><input id="direct-text" placeholder="e.g. You're starting to suspect Bram." autocomplete="off" /><button>Send</button></div>
+          </form>
+
+          <h3>Recent turns</h3>
+          <ol id="char-history"></ol>
+          <details class="small"><summary>Current observation</summary><pre id="char-observation"></pre></details>
+          <details class="small"><summary>System prompt</summary><pre id="char-prompt"></pre></details>
+        </div>
+      </section>
+
+      <section id="tab-director" class="tab">
+        <form id="narrate-form" class="stack">
+          <label class="small muted">Narrate an event everyone perceives</label>
+          <div class="row"><input id="narrate-text" placeholder="The sun dips toward the hills — dusk is close." autocomplete="off" /><button>Narrate</button></div>
+        </form>
+
+        <form id="spawn-form" class="stack">
+          <label class="small muted">Spawn an item (then click the ground to place it)</label>
+          <div class="row">
+            <input id="spawn-name" placeholder="name, e.g. muddy boot" autocomplete="off" />
+            <input id="spawn-color" type="color" value="#ffcc00" title="Colour" />
+          </div>
+          <div class="row"><input id="spawn-desc" placeholder="description (optional)" autocomplete="off" /><button id="spawn-btn">Place…</button></div>
+        </form>
+
+        <div class="stack">
+          <label class="small muted">Simulation</label>
+          <label class="small"><input type="checkbox" id="lockstep" /> Freeze world time while characters think (turn-based)</label>
+          <label class="small">Speed <input type="range" id="timescale" min="0.25" max="4" step="0.25" value="1" /> <span id="timescale-val">1×</span></label>
+          <label class="small">Turn budget <input type="number" id="max-turns" min="0" step="10" style="width:6em" /> <span class="muted">(pauses when reached)</span></label>
+        </div>
+
+        <form id="reset-form" class="stack">
+          <label class="small muted">Scene</label>
+          <div class="row">
+            <select id="scenario-select"></select>
+            <select id="brain-select">
+              <option value="claude">Claude</option>
+              <option value="mock">Mock (offline)</option>
+            </select>
+            <button>Reset</button>
+          </div>
+        </form>
+        <p id="director-notes" class="small muted"></p>
+      </section>
+    </aside>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
