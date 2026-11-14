@@ -1,0 +1,16 @@
+{"name": "r2.1 +short causal conv (k=4)", "seed": 0, "val_loss": 1.5387, "bpc": 2.2199, "train_loss_last": 1.072, "params": 798720, "active_params": 798720, "time_s": 488.8}
+{"name": "r2.1 +short causal conv (k=4)", "seed": 1, "val_loss": 1.536, "bpc": 2.216, "train_loss_last": 1.1439, "params": 798720, "active_params": 798720, "time_s": 496.8}
+{"name": "r2.2 +value residual", "seed": 0, "val_loss": 1.5108, "bpc": 2.1796, "train_loss_last": 1.1513, "params": 795652, "active_params": 795652, "time_s": 450.5}
+{"name": "r2.2 +value residual", "seed": 1, "val_loss": 1.5126, "bpc": 2.1822, "train_loss_last": 1.2207, "params": 795652, "active_params": 795652, "time_s": 443.5}
+{"name": "r2.3 +attention output gate", "seed": 0, "val_loss": 1.4926, "bpc": 2.1533, "train_loss_last": 1.1485, "params": 797712, "active_params": 797712, "time_s": 449.5}
+{"name": "r2.3 +attention output gate", "seed": 1, "val_loss": 1.493, "bpc": 2.154, "train_loss_last": 1.221, "params": 797712, "active_params": 797712, "time_s": 454.8}
+{"name": "r2.4 +MoE 4 experts top-2", "seed": 0, "val_loss": 1.4795, "bpc": 2.1345, "train_loss_last": 1.1499, "params": 1318400, "active_params": 796160, "time_s": 547.8}
+{"name": "r2.4 +MoE 4 experts top-2", "seed": 1, "val_loss": 1.4918, "bpc": 2.1522, "train_loss_last": 1.2126, "params": 1318400, "active_params": 796160, "time_s": 544.6}
+{"name": "r2.5 +multi-token prediction", "seed": 0, "val_loss": 1.4919, "bpc": 2.1523, "train_loss_last": 1.1894, "params": 820608, "active_params": 820608, "time_s": 463.5}
+{"name": "r2.5 +multi-token prediction", "seed": 1, "val_loss": 1.4996, "bpc": 2.1635, "train_loss_last": 1.2208, "params": 820608, "active_params": 820608, "time_s": 462.9}
+{"name": "r2.6 +4 register tokens", "seed": 1, "val_loss": 1.5116, "bpc": 2.1808, "train_loss_last": 1.2277, "params": 796160, "active_params": 796160, "time_s": 473.3}
+{"name": "r2.6 +4 register tokens", "seed": 0, "val_loss": 1.5005, "bpc": 2.1648, "train_loss_last": 1.1539, "params": 796160, "active_params": 796160, "time_s": 488.6}
+{"name": "r2.7 +dropout 0.1", "seed": 0, "val_loss": 1.5012, "bpc": 2.1657, "train_loss_last": 1.2641, "params": 795648, "active_params": 795648, "time_s": 500.6}
+{"name": "r2.7 +dropout 0.1", "seed": 1, "val_loss": 1.5107, "bpc": 2.1795, "train_loss_last": 1.3273, "params": 795648, "active_params": 795648, "time_s": 500.7}
+{"name": "r2.8 +grouped-query attn (2 kv heads)", "seed": 0, "val_loss": 1.4967, "bpc": 2.1593, "train_loss_last": 1.1722, "params": 730112, "active_params": 730112, "time_s": 422.8}
+{"name": "r2.8 +grouped-query attn (2 kv heads)", "seed": 1, "val_loss": 1.4956, "bpc": 2.1576, "train_loss_last": 1.2217, "params": 730112, "active_params": 730112, "time_s": 412.0}

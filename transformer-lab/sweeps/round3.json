@@ -1,0 +1,7 @@
+[
+ {"name":"r3.1 base+gate+MoE","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"moe_experts":4},
+ {"name":"r3.2 base+gate+MoE+MTP","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"moe_experts":4,"mtp":1},
+ {"name":"r3.3 base+gate+MoE+MTP+GQA","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"moe_experts":4,"mtp":1,"n_kv_head":2},
+ {"name":"r3.4 r3.3 + 8 experts","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"moe_experts":8,"mtp":1,"n_kv_head":2},
+ {"name":"r3.5 r3.3 + recurrent depth x2","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"moe_experts":4,"mtp":1,"n_kv_head":2,"loop":2}
+]
