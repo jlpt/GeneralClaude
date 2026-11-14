@@ -98,10 +98,10 @@ for tf in forks:
                                  ens_test=acc(lW.softmax(-1).mean(0, keepdim=True), yte).item()))
         if s == args.k: break
         step(W, oW, xs, ys)
-    par_at = lambda t: next((r["test"] for r in parent if r["step"] == t), None)
+    par_at = lambda t: min(parent, key=lambda r: abs(r["step"] - t))["test"]
     res = dict(fork=tf, parent_test_at_fork=par_at(tf), parent_test_at_fork_plus_k=par_at(tf + args.k), traj=traj)
     results.append(res); e = traj[-1]
-    print(f"fork={tf:5d} parent@fork={res['parent_test_at_fork']:.3f} parent@fork+K={res['parent_test_at_fork_plus_k']} | "
+    print(f"fork={tf:5d} parent@fork={res['parent_test_at_fork']:.3f} parent@fork+K={res['parent_test_at_fork_plus_k']:.3f} | "
           f"soup_test={e['soup_test']:.3f} soup_train={e['soup_train']:.3f} member_test={e['member_test']:.3f} "
           f"member_train={e['member_train']:.3f} ens_test={e['ens_test']:.3f}  [{time.time()-t0:.0f}s]", flush=True)
 
