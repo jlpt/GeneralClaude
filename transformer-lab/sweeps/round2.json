@@ -1,0 +1,10 @@
+[
+ {"name":"r2.1 +short causal conv (k=4)","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"conv":4},
+ {"name":"r2.2 +value residual","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"value_residual":true},
+ {"name":"r2.3 +attention output gate","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true},
+ {"name":"r2.4 +MoE 4 experts top-2","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"moe_experts":4},
+ {"name":"r2.5 +multi-token prediction","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"mtp":1},
+ {"name":"r2.6 +4 register tokens","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"registers":4},
+ {"name":"r2.7 +dropout 0.1","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"dropout":0.1},
+ {"name":"r2.8 +grouped-query attn (2 kv heads)","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"n_kv_head":2}
+]
