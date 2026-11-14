@@ -1,0 +1,2 @@
+{"name": "r1.0 baseline (2017-style)", "seed": 0, "val_loss": 1.5348, "bpc": 2.2142, "train_loss_last": 1.2711, "params": 805120, "active_params": 805120, "time_s": 297.3}
+{"name": "r1.0 baseline (2017-style)", "seed": 1, "val_loss": 1.5464, "bpc": 2.2309, "train_loss_last": 1.3446, "params": 805120, "active_params": 805120, "time_s": 299.3}

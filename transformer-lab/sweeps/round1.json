@@ -1,0 +1,9 @@
+[
+ {"name":"r1.0 baseline (2017-style)","steps":2000},
+ {"name":"r1.1 +pre-norm","steps":2000,"prenorm":true},
+ {"name":"r1.2 +RMSNorm","steps":2000,"prenorm":true,"norm":"rms"},
+ {"name":"r1.3 +RoPE","steps":2000,"prenorm":true,"norm":"rms","pos":"rope"},
+ {"name":"r1.4 +SwiGLU","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu"},
+ {"name":"r1.5 +QK-norm","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true},
+ {"name":"r1.6 +tied embeddings","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true}
+]
