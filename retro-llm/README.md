@@ -31,7 +31,10 @@ Controls (all three): **Start** begins (the N64 also starts by itself after 3 s)
 Sample (from `train/ref.py`, which is identical to what the consoles print for that seed):
 
 ```
-DUKTER VINGAY A SLEARE THE HEATH, ALPREET STARONELE WAMEAT THOUDENTER SIR AS THE
+LOOD FROWSUE AND YOU BECIED MY PIGHT THAT AND BOTH THOLY HERE IT VING THY, THUSSO PREE FREOD;
+GRE YOUR NEIND:
+AY HAVER:
+BUT IT LOSE PLEATH AND AGRORD YOUR-RUTER IN BEITUR THER TO AREATS MUEE.
 ```
 
 It learned spelling-ish words, line structure, `NAME:` speaker headers and punctuation.
@@ -63,8 +66,8 @@ libretro frontend (`tools/retro.py`). It presses Start, lets the ROM run for a m
 of emulated time, reads the log back, and replays `ref.py` with the same seed:
 
 ```
-[nes]  ... tokens=71  -> 1.18 tokens/s   bit-exact: True (71 tokens compared)
-[snes] ... tokens=144 -> 2.40 tokens/s   bit-exact: True (144 tokens compared)
+[nes]  ... tokens=72  -> 1.20 tokens/s   bit-exact: True (72 tokens compared)
+[snes] ... tokens=146 -> 2.43 tokens/s   bit-exact: True (146 tokens compared)
 engine.c on x86-64: bit-exact over 300 tokens
 engine.c on mips-be (qemu): bit-exact over 300 tokens
 ```
@@ -112,7 +115,7 @@ tokens/second.
 sudo apt install cc65 gcc-mips-linux-gnu qemu-user libretro-nestopia libretro-snes9x
 pip install torch numpy pillow
 
-cd train && python3 train.py            # ~20-60 min on a CPU; writes build/model.pt
+cd train && python3 train.py --steps 80000 --float-steps 10000 --bs 256   # ~65 min on 4 CPU cores
 python3 ref.py --check                  # PyTorch == integer reference, sample text
 cd .. && python3 build_all.py --verify  # build the 3 ROMs, check NES/SNES in emulators
 python3 tools/make_gif.py snes          # record a GIF
