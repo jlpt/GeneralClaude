@@ -106,7 +106,27 @@ def reward_fn(completions, episode_seed, **kwargs):      # one entry per sampled
 size, color) so the full loop runs on a CPU. It sees only pixels and learns only from the
 held-out reward; it is never shown the answer. Test targets and angles are disjoint from training.
 
-RESULTS_PLACEHOLDER
+Results from one 600-step run of each method (16 targets x 8 samples per step, ~3.5 min on 4 CPU cores):
+
+| | Held-out reward on unseen test targets | Exact match |
+|---|---|---|
+| Random guessing | 0.08 | 0% |
+| RFT (imitate best of 8) | 0.48 | 9% |
+| **GRPO** | **0.71** | **27%** |
+
+GRPO learns faster because every sample carries signal, including the bad ones. RFT throws away 7 of
+8 samples. `out/toy_grpo_examples.png` shows unseen targets (left) next to the policy's
+reconstructions (right) from held-out angles. Positions, sizes and colors come out right; the
+remaining errors are mostly the shape type (box vs sphere vs cylinder look alike in 24-pixel photos).
+`demo_cheat.py` output:
+
+```
+candidate                             score on input view  score on held-out views
+exact answer (sphere r=0.40)                        1.000                    1.000
+honest but rough (sphere r=0.33)                    0.563                    0.562
+honest but rough (cube 0.8)                         0.470                    0.428
+CHEAT: flat disc facing camera                      0.807                    0.237
+```
 
 The toy policy can't reason and can't compose multiple objects. An LLM brings strong priors about
 shapes and spatial reasoning, so it starts far above random guessing. RL then improves what it
