@@ -1,0 +1,4 @@
+data/
+*/gen/
+__pycache__/
+build_train*.log
