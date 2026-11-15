@@ -1,0 +1,10 @@
+{"name": "r3.1 base+gate+MoE", "seed": 0, "val_loss": 1.5066, "bpc": 2.1736, "train_loss_last": 1.1311, "params": 1320464, "active_params": 798224, "time_s": 532.7}
+{"name": "r3.1 base+gate+MoE", "seed": 1, "val_loss": 1.5006, "bpc": 2.165, "train_loss_last": 1.2125, "params": 1320464, "active_params": 798224, "time_s": 539.4}
+{"name": "r3.2 base+gate+MoE+MTP", "seed": 0, "val_loss": 1.4854, "bpc": 2.1429, "train_loss_last": 1.1564, "params": 1345424, "active_params": 823184, "time_s": 563.6}
+{"name": "r3.2 base+gate+MoE+MTP", "seed": 1, "val_loss": 1.4782, "bpc": 2.1326, "train_loss_last": 1.1694, "params": 1345424, "active_params": 823184, "time_s": 572.0}
+{"name": "r3.3 base+gate+MoE+MTP+GQA", "seed": 0, "val_loss": 1.485, "bpc": 2.1424, "train_loss_last": 1.1547, "params": 1279888, "active_params": 757648, "time_s": 549.0}
+{"name": "r3.3 base+gate+MoE+MTP+GQA", "seed": 1, "val_loss": 1.4932, "bpc": 2.1543, "train_loss_last": 1.1775, "params": 1279888, "active_params": 757648, "time_s": 557.1}
+{"name": "r3.4 r3.3 + 8 experts", "seed": 0, "val_loss": 1.4912, "bpc": 2.1513, "train_loss_last": 1.1278, "params": 2326416, "active_params": 759696, "time_s": 568.0}
+{"name": "r3.4 r3.3 + 8 experts", "seed": 1, "val_loss": 1.4964, "bpc": 2.1588, "train_loss_last": 1.1488, "params": 2326416, "active_params": 759696, "time_s": 563.0}
+{"name": "r3.5 r3.3 + recurrent depth x2", "seed": 0, "val_loss": 1.4807, "bpc": 2.1362, "train_loss_last": 1.1464, "params": 1279888, "active_params": 757648, "time_s": 1009.0}
+{"name": "r3.5 r3.3 + recurrent depth x2", "seed": 1, "val_loss": 1.4759, "bpc": 2.1292, "train_loss_last": 1.161, "params": 1279888, "active_params": 757648, "time_s": 1012.3}

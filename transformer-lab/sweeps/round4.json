@@ -1,0 +1,7 @@
+[
+ {"name":"r4.1 r3.2 + dropout 0.1","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"mtp":1,"moe_experts":4,"dropout":0.1},
+ {"name":"r4.2 r3.2 with 2 MTP heads","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"mtp":1,"moe_experts":4,"mtp":2},
+ {"name":"r4.3 r3.2 without MoE (dense)","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"mtp":1},
+ {"name":"r4.4 r3.2 + recurrent depth x2","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"mtp":1,"moe_experts":4,"loop":2},
+ {"name":"r4.5 control: r3.2 with 8 real layers","steps":2000,"prenorm":true,"norm":"rms","pos":"rope","ffn":"swiglu","qk_norm":true,"tie":true,"gate_attn":true,"mtp":1,"moe_experts":4,"n_layer":8}
+]
