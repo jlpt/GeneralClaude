@@ -1,0 +1,10 @@
+{"name": "r4.1 r3.2 + dropout 0.1", "seed": 1, "val_loss": 1.4932, "bpc": 2.1542, "train_loss_last": 1.2845, "params": 1345424, "active_params": 823184, "time_s": 614.3}
+{"name": "r4.1 r3.2 + dropout 0.1", "seed": 0, "val_loss": 1.4953, "bpc": 2.1573, "train_loss_last": 1.2444, "params": 1345424, "active_params": 823184, "time_s": 614.7}
+{"name": "r4.2 r3.2 with 2 MTP heads", "seed": 1, "val_loss": 1.484, "bpc": 2.141, "train_loss_last": 1.1679, "params": 1370384, "active_params": 848144, "time_s": 549.0}
+{"name": "r4.2 r3.2 with 2 MTP heads", "seed": 0, "val_loss": 1.481, "bpc": 2.1366, "train_loss_last": 1.1819, "params": 1370384, "active_params": 848144, "time_s": 562.5}
+{"name": "r4.3 r3.2 without MoE (dense)", "seed": 0, "val_loss": 1.4808, "bpc": 2.1364, "train_loss_last": 1.1709, "params": 822672, "active_params": 822672, "time_s": 448.7}
+{"name": "r4.3 r3.2 without MoE (dense)", "seed": 1, "val_loss": 1.4842, "bpc": 2.1412, "train_loss_last": 1.1866, "params": 822672, "active_params": 822672, "time_s": 443.3}
+{"name": "r4.4 r3.2 + recurrent depth x2", "seed": 0, "val_loss": 1.4786, "bpc": 2.1332, "train_loss_last": 1.1531, "params": 1345424, "active_params": 823184, "time_s": 1090.5}
+{"name": "r4.4 r3.2 + recurrent depth x2", "seed": 1, "val_loss": 1.4847, "bpc": 2.142, "train_loss_last": 1.1604, "params": 1345424, "active_params": 823184, "time_s": 1123.0}
+{"name": "r4.5 control: r3.2 with 8 real layers", "seed": 0, "val_loss": 1.4924, "bpc": 2.1531, "train_loss_last": 1.0986, "params": 2657440, "active_params": 1612960, "time_s": 1110.7}
+{"name": "r4.5 control: r3.2 with 8 real layers", "seed": 1, "val_loss": 1.4805, "bpc": 2.1359, "train_loss_last": 1.1101, "params": 2657440, "active_params": 1612960, "time_s": 1117.2}
