@@ -1,0 +1,12 @@
+{"name": "evolved from transformer #1 (eval 185)", "size": "proxy", "seed": 1, "val_loss": 2.0, "params": 37120, "secs": 12}
+{"name": "transformer (hand-designed)", "size": "proxy", "seed": 3, "val_loss": 2.0266, "params": 53632, "secs": 13}
+{"name": "transformer (hand-designed)", "size": "proxy", "seed": 1, "val_loss": 2.0378, "params": 53632, "secs": 13}
+{"name": "transformer (hand-designed)", "size": "proxy", "seed": 2, "val_loss": 2.0086, "params": 53632, "secs": 14}
+{"name": "evolved from transformer #1 (eval 185)", "size": "proxy", "seed": 2, "val_loss": 1.9981, "params": 37120, "secs": 11}
+{"name": "evolved from transformer #1 (eval 185)", "size": "proxy", "seed": 3, "val_loss": 1.9955, "params": 37120, "secs": 11}
+{"name": "evolved from transformer #2 (eval 20)", "size": "proxy", "seed": 1, "val_loss": 1.9886, "params": 45440, "secs": 12}
+{"name": "evolved from transformer #2 (eval 20)", "size": "proxy", "seed": 2, "val_loss": 1.9967, "params": 45440, "secs": 12}
+{"name": "evolved from scratch #1 (eval 331)", "size": "proxy", "seed": 1, "val_loss": 2.1189, "params": 20736, "secs": 4}
+{"name": "evolved from scratch #1 (eval 331)", "size": "proxy", "seed": 2, "val_loss": 2.0973, "params": 20736, "secs": 4}
+{"name": "evolved from scratch #1 (eval 331)", "size": "proxy", "seed": 3, "val_loss": 2.1113, "params": 20736, "secs": 3}
+{"name": "evolved from transformer #2 (eval 20)", "size": "proxy", "seed": 3, "val_loss": 1.9934, "params": 45440, "secs": 12}
