@@ -1,0 +1,8 @@
+{"name": "transformer (hand-designed)", "size": "full", "seed": 1, "val_loss": 1.5489, "params": 402688, "secs": 309}
+{"name": "transformer (hand-designed)", "size": "full", "seed": 0, "val_loss": 1.56, "params": 402688, "secs": 311}
+{"name": "evolved from transformer #1 (eval 185)", "size": "full", "seed": 0, "val_loss": 1.5524, "params": 271104, "secs": 273}
+{"name": "evolved from transformer #1 (eval 185)", "size": "full", "seed": 1, "val_loss": 1.556, "params": 271104, "secs": 275}
+{"name": "evolved from transformer #2 (eval 20)", "size": "full", "seed": 0, "val_loss": 1.5525, "params": 337152, "secs": 286}
+{"name": "evolved from transformer #2 (eval 20)", "size": "full", "seed": 1, "val_loss": 1.5528, "params": 337152, "secs": 287}
+{"name": "evolved from scratch #1 (eval 331)", "size": "full", "seed": 0, "val_loss": 1.6353, "params": 140032, "secs": 83}
+{"name": "evolved from scratch #1 (eval 331)", "size": "full", "seed": 1, "val_loss": 1.6274, "params": 140032, "secs": 83}

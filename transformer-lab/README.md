@@ -102,6 +102,93 @@ same parameter count and training budget.
    short convolutions and register tokens. Results like these are scale-dependent.
    Pre-norm and value residual are known to matter mostly in much deeper networks.
 
+## Part 2: letting the architecture evolve itself (`evolve.py`)
+
+### How it works
+
+**Genome.** One block is a wiring diagram:
+- **Nodes ("neurons")** are math functions: `linear`, `norm`, `relu`, `gelu`, `silu`,
+  `sigmoid`, `tanh`, `square`, `neg`, `shift` (previous token), `cummean`
+  (running average of the past), `add`, `mul`, `max`, and `mix`.
+  `mix` is causal softmax attention as a 3-input function: `softmax(rope(a)·rope(b)ᵀ)·c`.
+- **Edges ("synapses")** say which earlier node feeds each node.
+
+The model stacks the block with a residual, `x ← x + block(x)`, and each copy has its own weights.
+
+**Mutations.** A child can get:
+- a node's function changed;
+- an input rewired;
+- a node inserted (and spliced into the live path);
+- a node deleted;
+- a different output node.
+
+**Search.** Regularized (aging) evolution:
+- population 24, tournament of 6;
+- the oldest member dies when a child is added;
+- 4 candidates are evaluated in parallel.
+
+**Fitness.** Validation loss after a 14-second training run on the "proxy" setup:
+2 layers, width 64, context 64, 400 steps.
+
+### Runs
+
+| Run | Evaluations | Best proxy loss | Hand-designed transformer block |
+|---|---|---|---|
+| From random graphs | 400 | 2.122 | 2.026 |
+| From a transformer block | 300 | 1.995 | 2.026 |
+
+**Evolved from scratch.** It did not find attention.
+It found a *token-shift gate*, similar to the token-shift idea in RWKV-style models:
+```
+block(x) = linear(x) * shift(norm(linear(x)))
+```
+
+**Evolved from the transformer block (#1).** Key changes:
+- the feed-forward network is removed;
+- the value input is `norm(x) + relu(norm(x))`, with no value projection;
+- the attention output is gated by the query;
+- a parallel linear branch is added.
+
+```
+n1 = norm(x);  n2 = relu(n1)
+att = mix(linear(n2), linear(n2), n1 + n2)
+block(x) = linear(n2) + linear(silu(tanh(att * linear(n2))))
+```
+
+**Evolved #2.** Standard attention, but the feed-forward network lost its up-projection:
+`ffn(h) = linear(relu(silu(norm(h))))`.
+
+### Re-validation on fresh seeds
+
+| Design | Proxy (3 seeds) | Full size: 4 layers, d=128, 2000 steps (2 seeds) | Params at full size | Time |
+|---|---|---|---|---|
+| Transformer block (hand-designed) | 2.024 ± 0.015 | 1.555 ± 0.008 | 403k | 310s |
+| Evolved from transformer #1 | 1.998 ± 0.002 | 1.554 ± 0.003 | **271k (−33%)** | 274s |
+| Evolved from transformer #2 | 1.993 ± 0.004 | 1.553 ± 0.000 | 337k (−16%) | 286s |
+| Evolved from scratch | 2.109 ± 0.011 | 1.631 ± 0.006 | 140k (−65%) | 83s |
+
+### What this showed
+
+1. **Evolution beat the hand design on the task it was trained on (the proxy).**
+   Most of that edge disappeared at full size. Both evolved-from-transformer blocks
+   *tie* the original at full size, but with 16–33% fewer parameters.
+   This is the classic proxy gap: designs tuned for a small, short run don't
+   automatically win in a bigger, longer one.
+2. **From scratch, 400 tries were not enough to assemble attention.**
+   Attention needs three separate projections wired into `mix`, which is a lot of
+   coordinated mutation. Instead, evolution found a cheap local-mixing trick that is
+   3.7× faster but 0.08 worse.
+3. **Evolution's favorite move was deletion.** It mostly kept quality while
+   removing parts. Given a fixed budget, that is a sensible way to improve fitness.
+
+The graph language uses width-d linears only: no 4× feed-forward expansion and no
+SwiGLU. That is why these full-size numbers (about 1.55) are worse than Part 1's best (1.483).
+
+Reproduce with:
+- `python evolve.py scratch 400`
+- `python evolve.py seeded 300`
+- `python validate_evolved.py proxy|full`
+
 ## Caveats
 
 - The model is tiny, the dataset is tiny, and each config has only 2–3 seeds.
